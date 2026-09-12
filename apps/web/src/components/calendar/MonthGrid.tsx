@@ -1,0 +1,129 @@
+import type { CalendarDay, CalendarEvent, CalendarEventKind, CashCalendar, ISODate } from "@canary/shared";
+import { EventChip } from "@/components/calendar/EventChip.tsx";
+import { formatDayOfMonth, formatUsdCompact, WEEKDAY_LABELS } from "@/lib/format.ts";
+import { isInMonth, monthGridDays, type MonthKey } from "@/lib/month.ts";
+import { cn } from "@/lib/utils.ts";
+
+const MAX_CHIPS = 3;
+
+/**
+ * A busy day can hold more events than a cell has room for, and a Canary
+ * marker is the one thing that must never end up behind "+n more".
+ */
+const CHIP_PRIORITY: Record<CalendarEventKind, number> = {
+  canary: 0,
+  actual: 1,
+  expected: 2,
+  busy: 3,
+};
+
+function byChipPriority(a: CalendarEvent, b: CalendarEvent): number {
+  return CHIP_PRIORITY[a.kind] - CHIP_PRIORITY[b.kind];
+}
+
+export function MonthGrid({
+  month,
+  calendar,
+  today,
+  onSelectDay,
+}: {
+  month: MonthKey;
+  calendar: CashCalendar;
+  /** The demo clock: the last day of history, not the wall clock. */
+  today: ISODate;
+  onSelectDay: (date: ISODate) => void;
+}) {
+  const byDate = new Map(calendar.days.map((day) => [day.date, day]));
+  const days = monthGridDays(month);
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+      <div className="grid grid-cols-7 border-b border-neutral-200 bg-neutral-50">
+        {WEEKDAY_LABELS.map((label) => (
+          <div
+            key={label}
+            className="px-2 py-2 text-center text-[10px] font-medium uppercase tracking-wide text-neutral-500"
+          >
+            <span aria-hidden="true" className="sm:hidden">
+              {label.charAt(0)}
+            </span>
+            <span className="hidden sm:inline">{label}</span>
+            <span className="sr-only sm:hidden">{label}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7">
+        {days.map((date) => (
+          <DayCell
+            key={date}
+            date={date}
+            day={byDate.get(date) ?? null}
+            inMonth={isInMonth(date, month)}
+            isToday={date === today}
+            onSelect={() => onSelectDay(date)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DayCell({
+  date,
+  day,
+  inMonth,
+  isToday,
+  onSelect,
+}: {
+  date: ISODate;
+  day: CalendarDay | null;
+  inMonth: boolean;
+  isToday: boolean;
+  onSelect: () => void;
+}) {
+  const events = day?.events ?? [];
+  const shown = [...events].sort(byChipPriority).slice(0, MAX_CHIPS);
+  const hidden = events.length - shown.length;
+  const netActual = day?.net_actual_cents ?? 0;
+  const netExpected = day?.net_expected_cents ?? 0;
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-label={`${date}, ${events.length === 1 ? "1 event" : `${events.length} events`}`}
+      className={cn(
+        "flex min-h-24 flex-col gap-1 border-b border-r border-neutral-100 p-1.5 text-left transition-colors last:border-r-0 hover:bg-neutral-50/80",
+        inMonth ? "bg-white" : "bg-neutral-50/50",
+      )}
+    >
+      <span className="flex items-center justify-between">
+        <span
+          className={cn(
+            "flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-medium tabular-nums",
+            isToday ? "bg-canary-400 text-neutral-900" : inMonth ? "text-neutral-700" : "text-neutral-300",
+          )}
+        >
+          {formatDayOfMonth(date)}
+        </span>
+      </span>
+
+      <span className="flex flex-1 flex-col gap-0.5">
+        {shown.map((event) => (
+          <EventChip key={event.id} event={event} />
+        ))}
+        {hidden > 0 ? (
+          <span className="px-1.5 text-[10px] text-neutral-400">+{hidden} more</span>
+        ) : null}
+      </span>
+
+      {netActual !== 0 || netExpected !== 0 ? (
+        <span className="flex flex-wrap items-baseline gap-x-1.5 border-t border-neutral-100 pt-1 text-[9px] tabular-nums text-neutral-400">
+          {netActual !== 0 ? <span className="text-neutral-500">{formatUsdCompact(netActual)}</span> : null}
+          {netExpected !== 0 ? <span>{formatUsdCompact(netExpected)} exp.</span> : null}
+        </span>
+      ) : null}
+    </button>
+  );
+}
