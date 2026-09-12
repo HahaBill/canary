@@ -181,7 +181,11 @@ function findMatch(existing: Incident[], candidate: IncidentCandidate, claimed: 
   for (let i = 0; i < existing.length; i++) {
     if (claimed.has(i)) continue;
     const incident = existing[i]!;
-    if (incident.type !== candidate.type || incident.entity !== candidate.entity) continue;
+    if (incident.type !== candidate.type) continue;
+    // Entity is an OUTPUT of decomposition for a rate shift (the top contributor can
+    // drift as the regime matures), so it is not part of a rate shift's identity.
+    // One-offs are identified by their vendor + transaction.
+    if (candidate.type === "ONE_OFF_VENDOR_PAYMENT" && incident.entity !== candidate.entity) continue;
 
     // Same deterministic identity: the stored incident IS this detection, even if
     // its `detection` payload was dropped on the way through storage.

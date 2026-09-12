@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import type { CreateAppLinkRequest, IncidentStatus } from "@canary/shared";
-import { updateIncidentStatus, useIncidentDetail } from "@/api/useDerived.ts";
+import { clearApiCache, updateIncidentStatus, useIncidentDetail } from "@/api/useDerived.ts";
 import { ContributorBars } from "@/components/ContributorBars.tsx";
 import { CusumChart } from "@/components/CusumChart.tsx";
 import { EvidenceList } from "@/components/EvidenceList.tsx";
@@ -77,6 +77,7 @@ export function IncidentPage() {
     try {
       const updated = await updateIncidentStatus(incident.id, "ACKNOWLEDGED");
       setStatusOverride({ id: incident.id, status: updated?.status ?? "ACKNOWLEDGED" });
+      clearApiCache(); // so the dashboard / a revisit reflect the new status
     } catch {
       // Status is a convenience here; the incident itself is unchanged.
     } finally {
@@ -133,13 +134,11 @@ export function IncidentPage() {
               {...(data.ewma_variable_spend_cents ? { ewma: data.ewma_variable_spend_cents } : {})}
             />
           </div>
-          <div className="rounded-2xl border border-neutral-200 bg-white p-5">
-            <CusumChart
-              weeks={weeks}
-              statistic={data.cusum_statistic_cents}
-              thresholdCents={cusum?.h_cents ?? null}
-            />
-          </div>
+          {cusum ? (
+            <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+              <CusumChart weeks={weeks} statistic={cusum.statistic_cents} thresholdCents={cusum.h_cents} />
+            </div>
+          ) : null}
           <ImpactPanel incident={incident} />
         </TabsContent>
 
@@ -160,7 +159,11 @@ export function IncidentPage() {
 
         <TabsContent value="evidence" className="space-y-6">
           <EvidenceList items={data.evidence} />
-          <WhyFlagged {...(cusum ? { cusum } : {})} materiality={incident.materiality} />
+          <WhyFlagged
+            {...(cusum ? { cusum } : {})}
+            {...(incident.detection.one_off ? { oneOff: incident.detection.one_off } : {})}
+            materiality={incident.materiality}
+          />
         </TabsContent>
 
         <TabsContent value="whatif">

@@ -75,6 +75,30 @@ describe("withD1Overlay", () => {
     expect((await second.getDerived()).primary_incident?.status).toBe("ACKNOWLEDGED");
   });
 
+  it("does not revert a persisted status when a cold isolate marks the incident notified (and vice versa)", async () => {
+    const db = new FakeD1();
+    const id = buildMockDerived().primary_incident!.id;
+
+    // Isolate A acknowledges.
+    const a = withD1Overlay(new MockDataProvider(), db);
+    await a.updateIncidentStatus(id, "ACKNOWLEDGED", NOW);
+
+    // Isolate B (fresh in-memory provider, same D1) sends an alert → markNotified.
+    const later = "2026-09-14T13:00:00.000Z";
+    const b = withD1Overlay(new MockDataProvider(), db);
+    await b.markNotified(id, later);
+    const afterB = await b.getIncident(id);
+    expect(afterB?.status).toBe("ACKNOWLEDGED");
+    expect(afterB?.last_notified).toBe(later);
+
+    // Isolate C changes status; the notification timestamp must survive.
+    const c = withD1Overlay(new MockDataProvider(), db);
+    const updated = await c.updateIncidentStatus(id, "RESOLVED", "2026-09-14T14:00:00.000Z");
+    expect(updated?.status).toBe("RESOLVED");
+    expect(updated?.last_notified).toBe(later);
+    expect((await withD1Overlay(new MockDataProvider(), db).getIncident(id))?.last_notified).toBe(later);
+  });
+
   it("persists notification timestamps", async () => {
     const db = new FakeD1();
     const id = buildMockDerived().one_off_incident!.id;

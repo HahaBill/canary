@@ -271,9 +271,17 @@ describe("bank routes", () => {
 });
 
 describe("POST /api/alerts/send", () => {
+  it("requires the shared secret (it texts a real phone and spends credit)", async () => {
+    const h = createHarness();
+    const { status, body } = await h.post<ErrorResponse>("/api/alerts/send", {});
+    expect(status).toBe(401);
+    expect(body.error).toBe("unauthorized");
+    expect(h.calls).toHaveLength(0);
+  });
+
   it("sends the alert, logs it, and marks the incident notified", async () => {
     const h = createHarness();
-    const { status, body } = await h.post<SendAlertResponse>(API_ROUTES.sendAlert.split(" ")[1]!, {});
+    const { status, body } = await h.authed<SendAlertResponse>(API_ROUTES.sendAlert.split(" ")[1]!, {});
     expect(status).toBe(200);
     expect(body.sent).toBe(true);
     expect(body.to).toBe(TEST_ENV.FOUNDER_PHONE);
@@ -297,27 +305,27 @@ describe("POST /api/alerts/send", () => {
 
   it("honours an explicit recipient and incident id", async () => {
     const h = createHarness();
-    const { body } = await h.post<SendAlertResponse>("/api/alerts/send", { to: "+15557654321", incident_id: h.derived.one_off_incident!.id });
+    const { body } = await h.authed<SendAlertResponse>("/api/alerts/send", { to: "+15557654321", incident_id: h.derived.one_off_incident!.id });
     expect(body.to).toBe("+15557654321");
     expect(h.messages[0]!.number).toBe("+15557654321");
   });
 
   it("400s with no recipient anywhere", async () => {
     const h = createHarness({ env: { FOUNDER_PHONE: "" } });
-    const { status, body } = await h.post<ErrorResponse>("/api/alerts/send", {});
+    const { status, body } = await h.authed<ErrorResponse>("/api/alerts/send", {});
     expect(status).toBe(400);
     expect(body.error).toBe("missing_recipient");
   });
 
   it("404s for an unknown incident id", async () => {
     const h = createHarness();
-    const { status } = await h.post<ErrorResponse>("/api/alerts/send", { incident_id: "inc_nope" });
+    const { status } = await h.authed<ErrorResponse>("/api/alerts/send", { incident_id: "inc_nope" });
     expect(status).toBe(404);
   });
 
   it("503s when Sendblue credentials are absent", async () => {
     const h = createHarness({ env: { SENDBLUE_API_KEY: "", SENDBLUE_API_SECRET: "", SENDBLUE_FROM_NUMBER: "" } });
-    const { status, body } = await h.post<SendAlertResponse>("/api/alerts/send", {});
+    const { status, body } = await h.authed<SendAlertResponse>("/api/alerts/send", {});
     expect(status).toBe(503);
     expect(body.sent).toBe(false);
     expect(body.error).toBe("SENDBLUE_NOT_CONFIGURED");
@@ -326,7 +334,7 @@ describe("POST /api/alerts/send", () => {
 
   it("reports the voice note as skipped when ElevenLabs is not configured", async () => {
     const h = createHarness();
-    const { body } = await h.post<SendAlertResponse>("/api/alerts/send", {});
+    const { body } = await h.authed<SendAlertResponse>("/api/alerts/send", {});
     expect(body.sent).toBe(true);
     expect(body.voice?.sent).toBe(false);
     expect(body.voice?.error).toBe("ELEVENLABS_NOT_CONFIGURED");
@@ -338,7 +346,7 @@ describe("POST /api/alerts/send", () => {
     const pcm = new Uint8Array(48_000); // 1s of silence at 24kHz S16LE
     const tts = { configured: true, spoken: [] as string[], async synthesizePcm(text: string) { this.spoken.push(text); return { ok: true, pcm, sampleRate: 24_000, status: 200 }; } };
     const h = createHarness({ tts });
-    const { body } = await h.post<SendAlertResponse>("/api/alerts/send", {});
+    const { body } = await h.authed<SendAlertResponse>("/api/alerts/send", {});
     expect(body.sent).toBe(true);
     expect(body.voice).toMatchObject({ sent: true, seconds: 1, media_url: "https://storage.test/inbound-file-store/abc_CanaryAlert.caf" });
     expect(tts.spoken).toEqual([body.voice!.transcript]);
@@ -356,7 +364,7 @@ describe("POST /api/alerts/send", () => {
   it("skips the voice note when voice=false", async () => {
     const tts = { configured: true, async synthesizePcm() { return { ok: true, pcm: new Uint8Array(2), sampleRate: 24_000, status: 200 }; } };
     const h = createHarness({ tts });
-    const { body } = await h.post<SendAlertResponse>("/api/alerts/send", { voice: false });
+    const { body } = await h.authed<SendAlertResponse>("/api/alerts/send", { voice: false });
     expect(body.voice).toBeUndefined();
     expect(h.calls).toHaveLength(1);
   });
@@ -364,7 +372,7 @@ describe("POST /api/alerts/send", () => {
   it("keeps the text alert delivered when TTS fails", async () => {
     const tts = { configured: true, async synthesizePcm() { return { ok: false, sampleRate: 24_000, status: 500, error: "boom" }; } };
     const h = createHarness({ tts });
-    const { status, body } = await h.post<SendAlertResponse>("/api/alerts/send", {});
+    const { status, body } = await h.authed<SendAlertResponse>("/api/alerts/send", {});
     expect(status).toBe(200);
     expect(body.sent).toBe(true);
     expect(body.voice?.sent).toBe(false);
@@ -374,7 +382,7 @@ describe("POST /api/alerts/send", () => {
 
   it("502s when Sendblue rejects the message", async () => {
     const h = createHarness({ sendblueResponse: () => new Response(JSON.stringify({ error: "bad number" }), { status: 422 }) });
-    const { status, body } = await h.post<SendAlertResponse>("/api/alerts/send", {});
+    const { status, body } = await h.authed<SendAlertResponse>("/api/alerts/send", {});
     expect(status).toBe(502);
     expect(body.sent).toBe(false);
     expect(body.error).toBe("bad number");

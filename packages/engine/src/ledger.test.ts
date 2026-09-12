@@ -37,8 +37,9 @@ describe("buildLedger — reconciliation against the bank anchor", () => {
     expect(r.opening_balance_cents + netCash).toBe(r.reported_closing_balance_cents);
   });
 
-  it("reports no warnings for a clean fixture", () => {
-    expect(r.warnings).toEqual([]);
+  it("reports only the by-construction note for a clean fixture without a bank opening balance", () => {
+    expect(r.warnings).toHaveLength(1);
+    expect(r.warnings[0]).toMatch(/by construction/);
   });
 
   it("counts every reconciliation event from the fixture", () => {
@@ -401,5 +402,29 @@ describe("buildLedger — determinism and normalization", () => {
     );
     const ledger = buildSampleLedger({ transactions });
     expect(ledger.reconciliation.warnings.join(" ")).toContain("unknown account ghost");
+  });
+});
+
+describe("reconciliation against a bank-reported opening balance", () => {
+  it("is a genuine check: a wrong opening balance fails, the right one passes", async () => {
+    const { buildLedger } = await import("./ledger.ts");
+    const { SAMPLE_ACCOUNTS, SAMPLE_EXPECTED, SAMPLE_HISTORY_END, SAMPLE_HISTORY_START, SAMPLE_TRANSACTIONS } = await import("@canary/shared/fixtures");
+    const { COMPANY } = await import("@canary/shared");
+    const base = { company: COMPANY, accounts: SAMPLE_ACCOUNTS, transactions: SAMPLE_TRANSACTIONS, classifications: {}, historyStart: SAMPLE_HISTORY_START, historyEnd: SAMPLE_HISTORY_END };
+
+    const derived = buildLedger(base);
+    expect(derived.reconciliation.opening_balance_reported).toBe(false);
+    expect(derived.reconciliation.matches).toBe(true);
+    expect(derived.reconciliation.warnings.some((w) => /by construction/.test(w))).toBe(true);
+
+    const good = buildLedger({ ...base, expectedOpeningBalanceCents: SAMPLE_EXPECTED.opening_balance_cents });
+    expect(good.reconciliation.opening_balance_reported).toBe(true);
+    expect(good.reconciliation.matches).toBe(true);
+    expect(good.reconciliation.discrepancy_cents).toBe(0);
+
+    const bad = buildLedger({ ...base, expectedOpeningBalanceCents: SAMPLE_EXPECTED.opening_balance_cents + 12_345 });
+    expect(bad.reconciliation.matches).toBe(false);
+    expect(bad.reconciliation.discrepancy_cents).toBe(-12_345);
+    expect(bad.reconciliation.warnings.some((w) => /mismatch/.test(w))).toBe(true);
   });
 });

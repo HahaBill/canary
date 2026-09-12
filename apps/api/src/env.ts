@@ -11,6 +11,8 @@ export interface Env {
   TAVILY_API_KEY?: string;
   WEBHOOK_SECRET?: string;
   FOUNDER_PHONE?: string;
+  /** Optional comma-separated extra E.164 numbers Canary will reply to (demo teammates). */
+  ALLOWED_PHONES?: string;
   PUBLIC_BASE_URL?: string;
   /** ElevenLabs TTS for the iMessage voice note. Optional — alerts degrade to text only. */
   ELEVENLABS_API_KEY?: string;

@@ -53,7 +53,7 @@ Say:
 
 > "The text has the exact numbers. The voice note is the same incident, spoken. Both come from one incident object, so they can't disagree."
 
-Trigger: `POST /api/alerts/send` (sends to FOUNDER_PHONE).
+Trigger: `POST /api/alerts/send` with header `x-canary-secret: <WEBHOOK_SECRET>` (sends text + voice note to FOUNDER_PHONE). Canary only replies to FOUNDER_PHONE / ALLOWED_PHONES.
 
 Do not start with architecture.
 

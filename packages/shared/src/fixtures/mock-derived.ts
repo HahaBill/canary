@@ -183,8 +183,10 @@ export function buildMockDerived(): DerivedDemoObject {
     reconciliation: {
       as_of: DEMO.END_DATE,
       opening_balance_cents: cash + Math.round(weeklyNet * weeks),
+      opening_balance_reported: true,
       reported_closing_balance_cents: cash,
       computed_closing_balance_cents: cash,
+      discrepancy_cents: 0,
       matches: true,
       internal_transfer_pairs: 1,
       unpaired_transfer_legs: 0,

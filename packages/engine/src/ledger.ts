@@ -317,8 +317,17 @@ export const buildLedger: BuildLedger = (input: BuildLedgerInput): Ledger => {
   const netCashMovement = ledgerTransactions
     .filter((t) => t.counts_in_cash)
     .reduce((s, t) => s + t.amount_cents, 0);
-  const openingBalance = reportedClosing - netCashMovement;
+  // With a bank-reported opening balance this is a genuine reconciliation. Without
+  // one the opening is derived from the closing and the identity cannot fail.
+  const openingReported = input.expectedOpeningBalanceCents !== undefined;
+  const openingBalance = openingReported ? input.expectedOpeningBalanceCents! : reportedClosing - netCashMovement;
   const computedClosing = openingBalance + netCashMovement;
+  const discrepancy = reportedClosing - computedClosing;
+  if (!openingReported) {
+    warnings.push("Opening balance derived from the closing balance; reconciliation is by construction, not against a bank statement.");
+  } else if (discrepancy !== 0) {
+    warnings.push(`Reconciliation mismatch: bank-reported closing differs from opening + cash movements by ${discrepancy} cents.`);
+  }
 
   const asOf =
     nonCardAccounts.reduce<ISODate | null>(
@@ -329,9 +338,11 @@ export const buildLedger: BuildLedger = (input: BuildLedgerInput): Ledger => {
   const reconciliation: ReconciliationReport = {
     as_of: asOf,
     opening_balance_cents: openingBalance,
+    opening_balance_reported: openingReported,
     reported_closing_balance_cents: reportedClosing,
     computed_closing_balance_cents: computedClosing,
-    matches: computedClosing === reportedClosing,
+    discrepancy_cents: discrepancy,
+    matches: discrepancy === 0,
     internal_transfer_pairs: internalTransferPairs,
     unpaired_transfer_legs: unpairedTransferLegs,
     card_settlements: cardSettlements,

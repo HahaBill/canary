@@ -38,7 +38,8 @@ interface Loaded<T> {
 
 /** Read at call time (not module load) so tests can stub the env. */
 function forceMock(): boolean {
-  return import.meta.env.VITE_USE_MOCK === "1";
+  // Fixtures can only ever be forced in dev; a production build ignores the flag.
+  return import.meta.env.DEV && import.meta.env.VITE_USE_MOCK === "1";
 }
 
 /** Falling back to fixtures is a dev convenience; production shows the error. */

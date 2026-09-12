@@ -25,8 +25,23 @@ export function matchCommand(raw: string | null | undefined): IMessageCommand | 
 }
 
 /** Outbound messages must never trigger a reply, and neither must empty ones. */
-export function shouldIgnoreInbound(payload: SendblueInboundPayload): boolean {
-  return payload.is_outbound === true || !payload.content || payload.content.trim().length === 0;
+export function shouldIgnoreInbound(payload: SendblueInboundPayload, ownNumber?: string): boolean {
+  const outbound = payload.is_outbound === true || String(payload.is_outbound).toLowerCase() === "true";
+  const fromSelf = Boolean(ownNumber) && payload.from_number?.replace(/\D/g, "") === ownNumber!.replace(/\D/g, "");
+  return outbound || fromSelf || !payload.content || payload.content.trim().length === 0;
+}
+
+/** E.164-ish comparison ignoring formatting. */
+export function samePhone(a: string | undefined, b: string | undefined): boolean {
+  if (!a || !b) return false;
+  return a.replace(/\D/g, "") === b.replace(/\D/g, "");
+}
+
+/** Numbers Canary will talk to: FOUNDER_PHONE plus optional comma-separated ALLOWED_PHONES. */
+export function isAllowedSender(from: string, env: { FOUNDER_PHONE?: string; ALLOWED_PHONES?: string }): boolean {
+  const allowed = [env.FOUNDER_PHONE, ...(env.ALLOWED_PHONES ?? "").split(",")].map((p) => p?.trim()).filter((p): p is string => Boolean(p));
+  if (allowed.length === 0) return true; // nothing configured → open (dev)
+  return allowed.some((p) => samePhone(p, from));
 }
 
 /** The number to reply to: the sender, falling back to the conversation number. */

@@ -88,6 +88,15 @@ export async function verifyDemo(): Promise<{ checks: Check[]; ok: boolean }> {
   // Dedup
   const rerun = await runPipeline({ includeFixture: true, ...caches, existingIncidents: derived.incidents, now: "2026-09-14T12:00:00.000Z" });
   add("incident dedup prevents duplicates", rerun.derived.incidents.length === derived.incidents.length && rerun.derived.incidents.every((i) => derived.incidents.some((j) => j.id === i.id)), `before=${derived.incidents.length} after=${rerun.derived.incidents.length}`);
+  // Primary-driver drift must NOT mint a second rate-shift incident.
+  const drifted = derived.incidents.map((i) => (i.type === "BURN_RATE_SHIFT" ? { ...i, entity: "datadog", id: "inc_stored_drift" } : i));
+  const driftRun = await runPipeline({ includeFixture: true, ...caches, existingIncidents: drifted, now: "2026-09-14T12:00:00.000Z" });
+  const rateShifts = driftRun.derived.incidents.filter((i) => i.type === "BURN_RATE_SHIFT");
+  add("dedup survives primary-driver drift (one rate-shift incident)", rateShifts.length === 1 && rateShifts[0]?.id === "inc_stored_drift" && rateShifts[0]?.entity === DEMO.PRIMARY_DRIVER_ENTITY, `rate shifts=${rateShifts.map((i) => `${i.id}:${i.entity}`).join(",")}`);
+  // A stale stored incident that no detection claims must not become primary.
+  const stale = { ...derived.primary_incident!, id: "inc_stale", entity: "ghost_vendor", estimated_change_point: "2026-01-05" };
+  const staleRun = await runPipeline({ includeFixture: true, ...caches, existingIncidents: [stale], now: "2026-09-14T12:00:00.000Z" });
+  add("stale stored incident never becomes primary", staleRun.derived.primary_incident?.entity === DEMO.PRIMARY_DRIVER_ENTITY && staleRun.derived.primary_incident?.id !== "inc_stale", `primary=${staleRun.derived.primary_incident?.id}:${staleRun.derived.primary_incident?.entity}`);
 
   // Tavily
   const enr = derived.vendor_enrichments.find((e) => e.merchant_normalized === DEMO.UNKNOWN_VENDOR.merchant_normalized);

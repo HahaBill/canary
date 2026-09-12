@@ -76,25 +76,37 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
   }
 
   // 3. Ledger pass 1 (no one-off tags) → baseline burn → one-off detection
-  const ledger0 = buildLedger({ company, accounts, transactions, classifications, historyStart: fixture.start_date, historyEnd: fixture.end_date });
+  // The sandbox bank reports the period's opening balance (fixture.opening_balance_cents), making reconciliation a real check.
+  const ledgerBase = { company, accounts, transactions, classifications, historyStart: fixture.start_date, historyEnd: fixture.end_date, expectedOpeningBalanceCents: fixture.opening_balance_cents };
+  const ledger0 = buildLedger(ledgerBase);
   const burn0 = computeBurn(ledger0, { regimeStartWeekIndex: null });
   const oneOffs = detectOneOffs(ledger0, burn0);
   const oneOffIds = oneOffs.filter((o) => o.is_anomalous && o.materiality.material).map((o) => o.transaction_id);
 
   // 4. Ledger pass 2 with one-offs winsorized out of the monitoring series
-  const ledger = buildLedger({ company, accounts, transactions, classifications, oneOffTransactionIds: oneOffIds, historyStart: fixture.start_date, historyEnd: fixture.end_date });
+  const ledger = buildLedger({ ...ledgerBase, oneOffTransactionIds: oneOffIds });
 
   // 5. CUSUM → regime → burn windows
   const cusum = runCusum(ledger.weeks);
   const regimeStart = cusum.fired && cusum.estimated_change_point_index !== null ? cusum.estimated_change_point_index + 1 : null;
   const burnAfter = computeBurn(ledger, { regimeStartWeekIndex: regimeStart });
-  const burnBefore = regimeStart !== null ? computeBurn({ ...ledger, weeks: ledger.weeks.slice(0, regimeStart) }, { regimeStartWeekIndex: null }) : burnAfter;
+  // "Before" = the entire pre-change segment (all weeks before the regime start), so runway_before
+  // describes the same weeks the incident's OBSERVED evidence cites.
+  const burnBefore =
+    regimeStart !== null
+      ? computeBurn({ ...ledger, weeks: ledger.weeks.slice(0, regimeStart) }, { regimeStartWeekIndex: null, trailingWindowWeeks: regimeStart })
+      : burnAfter;
 
   // 6. Decomposition + incidents
   const contributors = cusum.fired ? decomposeContributors(ledger.weeks, cusum) : [];
   const incidents = buildIncidents({ ledger, cusum, contributors, oneOffs, burnBefore, burnAfter, existing: opts.existingIncidents ?? [], now });
-  const primary = incidents.find((i) => i.type === "BURN_RATE_SHIFT" && i.status !== "RESOLVED") ?? incidents.find((i) => i.type === "BURN_RATE_SHIFT") ?? null;
-  const oneOff = incidents.find((i) => i.type === "ONE_OFF_VENDOR_PAYMENT" && i.status !== "RESOLVED") ?? incidents.find((i) => i.type === "ONE_OFF_VENDOR_PAYMENT") ?? null;
+  // Only incidents (re)detected THIS run (last_updated === now) can drive the dashboard;
+  // a stored incident that no current detection claimed is stale and must not become primary.
+  const fresh = incidents.filter((i) => i.last_updated === now);
+  const pick = (type: Incident["type"]) =>
+    fresh.find((i) => i.type === type && i.status !== "RESOLVED") ?? fresh.find((i) => i.type === type) ?? null;
+  const primary = pick("BURN_RATE_SHIFT");
+  const oneOff = pick("ONE_OFF_VENDOR_PAYMENT");
 
   // 7. Needs review items
   const needsReviewItems: NeedsReviewItem[] = ledger.transactions

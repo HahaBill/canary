@@ -42,13 +42,21 @@ export function ImpactPanel({ incident }: { incident: Incident }) {
         <Row
           label="Runway"
           value={
-            <span className="inline-flex items-center gap-1.5">
-              {formatMonths(impact.runway_before_months)}
-              <ArrowRight className="h-3.5 w-3.5 text-neutral-400" aria-hidden="true" />
-              {formatMonths(impact.runway_after_months)}
-            </span>
+            impact.runway_before_months !== null && impact.runway_after_months !== null ? (
+              <span className="inline-flex items-center gap-1.5">
+                {formatMonths(impact.runway_before_months)}
+                <ArrowRight className="h-3.5 w-3.5 text-neutral-400" aria-hidden="true" />
+                {formatMonths(impact.runway_after_months)}
+              </span>
+            ) : (
+              "—"
+            )
           }
-          caption={runwayImpactCaption(impact.runway_impact_months)}
+          caption={
+            impact.runway_before_months !== null && impact.runway_after_months !== null
+              ? runwayImpactCaption(impact.runway_impact_months)
+              : "one-off payments do not change the modeled burn rate"
+          }
         />
       </dl>
     </section>

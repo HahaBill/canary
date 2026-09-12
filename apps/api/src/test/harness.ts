@@ -41,6 +41,8 @@ export interface Harness {
   messages: Array<{ number: string; content: string; from_number: string }>;
   json<T>(path: string, init?: RequestInit): Promise<{ status: number; body: T }>;
   post<T>(path: string, body?: unknown, init?: RequestInit): Promise<{ status: number; body: T }>;
+  /** POST with the shared secret in `x-canary-secret` (privileged routes: webhook, alerts). */
+  authed<T>(path: string, body?: unknown, init?: RequestInit): Promise<{ status: number; body: T }>;
 }
 
 export interface HarnessOptions extends Omit<AppDeps, "env" | "fetchImpl"> {
@@ -90,6 +92,13 @@ export function createHarness(options: HarnessOptions = {}): Harness {
     const res = await app.request(path, init);
     return { status: res.status, body: (await res.json()) as T };
   };
+  const post = <T>(path: string, body?: unknown, init?: RequestInit) =>
+    json<T>(path, {
+      ...init,
+      method: "POST",
+      headers: { "content-type": "application/json", ...((init?.headers ?? {}) as Record<string, string>) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
 
   return {
     app,
@@ -101,13 +110,9 @@ export function createHarness(options: HarnessOptions = {}): Harness {
       return calls.map((c) => c.body as { number: string; content: string; from_number: string });
     },
     json,
-    post: <T>(path: string, body?: unknown, init?: RequestInit) =>
-      json<T>(path, {
-        ...init,
-        method: "POST",
-        headers: { "content-type": "application/json", ...((init?.headers ?? {}) as Record<string, string>) },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      }),
+    post,
+    authed: <T>(path: string, body?: unknown, init?: RequestInit) =>
+      post<T>(path, body, { ...init, headers: { "x-canary-secret": TEST_ENV.WEBHOOK_SECRET, ...((init?.headers ?? {}) as Record<string, string>) } }),
   };
 }
 

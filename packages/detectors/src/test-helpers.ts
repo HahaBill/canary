@@ -180,8 +180,10 @@ export function makeLedger(transactions: LedgerTransaction[], weeks: WeeklyBucke
     reconciliation: {
       as_of: dates[dates.length - 1] ?? DEMO.END_DATE,
       opening_balance_cents: 0,
+      opening_balance_reported: false,
       reported_closing_balance_cents: 0,
       computed_closing_balance_cents: 0,
+      discrepancy_cents: 0,
       matches: true,
       internal_transfer_pairs: 0,
       unpaired_transfer_legs: 0,

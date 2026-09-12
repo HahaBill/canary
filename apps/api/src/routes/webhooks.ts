@@ -2,16 +2,17 @@
  * `POST /webhooks/sendblue` — inbound iMessage.
  *
  * Auth: `sb-signing-secret` (what Sendblue sends for the dashboard "Global
- * Secret"), `x-canary-secret`, or `?secret=` must equal `WEBHOOK_SECRET`
- * (constant-time). Outbound echoes and empty messages are ignored so Canary
+ * Secret") or `x-canary-secret` must equal `WEBHOOK_SECRET` (constant-time).
+ * The query string is deliberately NOT accepted (it would land in request logs).
+ * Replies go only to FOUNDER_PHONE / ALLOWED_PHONES. Outbound echoes and empty messages are ignored so Canary
  * never replies to itself.
  */
 import type { IMessageCommand } from "@canary/shared";
 import { baseUrl, jsonError, type CanaryApp } from "../context.ts";
 import { primaryIncident } from "../derive.ts";
-import { matchCommand, replyFor, replyTarget, shouldIgnoreInbound } from "../imessage/router.ts";
+import { isAllowedSender, matchCommand, replyFor, replyTarget, shouldIgnoreInbound } from "../imessage/router.ts";
 import type { SendblueInboundPayload } from "../sendblue/client.ts";
-import { constantTimeEqual } from "../security.ts";
+import { requestAuthorized } from "../security.ts";
 
 export interface SendblueWebhookResponse {
   ok: boolean;
@@ -25,14 +26,17 @@ export interface SendblueWebhookResponse {
 
 export function registerWebhookRoutes(app: CanaryApp): void {
   app.post("/webhooks/sendblue", async (c) => {
-    const expected = c.get("appEnv").WEBHOOK_SECRET;
-    if (!expected) return jsonError(c, 503, "webhook_not_configured", "WEBHOOK_SECRET is not set.");
-
-    // Sendblue sends the configured Global Secret verbatim in `sb-signing-secret`.
-    // `?secret=` and `x-canary-secret` remain as manual/test fallbacks.
-    const candidates = [c.req.header("sb-signing-secret"), c.req.header("x-canary-secret"), c.req.query("secret")];
-    const authorized = candidates.some((p) => p !== undefined && constantTimeEqual(p, expected));
-    if (!authorized) return jsonError(c, 401, "unauthorized", "Invalid webhook secret.");
+    const appEnv = c.get("appEnv");
+    const auth = requestAuthorized(c.req.raw.headers, appEnv.WEBHOOK_SECRET);
+    // Unauthenticated callers always see 401 — never learn whether the secret is configured.
+    if (auth !== "ok") {
+      if (auth === "unconfigured" && c.req.header("sb-signing-secret") === undefined && c.req.header("x-canary-secret") === undefined) {
+        return jsonError(c, 401, "unauthorized", "Invalid webhook secret.");
+      }
+      return auth === "unconfigured"
+        ? jsonError(c, 503, "webhook_not_configured", "WEBHOOK_SECRET is not set.")
+        : jsonError(c, 401, "unauthorized", "Invalid webhook secret.");
+    }
 
     let payload: SendblueInboundPayload;
     try {
@@ -41,7 +45,7 @@ export function registerWebhookRoutes(app: CanaryApp): void {
       return jsonError(c, 400, "invalid_json", "Webhook body must be JSON.");
     }
 
-    if (shouldIgnoreInbound(payload)) {
+    if (shouldIgnoreInbound(payload, appEnv.SENDBLUE_FROM_NUMBER)) {
       const body: SendblueWebhookResponse = { ok: true, ignored: true, reason: payload.is_outbound ? "outbound" : "empty_content" };
       return c.json(body);
     }
@@ -49,6 +53,13 @@ export function registerWebhookRoutes(app: CanaryApp): void {
     const to = replyTarget(payload);
     if (!to) {
       const body: SendblueWebhookResponse = { ok: true, ignored: true, reason: "no_reply_target" };
+      return c.json(body);
+    }
+
+    if (!isAllowedSender(to, appEnv)) {
+      // Strangers texting the line get no financial data and cost no Sendblue credit.
+      await c.get("store")?.logMessage({ direction: "inbound", phone: to, body: `[ignored: not an allowed sender] ${payload.content ?? ""}`, created_at: c.get("now")(), command: null });
+      const body: SendblueWebhookResponse = { ok: true, ignored: true, reason: "sender_not_allowed" };
       return c.json(body);
     }
 

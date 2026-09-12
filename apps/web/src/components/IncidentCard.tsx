@@ -46,7 +46,7 @@ export function IncidentCard({ incident }: { incident: Incident }) {
       <CardHeader>
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-canary-100 px-2.5 py-0.5 text-xs font-medium text-canary-800">
-            Open incident
+            {incident.status.charAt(0) + incident.status.slice(1).toLowerCase()} incident
           </span>
           <SeverityBadge severity={incident.severity} />
         </div>

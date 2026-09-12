@@ -13,6 +13,7 @@ export interface SendblueConfig {
   fetchImpl?: FetchLike;
   sendUrl?: string;
   uploadUrl?: string;
+  timeoutMs?: number;
 }
 
 export interface SendMessageInput {
@@ -87,6 +88,7 @@ export class SendblueClient {
           ...(input.content !== undefined ? { content: input.content } : {}),
           ...(input.media_url ? { media_url: input.media_url } : {}),
         }),
+        signal: AbortSignal.timeout(this.config.timeoutMs ?? 10_000),
       });
       const text = await res.text();
       const payload = safeJson(text);
@@ -110,6 +112,7 @@ export class SendblueClient {
         method: "POST",
         headers: { "sb-api-key-id": this.config.apiKey!, "sb-api-secret-key": this.config.apiSecret! },
         body: form,
+        signal: AbortSignal.timeout(this.config.timeoutMs ?? 15_000),
       });
       const text = await res.text();
       const payload = safeJson(text);

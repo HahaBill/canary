@@ -66,6 +66,14 @@ export interface BuildLedgerInput {
   /** Weeks of history; defaults to the span of the transactions. */
   historyStart?: ISODate;
   historyEnd?: ISODate;
+  /**
+   * Opening cash balance (checking + savings) reported by the bank for the first
+   * day of history. When provided, `reconciliation.matches` becomes a REAL check:
+   * expected_opening + Σ cash movements must equal the reported closing balance.
+   * Without it the engine can only derive the opening from the closing (an identity
+   * that cannot fail) and `matches` reflects that limitation via a warning.
+   */
+  expectedOpeningBalanceCents?: Cents;
 }
 
 export type BuildLedger = (input: BuildLedgerInput) => Ledger;

@@ -291,10 +291,12 @@ describe("incident dedup", () => {
   });
 
   it("passes unmatched existing incidents through unchanged", () => {
+    // Unrelated = a rate shift at a change point far outside the ±2-week dedup window.
     const unrelated: Incident = {
       ...build(at(DEMO.CHANGE_START_INDEX), { rows: [] }).find((i) => i.type === "BURN_RATE_SHIFT")!,
       id: "inc_deadbeef",
       entity: "gcp",
+      estimated_change_point: "2025-11-03",
       status: "RESOLVED",
     };
     const after = build({}, { existing: [unrelated], now: LATER });
@@ -302,6 +304,22 @@ describe("incident dedup", () => {
     expect(after[0]).toEqual(unrelated);
     expect(after).toHaveLength(3);
     expect(after.filter((i) => i.type === "BURN_RATE_SHIFT").map((i) => i.entity).sort()).toEqual(["aws", "gcp"]);
+  });
+
+  it("dedups a rate shift whose top contributor drifted (entity is not part of its identity)", () => {
+    const stored: Incident = {
+      ...build(at(DEMO.CHANGE_START_INDEX), { rows: [] }).find((i) => i.type === "BURN_RATE_SHIFT")!,
+      id: "inc_drifted",
+      entity: "datadog",
+      status: "ACKNOWLEDGED",
+    };
+    const after = build({}, { existing: [stored], now: LATER });
+    const shifts = after.filter((i) => i.type === "BURN_RATE_SHIFT");
+    expect(shifts).toHaveLength(1);
+    expect(shifts[0]!.id).toBe("inc_drifted");
+    expect(shifts[0]!.entity).toBe("aws"); // refreshed to the current top contributor
+    expect(shifts[0]!.status).toBe("ACKNOWLEDGED"); // lifecycle preserved
+    expect(shifts[0]!.last_updated).toBe(LATER);
   });
 
   it("does not let one candidate claim two existing incidents", () => {

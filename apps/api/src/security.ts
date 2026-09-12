@@ -7,3 +7,15 @@ export function constantTimeEqual(a: string, b: string): boolean {
   }
   return diff === 0;
 }
+
+/**
+ * Shared-secret check for privileged routes. Accepts `sb-signing-secret`
+ * (what Sendblue sends for its Global Secret) or `x-canary-secret` (manual /
+ * demo triggers). The secret is never accepted from the query string so it
+ * cannot end up in request logs.
+ */
+export function requestAuthorized(headers: { get(name: string): string | null }, expected: string | undefined): "ok" | "unauthorized" | "unconfigured" {
+  if (!expected) return "unconfigured";
+  const candidates = [headers.get("sb-signing-secret"), headers.get("x-canary-secret")];
+  return candidates.some((c) => c !== null && constantTimeEqual(c, expected)) ? "ok" : "unauthorized";
+}

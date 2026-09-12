@@ -135,8 +135,10 @@ export function makeLedger(weeks: WeeklyBucket[], accounts: BankAccount[] = SAMP
     reconciliation: {
       as_of: SAMPLE_HISTORY_END,
       opening_balance_cents: 0,
+      opening_balance_reported: false,
       reported_closing_balance_cents: 0,
       computed_closing_balance_cents: 0,
+      discrepancy_cents: 0,
       matches: true,
       internal_transfer_pairs: 0,
       unpaired_transfer_legs: 0,

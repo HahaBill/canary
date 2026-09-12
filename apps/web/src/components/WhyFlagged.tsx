@@ -1,4 +1,4 @@
-import type { CusumResult, MaterialityVerdict } from "@canary/shared";
+import type { CusumResult, MaterialityVerdict, OneOffResult } from "@canary/shared";
 import { Badge } from "@/components/ui/badge.tsx";
 import { formatDateMedium, formatUsdWhole, ruleLabel } from "@/lib/format.ts";
 
@@ -8,9 +8,11 @@ import { formatDateMedium, formatUsdWhole, ruleLabel } from "@/lib/format.ts";
  */
 export function WhyFlagged({
   cusum,
+  oneOff,
   materiality,
 }: {
   cusum?: CusumResult;
+  oneOff?: OneOffResult;
   materiality: MaterialityVerdict;
 }) {
   return (
@@ -53,9 +55,34 @@ export function WhyFlagged({
               : "."}
           </p>
         </>
+      ) : oneOff ? (
+        <>
+          <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <Param label="This payment" value={formatUsdWhole(oneOff.current_amount_cents)} caption={formatDateMedium(oneOff.date)} />
+            <Param
+              label="Vendor median"
+              value={oneOff.vendor_median_cents !== null ? formatUsdWhole(oneOff.vendor_median_cents) : "—"}
+              caption={`${oneOff.prior_payment_count} prior ${oneOff.prior_payment_count === 1 ? "payment" : "payments"}`}
+            />
+            <Param
+              label="Multiple of median"
+              value={oneOff.multiple_of_median !== null ? `${oneOff.multiple_of_median.toFixed(1)}×` : "—"}
+              caption="vendor-relative rule"
+            />
+            <Param
+              label="Vendor MAD"
+              value={oneOff.vendor_mad_cents !== null ? formatUsdWhole(oneOff.vendor_mad_cents) : "—"}
+              caption="typical deviation"
+            />
+          </dl>
+          <p className="mt-4 text-xs leading-relaxed text-neutral-600">
+            Flagged by the vendor-relative one-off rule: the payment is far above this vendor&apos;s own history. It still counts in cash
+            and burn, but is excluded from the CUSUM monitoring series so it cannot masquerade as a sustained shift.
+          </p>
+        </>
       ) : (
         <p className="mt-3 text-xs leading-relaxed text-neutral-600">
-          CUSUM parameters were not attached to this incident.
+          Detector parameters were not attached to this incident.
         </p>
       )}
 

@@ -129,20 +129,30 @@ export function withD1Overlay(provider: DataProvider, db: SqlDatabase): DataProv
 
   const getDerived = async (): Promise<DerivedDemoObject> => applyOverlay(await provider.getDerived(), await overlays());
 
+  const getIncident = async (id: string): Promise<Incident | null> => {
+    const derived = await getDerived();
+    return derived.incidents.find((i) => i.id === id) ?? null;
+  };
+
   return {
     getDerived,
-    async getIncident(id) {
-      const derived = await getDerived();
-      return derived.incidents.find((i) => i.id === id) ?? null;
-    },
+    getIncident,
+    // Writes are resolved through the OVERLAY-AWARE view, never the inner provider's
+    // pristine base object: on a cold isolate the inner provider knows nothing about a
+    // status persisted by a previous isolate, and would otherwise clobber it.
     async updateIncidentStatus(id, status, now) {
-      const updated = await provider.updateIncidentStatus(id, status, now);
+      const current = await getIncident(id);
+      if (!current) return null;
+      const updated: Incident = { ...current, status, last_updated: now };
+      await provider.updateIncidentStatus(id, status, now); // keep in-memory overlay warm
       await persist(updated);
       return updated;
     },
     async markNotified(id, now) {
+      const current = await getIncident(id);
+      if (!current) return;
       await provider.markNotified(id, now);
-      await persist(await provider.getIncident(id));
+      await persist({ ...current, last_notified: now, last_updated: now });
     },
     async getEnrichment(entity) {
       try {

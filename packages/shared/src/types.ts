@@ -251,12 +251,16 @@ export interface WeeklyBucket {
 
 export interface ReconciliationReport {
   as_of: ISODate;
-  /** Balance implied at the start of history = closing − net cash flows. */
+  /** Balance at the start of history. Bank-reported when `expectedOpeningBalanceCents` was supplied, else derived = closing − net cash flows. */
   opening_balance_cents: Cents;
+  /** True when the opening balance came from the bank (so `matches` is a genuine reconciliation), false when derived. */
+  opening_balance_reported: boolean;
   /** Bank-reported closing cash (checking + savings). */
   reported_closing_balance_cents: Cents;
   /** opening + Σ(counts_in_cash amounts). Must equal reported. */
   computed_closing_balance_cents: Cents;
+  /** Reported closing − computed closing. 0 when reconciled. */
+  discrepancy_cents: Cents;
   matches: boolean;
   internal_transfer_pairs: number;
   unpaired_transfer_legs: number;

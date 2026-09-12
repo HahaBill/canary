@@ -11,6 +11,7 @@ import { baseUrl, jsonError, readJson, type CanaryApp, type CanaryContext } from
 import { primaryIncident } from "../derive.ts";
 import { renderAlert } from "../messages.ts";
 import { normalizePcm16, pcmDurationSeconds, pcmToCaf } from "../voice/caf.ts";
+import { requestAuthorized } from "../security.ts";
 
 export const VOICE_NOTE_FILENAME = "CanaryAlert.caf";
 
@@ -39,6 +40,12 @@ async function sendVoiceNote(c: CanaryContext, to: string, script: string): Prom
 
 export function registerAlertRoutes(app: CanaryApp): void {
   app.post("/api/alerts/send", async (c) => {
+    // Privileged: this route spends Sendblue/ElevenLabs credit and texts a real phone.
+    // Requires the shared secret in `x-canary-secret` (public URL, PRD §31 exemption does not apply).
+    const auth = requestAuthorized(c.req.raw.headers, c.get("appEnv").WEBHOOK_SECRET);
+    if (auth === "unconfigured") return jsonError(c, 503, "webhook_not_configured", "WEBHOOK_SECRET is not set.");
+    if (auth === "unauthorized") return jsonError(c, 401, "unauthorized", "Missing or invalid x-canary-secret.");
+
     const body = await readJson(c);
     if (!body) return jsonError(c, 400, "invalid_json", "Request body must be a JSON object.");
 

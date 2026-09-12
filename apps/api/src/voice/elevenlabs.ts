@@ -17,6 +17,7 @@ export interface TtsConfig {
   modelId?: string;
   fetchImpl?: FetchLike;
   url?: string;
+  timeoutMs?: number;
 }
 
 export interface TtsResult {
@@ -49,6 +50,7 @@ export class ElevenLabsTts implements TextToSpeech {
         method: "POST",
         headers: { "xi-api-key": this.config.apiKey!, "content-type": "application/json", accept: "application/octet-stream" },
         body: JSON.stringify({ text, model_id: this.config.modelId ?? DEFAULT_MODEL_ID }),
+        signal: AbortSignal.timeout(this.config.timeoutMs ?? 20_000),
       });
       if (!res.ok) {
         const detail = (await res.text()).slice(0, 200);
