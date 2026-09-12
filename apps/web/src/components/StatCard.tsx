@@ -25,7 +25,7 @@ export function StatCard({ label, value, caption, info, children }: StatCardProp
             <button
               type="button"
               aria-label={`How ${label} is calculated`}
-              className="text-neutral-300 transition-colors hover:text-neutral-500"
+              className="inline-flex items-center justify-center text-neutral-300 transition-colors hover:text-neutral-500 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
             >
               <Info className="h-3.5 w-3.5" aria-hidden="true" />
             </button>

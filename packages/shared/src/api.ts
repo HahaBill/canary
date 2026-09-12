@@ -43,6 +43,8 @@ export const API_ROUTES = {
   incident: "GET /api/incidents/:id",
   incidentEvidence: "GET /api/incidents/:id/evidence",
   incidentStatus: "POST /api/incidents/:id/status",
+  /** `audio/mpeg` of the incident's voice script (ElevenLabs); 503 when voice is not configured. */
+  incidentVoice: "GET /api/incidents/:id/voice",
   simulate: "POST /api/simulate",
   vendorEnrichment: "GET /api/vendors/:entity/enrichment",
   bankAccounts: "GET /api/bank/accounts",

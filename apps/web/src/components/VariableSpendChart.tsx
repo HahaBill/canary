@@ -51,7 +51,7 @@ export function VariableSpendChart({
             aria-pressed={showEwma}
             onClick={() => setShowEwma((v) => !v)}
             className={cn(
-              "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+              "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors pointer-coarse:min-h-11",
               showEwma
                 ? "border-neutral-300 bg-neutral-100 text-neutral-900"
                 : "border-neutral-200 text-neutral-500 hover:text-neutral-800",

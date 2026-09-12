@@ -193,6 +193,8 @@ export interface AlertHistoryItem {
   command: string | null;
   /** True when the body is a voice-note transcript. */
   voice: boolean;
+  /** Incident the message was about, when known. */
+  incident_id?: string;
 }
 
 // ---------------------------------------------------------------------------
