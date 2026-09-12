@@ -66,13 +66,17 @@ describe("webhook auth", () => {
     expect(h.calls).toHaveLength(0);
   });
 
-  it("accepts the secret from the query string or the header", async () => {
+  it("accepts the secret from the query string, x-canary-secret, or Sendblue's sb-signing-secret", async () => {
     const h = createHarness();
     expect((await h.post<SendblueWebhookResponse>(AUTHED, inbound("HELP"))).status).toBe(200);
     expect(
       (await h.post<SendblueWebhookResponse>(WEBHOOK, inbound("HELP"), { headers: { "x-canary-secret": TEST_ENV.WEBHOOK_SECRET } })).status,
     ).toBe(200);
-    expect(h.calls).toHaveLength(2);
+    expect(
+      (await h.post<SendblueWebhookResponse>(WEBHOOK, inbound("HELP"), { headers: { "sb-signing-secret": TEST_ENV.WEBHOOK_SECRET } })).status,
+    ).toBe(200);
+    expect((await h.post<ErrorResponse>(WEBHOOK, inbound("HELP"), { headers: { "sb-signing-secret": "nope" } })).status).toBe(401);
+    expect(h.calls).toHaveLength(3);
   });
 
   it("400s on a malformed body", async () => {

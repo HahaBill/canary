@@ -386,7 +386,8 @@ export interface MaterialityVerdict {
 // ---------------------------------------------------------------------------
 
 export type IncidentType = "BURN_RATE_SHIFT" | "ONE_OFF_VENDOR_PAYMENT";
-export type IncidentStatus = "OPEN" | "ACKNOWLEDGED" | "RESOLVED";
+export const INCIDENT_STATUSES = ["OPEN", "ACKNOWLEDGED", "RESOLVED"] as const;
+export type IncidentStatus = (typeof INCIDENT_STATUSES)[number];
 export type Severity = "LOW" | "MEDIUM" | "HIGH";
 
 export interface FinancialImpact {

@@ -1,7 +1,8 @@
 /**
  * `POST /webhooks/sendblue` — inbound iMessage.
  *
- * Auth: `?secret=` or `x-canary-secret` must equal `WEBHOOK_SECRET`
+ * Auth: `sb-signing-secret` (what Sendblue sends for the dashboard "Global
+ * Secret"), `x-canary-secret`, or `?secret=` must equal `WEBHOOK_SECRET`
  * (constant-time). Outbound echoes and empty messages are ignored so Canary
  * never replies to itself.
  */
@@ -27,8 +28,11 @@ export function registerWebhookRoutes(app: CanaryApp): void {
     const expected = c.get("appEnv").WEBHOOK_SECRET;
     if (!expected) return jsonError(c, 503, "webhook_not_configured", "WEBHOOK_SECRET is not set.");
 
-    const presented = c.req.query("secret") ?? c.req.header("x-canary-secret") ?? "";
-    if (!constantTimeEqual(presented, expected)) return jsonError(c, 401, "unauthorized", "Invalid webhook secret.");
+    // Sendblue sends the configured Global Secret verbatim in `sb-signing-secret`.
+    // `?secret=` and `x-canary-secret` remain as manual/test fallbacks.
+    const candidates = [c.req.header("sb-signing-secret"), c.req.header("x-canary-secret"), c.req.query("secret")];
+    const authorized = candidates.some((p) => p !== undefined && constantTimeEqual(p, expected));
+    if (!authorized) return jsonError(c, 401, "unauthorized", "Invalid webhook secret.");
 
     let payload: SendblueInboundPayload;
     try {
