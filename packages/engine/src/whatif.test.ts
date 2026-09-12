@@ -9,7 +9,7 @@ import {
   type BurnSummary,
 } from "@canary/shared";
 import { computeBurn } from "./burn.ts";
-import { simulateCostChange } from "./whatif.ts";
+import { simulateCostChange, whatIfNoChangeReason } from "./whatif.ts";
 import { buildSampleLedger } from "./test-support.ts";
 
 /**
@@ -177,5 +177,50 @@ describe("simulateCostChange — driven by the engine", () => {
     expect(result.scenario_burn_monthly_cents).toBeLessThan(0);
     expect(result.scenario_runway_months).toBe(null);
     expect(result.speech.scenario_runway).toBe("not currently burning cash");
+  });
+});
+
+/**
+ * "No change" on its own reads as a broken simulator. PRD P1 / HANDOFF §6:
+ * a scenario that moves nothing has to say why it moved nothing.
+ */
+describe("simulateCostChange — saying why nothing changed", () => {
+  it("names the reason for an entity it does not monitor", () => {
+    expect(whatIfNoChangeReason(BURN, "not_a_vendor", -20)).toBe("NOT_MONITORED");
+    const speech = simulateCostChange(BURN, { entity: "not_a_vendor", percentage: -20 }).speech.summary;
+
+    expect(speech).toContain("monthly burn would not change");
+    expect(speech).toContain("not part of the variable spend Canary monitors");
+  });
+
+  it("names the reason when the request itself asked for nothing", () => {
+    expect(whatIfNoChangeReason(BURN, "aws", 0)).toBe("ZERO_PERCENTAGE");
+    expect(simulateCostChange(BURN, { entity: "aws", percentage: 0 }).speech.summary).toContain("zero percent change");
+  });
+
+  it("does not claim a reason when the scenario really did change something", () => {
+    expect(whatIfNoChangeReason(BURN, "aws", -20)).toBeNull();
+    const speech = simulateCostChange(BURN, { entity: "aws", percentage: -20 }).speech.summary;
+    expect(speech).not.toContain("would not change");
+  });
+
+  it("refuses to invert the request for a vendor whose credits outweigh its charges", () => {
+    // A refund larger than the charges leaves a negative weekly figure. Scaling
+    // it by 0.8 moves it TOWARD zero, which would report burn RISING in answer
+    // to "make it 20% lower". There is nothing to cut, so nothing changes.
+    const credited: BurnSummary = { ...BURN, weekly_variable_by_entity: { ...BURN.weekly_variable_by_entity, linear: -50_000 } };
+    const result = simulateCostChange(credited, { entity: "linear", percentage: -20 });
+
+    expect(result.current_weekly_cents).toBe(-50_000);
+    expect(result.hypothetical_weekly_cents).toBe(-50_000);
+    expect(result.delta_monthly_cents).toBe(0);
+    expect(whatIfNoChangeReason(credited, "linear", -20)).toBe("NO_SPEND_TO_CHANGE");
+    expect(result.speech.summary).toContain("no net spend left to change");
+  });
+
+  it("still scales normally for a vendor with real spend", () => {
+    const result = simulateCostChange(BURN, { entity: "aws", percentage: -20 });
+    expect(result.hypothetical_weekly_cents).toBeLessThan(result.current_weekly_cents);
+    expect(result.delta_monthly_cents).toBeLessThan(0);
   });
 });

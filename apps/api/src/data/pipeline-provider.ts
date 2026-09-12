@@ -7,7 +7,7 @@
 import type { DerivedDemoObject, Incident, IncidentStatus, ISODateTime, Transaction, VendorEnrichment, WhatIfRequest, WhatIfResult } from "@canary/shared";
 import { simulateCostChange } from "@canary/engine";
 import { loadDemoCaches, runPipeline } from "@canary/pipeline";
-import { whatIfSpeech } from "../speech.ts";
+import { noChangeExplanation, whatIfSpeech } from "../speech.ts";
 import { MockDataProvider, type DataProvider } from "./provider.ts";
 
 export class PipelineDataProvider implements DataProvider {
@@ -54,6 +54,6 @@ export class PipelineDataProvider implements DataProvider {
   async simulate(req: WhatIfRequest): Promise<WhatIfResult> {
     const derived = await this.getDerived();
     const result = simulateCostChange(derived.burn, req);
-    return { ...result, speech: whatIfSpeech(result) };
+    return { ...result, speech: whatIfSpeech(result, noChangeExplanation(derived, req.entity, req.percentage)) };
   }
 }

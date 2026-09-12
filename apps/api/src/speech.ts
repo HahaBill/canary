@@ -4,10 +4,13 @@
  * Every figure comes from engine/detector output and is verbalized with the
  * shared `speak*` helpers. No LLM writes these; no number is hard-coded.
  */
+import { whatIfNoChangeReason } from "@canary/engine";
 import {
+  FIXED_CATEGORIES,
   speakMonths,
   speakPercentage,
   speakUsd,
+  type Category,
   type DerivedDemoObject,
   type HealthSummaryResponse,
   type Incident,
@@ -17,7 +20,35 @@ import {
 import { driverEntity, positiveContributors, variableSpendRates } from "./derive.ts";
 import { displayName, formatDateShort } from "./format.ts";
 
-export function whatIfSpeech(result: WhatIfResult): WhatIfResult["speech"] {
+/**
+ * Why a scenario moved nothing, in the words a founder needs. The engine can
+ * only see the monitored variable spend, so it reports `NOT_MONITORED` for a
+ * fixed-category vendor and for a name it has never seen alike. Here the full
+ * derived object is available, so the two can finally be told apart — which
+ * matters, because one means "that's payroll" and the other means "check the
+ * spelling". docs/AGENT_BEHAVIOR.md §5 requires the distinction.
+ */
+export function noChangeExplanation(derived: DerivedDemoObject, entity: string, percentage: number): string | null {
+  const reason = whatIfNoChangeReason(derived.burn, entity, percentage);
+  if (reason === null) return null;
+  const name = displayName(entity);
+
+  if (reason === "ZERO_PERCENTAGE") return `a zero percent change to ${name} leaves everything where it is`;
+  if (reason === "NO_SPEND_TO_CHANGE") return `${name} has no net spend left to change in the current burn window — its credits cancel its charges`;
+
+  const known = Object.values(derived.classifications).find((c) => c.merchant_normalized === entity);
+  if (!known) return `I have no spending on record for ${name}, so there is nothing to model`;
+  if (FIXED_CATEGORIES.includes(known.category)) {
+    return `${name} is ${categoryPhrase(known.category)}, which Canary treats as fixed rather than variable spend, so this scenario does not move modeled burn`;
+  }
+  return `${name} has no spend inside the current burn window, so this scenario does not move modeled burn`;
+}
+
+function categoryPhrase(category: Category): string {
+  return category.toLowerCase().replace(/_/g, " ");
+}
+
+export function whatIfSpeech(result: WhatIfResult, noChangeReason?: string | null): WhatIfResult["speech"] {
   const entity = displayName(result.entity);
   const delta = result.delta_monthly_cents;
   const deltaMonthly =
@@ -43,7 +74,11 @@ export function whatIfSpeech(result: WhatIfResult): WhatIfResult["speech"] {
   return {
     delta_monthly: deltaMonthly,
     scenario_runway: scenarioRunway,
-    summary: `If ${entity} were ${speakPercentage(result.percentage)}, ${burnClause} and ${runwayClause}. ${result.label}`,
+    // The reason is its own sentence, after the numbers and before the label:
+    // spoken aloud, a reason spliced into the middle is impossible to follow.
+    summary: `If ${entity} were ${speakPercentage(result.percentage)}, ${burnClause} and ${runwayClause}.${
+      noChangeReason ? ` ${capitalize(noChangeReason)}.` : ""
+    } ${result.label}`,
   };
 }
 

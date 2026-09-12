@@ -11,4 +11,4 @@
 export { buildWeeklyBuckets } from "./buckets.ts";
 export { buildLedger, verifyClosingBalance, type ClosingBalanceCheck } from "./ledger.ts";
 export { availableOperatingCashCents, computeBurn } from "./burn.ts";
-export { simulateCostChange } from "./whatif.ts";
+export { noChangeClause, simulateCostChange, whatIfNoChangeReason, type WhatIfNoChangeReason } from "./whatif.ts";
