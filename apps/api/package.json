@@ -7,7 +7,7 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "migrate:local": "wrangler d1 migrations apply canary --local",
     "migrate:remote": "wrangler d1 migrations apply canary --remote"
   },
