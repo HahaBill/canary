@@ -1,4 +1,6 @@
-# Canary — Parallel Workstreams
+# Canary — Parallel Workstreams (historical briefs)
+
+> These were the briefs given to the six parallel build agents. All workstreams are complete and merged. For the current state of the system read `AGENTS.md` and `docs/HANDOFF.md`; the ownership rules below no longer apply (anyone may edit any package, but `packages/shared` remains the contract to change first).
 
 Read this first if you are implementing a workstream. Then read `docs/PRD.md`, `docs/BUILD.md`, `docs/DATA_AND_DETECTOR_CONTRACT.md`, and every file in `packages/shared/src/`.
 
