@@ -19,6 +19,7 @@ import {
   type PivotGranularity,
 } from "@canary/shared";
 import { buildCashCalendar, MAX_CALENDAR_SPAN_DAYS } from "../calendar/cash-calendar.ts";
+import { reviewCalendarEvents } from "../calendar/review-events.ts";
 import { jsonError, readJson, type CanaryApp, type CanaryContext } from "../context.ts";
 import { PIVOT_GRANULARITIES } from "../data/mock-views.ts";
 import { requestAuthorized } from "../security.ts";
@@ -80,12 +81,19 @@ export function registerViewRoutes(app: CanaryApp): void {
       return jsonError(c, 400, "range_too_large", `Request at most ${MAX_CALENDAR_SPAN_DAYS} days.`);
     }
 
-    const [events, feed] = await Promise.all([provider.getCalendarEvents(from, to), c.get("calendar").fetchEvents(from, to)]);
+    // Reviews Canary booked live in D1 (the event itself is on the founder's
+    // Google Calendar), so they are merged here as `canary` markers rather than
+    // arriving with the busy blocks.
+    const [events, feed, reviews] = await Promise.all([
+      provider.getCalendarEvents(from, to),
+      c.get("calendar").fetchEvents(from, to),
+      c.get("reviews")?.list() ?? Promise.resolve([]),
+    ]);
     const body: CalendarResponse = {
       calendar: buildCashCalendar({
         from,
         to,
-        events,
+        events: [...events, ...reviewCalendarEvents(reviews, from, to)],
         busy: feed.events,
         busySource: feed.source,
         showTitles: c.get("appEnv").CALENDAR_SHOW_TITLES === "1",

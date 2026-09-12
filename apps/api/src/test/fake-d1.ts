@@ -1,9 +1,9 @@
 /**
- * In-memory stand-in for D1. Understands exactly the statement shapes
- * `src/data/d1.ts` emits (single-line INSERT with an explicit column list,
- * optional `ON CONFLICT(col)`, and SELECT with at most one `WHERE col = ?`,
- * optional `ORDER BY col [ASC|DESC]` and `LIMIT`), which keeps the API testable
- * in plain Node — no miniflare, no workerd.
+ * In-memory stand-in for D1. Understands exactly the statement shapes the stores
+ * emit (single-line INSERT with an explicit column list, optional
+ * `ON CONFLICT(col)`; SELECT with at most one `WHERE col = ?`, optional
+ * `ORDER BY col [ASC|DESC]` and `LIMIT`; `DELETE ... WHERE col = ?`), which keeps
+ * the API testable in plain Node — no miniflare, no workerd.
  */
 import type { SqlDatabase, SqlStatement } from "../data/d1.ts";
 
@@ -12,6 +12,7 @@ export type FakeRow = Record<string, unknown>;
 const INSERT_RE = /^INSERT INTO (\w+) \(([^)]*)\) VALUES \(([^)]*)\)(?:\s+ON CONFLICT\((\w+)\))?/i;
 const SELECT_RE =
   /^SELECT (.+?) FROM (\w+)(?:\s+WHERE\s+(\w+)\s*=\s*\?)?(?:\s+ORDER BY\s+(\w+)(?:\s+(ASC|DESC))?)?(?:\s+LIMIT\s+(\?|\d+))?\s*$/i;
+const DELETE_RE = /^DELETE FROM (\w+)(?:\s+WHERE\s+(\w+)\s*=\s*\?)?\s*$/i;
 
 /** Tables whose primary key is `INTEGER PRIMARY KEY AUTOINCREMENT` in migrations/. */
 const AUTOINCREMENT: Record<string, string> = { imessage_log: "id" };
@@ -19,6 +20,8 @@ const AUTOINCREMENT: Record<string, string> = { imessage_log: "id" };
 export interface FakeD1Options {
   /** Column names that should fail on INSERT, simulating an unapplied migration. */
   rejectColumns?: string[];
+  /** Table names that should fail on any statement, simulating an unapplied migration. */
+  rejectTables?: string[];
 }
 
 export class FakeD1 implements SqlDatabase {
@@ -69,6 +72,9 @@ class FakeStatement implements SqlStatement {
   private execute(): FakeRow[] {
     this.db.executed.push({ sql: this.sql, values: this.values });
 
+    const rejectedTable = this.db.options.rejectTables?.find((t) => new RegExp(`\\b${t}\\b`, "i").test(this.sql));
+    if (rejectedTable) throw new Error(`fake-d1: no such table: ${rejectedTable}`);
+
     const insert = INSERT_RE.exec(this.sql);
     if (insert) {
       const [, table, columnList, placeholders, conflictColumn] = insert;
@@ -110,6 +116,15 @@ class FakeStatement implements SqlStatement {
         if (Number.isFinite(count)) rows = rows.slice(0, Math.max(0, count));
       }
       return rows;
+    }
+
+    const del = DELETE_RE.exec(this.sql);
+    if (del) {
+      const [, table, whereColumn] = del;
+      const rows = this.db.tables[table!] ?? [];
+      const kept = whereColumn ? rows.filter((r) => r[whereColumn] !== this.values[0]) : [];
+      this.db.tables[table!] = kept;
+      return [];
     }
 
     throw new Error(`fake-d1: unsupported statement: ${this.sql}`);

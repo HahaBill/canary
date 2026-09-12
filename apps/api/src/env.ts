@@ -24,6 +24,15 @@ export interface Env {
   CALENDAR_ICS_URL?: string;
   /** `"1"` to show real event titles in the calendar view. Anything else renders "Busy". */
   CALENDAR_SHOW_TITLES?: string;
+  /**
+   * Google OAuth web client (one account: the founder's). With both set and a
+   * connected `google_oauth` row, Google replaces the ICS feed and Canary can
+   * also book the review. See `apps/api/README.md`.
+   */
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  /** IANA zone the review-slot business hours are read in. Default `America/New_York`. */
+  CALENDAR_TIMEZONE?: string;
 }
 
 export const API_VERSION = "0.0.1";

@@ -2,10 +2,12 @@
 import type { BankProvider, ErrorResponse } from "@canary/shared";
 import type { Context, Hono } from "hono";
 import type { CalendarFeed } from "./calendar/ics.ts";
+import type { CalendarResolver } from "./calendar/resolve.ts";
+import type { ReviewEventStore } from "./calendar/review-events.ts";
 import type { D1Store } from "./data/d1.ts";
 import type { DataProvider } from "./data/provider.ts";
 import { publicBaseUrl, type Env } from "./env.ts";
-import type { SendblueClient } from "./sendblue/client.ts";
+import type { FetchLike, SendblueClient } from "./sendblue/client.ts";
 import type { TextToSpeech } from "./voice/elevenlabs.ts";
 
 export interface Variables {
@@ -13,14 +15,24 @@ export interface Variables {
   sendblue: SendblueClient;
   tts: TextToSpeech;
   bank: BankProvider;
-  /** Founder availability. `NO_CALENDAR` when CALENDAR_ICS_URL is unset. */
+  /** Founder availability. `NO_CALENDAR` when neither Google nor CALENDAR_ICS_URL is configured. */
   calendar: CalendarFeed;
+  /**
+   * Google > ICS > none, resolved lazily (one D1 read per request). Routes that
+   * need to know *which* calendar — or to write to it — ask this instead of
+   * inspecting `calendar`.
+   */
+  calendarResolver: CalendarResolver;
   /** Null when no D1 binding is available (unit tests, `wrangler dev` without D1). */
   store: D1Store | null;
+  /** Reviews Canary booked. Null without a D1 binding. */
+  reviews: ReviewEventStore | null;
   /** Runtime bindings merged with any test overrides. */
   appEnv: Env;
   /** Injectable clock — production code never calls `Date.now()` directly. */
   now: () => string;
+  /** The fetch outbound calls go through. Tests inject one that scripts the provider. */
+  fetchImpl: FetchLike;
 }
 
 export type AppEnv = { Bindings: Env; Variables: Variables };
