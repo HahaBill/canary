@@ -13,6 +13,7 @@ import {
   sandboxClosingCashCents,
   weekIndexOf,
 } from "@canary/shared";
+import { pathToFileURL } from "node:url";
 import { runPipeline } from "./run.ts";
 import { loadDemoCaches } from "./caches.ts";
 
@@ -128,6 +129,11 @@ export async function verifyDemo(): Promise<{ checks: Check[]; ok: boolean }> {
   return { checks, ok };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Run only when executed directly. `file://${process.argv[1]}` never matches on
+// Windows: argv[1] is `C:\...\verify.ts`, while import.meta.url is
+// `file:///C:/.../verify.ts` (three slashes, forward slashes). The mismatch made
+// `npm run verify` print nothing and exit 0 — a silent pass. pathToFileURL is the
+// same conversion Node's ESM loader uses, so it matches on every platform.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   verifyDemo().then((r) => process.exit(r.ok ? 0 : 1));
 }
