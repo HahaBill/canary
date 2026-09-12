@@ -498,4 +498,117 @@ export const TEST_ANNUAL_RENEWAL = {
 } as const;
 
 /** Vendors with no deterministic classification rule — the Needs Review candidates. */
-export const NEEDS_REVIEW_ENTITIES: readonly string[] = ["ashby", "miguel_santos"];
+export const NEEDS_REVIEW_ENTITIES: readonly string[] = ["ashby", "miguel_santos", "j_morales", "unknown_ach", "unknown_online"];
+
+// ---------------------------------------------------------------------------
+// `test` profile — messy statement shapes (contract §4: "the test seed may
+// include reconciliation mismatches and more edge cases")
+// ---------------------------------------------------------------------------
+
+/**
+ * Patterns taken from how real business bank statements actually read, not from
+ * how a tidy ledger is supposed to look. Every one of them breaks a naive
+ * reconciliation in a different way, and the demo profile contains none of them.
+ *
+ * The amounts are deliberately modest: each messy row is variable spend, and AWS
+ * closes every week onto its designed target, so a large messy charge would eat
+ * into the planted shift instead of testing reconciliation.
+ */
+export const TEST_MESSY = {
+  /**
+   * The double-post: the same vendor, the same amount, the same day, twice.
+   * Nothing in the data says which one is the mistake — and often neither is.
+   */
+  DOUBLE_POST: {
+    week_index: 11,
+    day_offset: 1,
+    merchant_raw: "ACH DEBIT VERCEL INC 0392481",
+    merchant_normalized: "vercel",
+    description: "ACH debit",
+    amount_cents: 79_700,
+    category_hint: "SAAS_SOFTWARE" as Category,
+  },
+  /** The bank reverses one leg of the double-post two days later. */
+  REVERSAL: {
+    week_index: 11,
+    day_offset: 3,
+    merchant_raw: "REVERSAL ACH DEBIT 0392481",
+    merchant_normalized: "vercel",
+    description: "Duplicate debit reversed",
+    category_hint: "SAAS_SOFTWARE" as Category,
+  },
+  /**
+   * A credit bigger than anything that vendor was charged that week — an
+   * annual-plan downgrade refunded in one lump. The vendor's week goes negative.
+   */
+  OVER_CREDIT: {
+    week_index: 12,
+    day_offset: 2,
+    merchant_raw: "LINEAR REFUND PLAN CHANGE",
+    merchant_normalized: "linear",
+    description: "Plan downgrade credit",
+    amount_cents: 120_000,
+    category_hint: "SAAS_SOFTWARE" as Category,
+  },
+  /** A paper check to a person. No merchant, no category, still real money. */
+  CHECK_TO_INDIVIDUAL: {
+    week_index: 12,
+    day_offset: 3,
+    merchant_raw: "CHECK 1042 J MORALES",
+    merchant_normalized: "j_morales",
+    description: "Check",
+    amount_cents: 185_000,
+    category_hint: "NEEDS_REVIEW" as Category,
+  },
+  /** Two debits whose descriptor identifies nothing but the rail they came in on. */
+  AMBIGUOUS_ACH: {
+    week_indexes: [13, 16] as readonly number[],
+    day_offset: 1,
+    merchant_raw: "ACH DEBIT 0392481",
+    merchant_normalized: "unknown_ach",
+    description: "",
+    amount_cents: 96_400,
+    category_hint: "NEEDS_REVIEW" as Category,
+  },
+  /** "ONLINE PAYMENT THANK YOU" — a descriptor that thanks you for nothing. */
+  AMBIGUOUS_ONLINE: {
+    week_index: 13,
+    day_offset: 3,
+    merchant_raw: "ONLINE PAYMENT THANK YOU",
+    merchant_normalized: "unknown_online",
+    description: "",
+    amount_cents: 47_300,
+    category_hint: "NEEDS_REVIEW" as Category,
+  },
+  /**
+   * A wire the company booked as an internal transfer whose other leg never
+   * arrives. The engine must not silently trust it as $0 of spend.
+   */
+  ORPHAN_TRANSFER: {
+    week_index: 14,
+    day_offset: 2,
+    merchant_raw: "TRANSFER 0001234",
+    description: "Transfer out — no matching leg",
+    amount_cents: 250_000,
+  },
+  /**
+   * A pending authorisation in the final week that never settles: it has to
+   * count in cash and burn, because the money is gone as far as the founder
+   * is concerned.
+   */
+  UNSETTLED_PENDING: {
+    week_index: 19,
+    day_offset: 2,
+    merchant_raw: "SQ *UNKNOWN MERCHANT",
+    merchant_normalized: "unknown_online",
+    description: "Pending authorisation",
+    amount_cents: 62_800,
+    category_hint: "NEEDS_REVIEW" as Category,
+  },
+} as const;
+
+/**
+ * The transfer pair key that is unpaired ON PURPOSE. `assertFixtureInvariants`
+ * skips it: an orphan leg is the fixture, not a defect in the fixture.
+ */
+export const TEST_UNPAIRED_TRANSFER_KEY = "xfer-orphan";

@@ -78,6 +78,8 @@ import {
   REFUND,
   REVENUE,
   TEST_ANNUAL_RENEWAL,
+  TEST_MESSY,
+  TEST_UNPAIRED_TRANSFER_KEY,
   TEST_FINANCING,
   TRANSFER,
   TRANSFERS,
@@ -93,7 +95,7 @@ import {
 } from "./plan.ts";
 
 export { summarizeWeeklyVariableSpend } from "./summarize.ts";
-export { PLANTED_DELTA_WEEKLY_CENTS, VARIABLE_WEEKLY_BASE_CENTS } from "./plan.ts";
+export { PLANTED_DELTA_WEEKLY_CENTS, TEST_MESSY, TEST_UNPAIRED_TRANSFER_KEY, VARIABLE_WEEKLY_BASE_CENTS } from "./plan.ts";
 
 /** Monthly vendors whose bill grows with the planted ramp (`DEMO.SECONDARY_DRIVER_ENTITIES`). */
 const RAMPED_MONTHLY_SHIFT: Record<string, number> = { datadog: DATADOG_SHIFT_FRACTION };
@@ -478,6 +480,122 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
     });
   }
 
+  // -- `test` profile: messy statement shapes (contract §4) -----------------
+  // Real statements are not tidy. Each of these breaks reconciliation in a
+  // different way, and none of them exists in the demo profile.
+  if (profile === "test") {
+    const m = TEST_MESSY;
+
+    // The double-post and its reversal. Two identical rows on the same day,
+    // then a credit that cancels one of them two days later.
+    if (m.DOUBLE_POST.week_index < weeks) {
+      for (const copy of [0, 1]) {
+        push({
+          key: `messy-double-post-${copy}`,
+          account: "checking",
+          date: day(m.DOUBLE_POST.week_index, m.DOUBLE_POST.day_offset),
+          amount_cents: -m.DOUBLE_POST.amount_cents,
+          merchant_raw: m.DOUBLE_POST.merchant_raw,
+          merchant_normalized: m.DOUBLE_POST.merchant_normalized,
+          description: m.DOUBLE_POST.description,
+          flow_type: "OPERATING_OUTFLOW",
+          category_hint: m.DOUBLE_POST.category_hint,
+        });
+      }
+      push({
+        key: "messy-reversal",
+        account: "checking",
+        date: day(m.REVERSAL.week_index, m.REVERSAL.day_offset),
+        amount_cents: m.DOUBLE_POST.amount_cents,
+        merchant_raw: m.REVERSAL.merchant_raw,
+        merchant_normalized: m.REVERSAL.merchant_normalized,
+        description: m.REVERSAL.description,
+        flow_type: "REFUND",
+        category_hint: m.REVERSAL.category_hint,
+      });
+    }
+
+    // A credit larger than that vendor's charges for the week.
+    if (m.OVER_CREDIT.week_index < weeks) {
+      push({
+        key: "messy-over-credit",
+        account: "checking",
+        date: day(m.OVER_CREDIT.week_index, m.OVER_CREDIT.day_offset),
+        amount_cents: m.OVER_CREDIT.amount_cents,
+        merchant_raw: m.OVER_CREDIT.merchant_raw,
+        merchant_normalized: m.OVER_CREDIT.merchant_normalized,
+        description: m.OVER_CREDIT.description,
+        flow_type: "REFUND",
+        category_hint: m.OVER_CREDIT.category_hint,
+      });
+    }
+
+    // A check to a person, and descriptors that identify nothing.
+    for (const [key, spec] of [
+      ["messy-check", m.CHECK_TO_INDIVIDUAL],
+      ["messy-online", m.AMBIGUOUS_ONLINE],
+    ] as const) {
+      if (spec.week_index >= weeks) continue;
+      push({
+        key,
+        account: "checking",
+        date: day(spec.week_index, spec.day_offset),
+        amount_cents: -spec.amount_cents,
+        merchant_raw: spec.merchant_raw,
+        merchant_normalized: spec.merchant_normalized,
+        description: spec.description,
+        flow_type: "OPERATING_OUTFLOW",
+        category_hint: spec.category_hint,
+      });
+    }
+    for (const week of m.AMBIGUOUS_ACH.week_indexes) {
+      if (week >= weeks) continue;
+      push({
+        key: `messy-ach-${week}`,
+        account: "checking",
+        date: day(week, m.AMBIGUOUS_ACH.day_offset),
+        amount_cents: -m.AMBIGUOUS_ACH.amount_cents,
+        merchant_raw: m.AMBIGUOUS_ACH.merchant_raw,
+        merchant_normalized: m.AMBIGUOUS_ACH.merchant_normalized,
+        description: m.AMBIGUOUS_ACH.description,
+        flow_type: "OPERATING_OUTFLOW",
+        category_hint: m.AMBIGUOUS_ACH.category_hint,
+      });
+    }
+
+    // An internal transfer whose other leg never arrives.
+    if (m.ORPHAN_TRANSFER.week_index < weeks) {
+      push({
+        key: "messy-orphan-transfer",
+        account: "checking",
+        date: day(m.ORPHAN_TRANSFER.week_index, m.ORPHAN_TRANSFER.day_offset),
+        amount_cents: -m.ORPHAN_TRANSFER.amount_cents,
+        merchant_raw: m.ORPHAN_TRANSFER.merchant_raw,
+        merchant_normalized: TRANSFER.merchant_normalized,
+        description: m.ORPHAN_TRANSFER.description,
+        flow_type: "INTERNAL_TRANSFER",
+        category_hint: "INTERNAL_TRANSFER",
+        transfer_pair_key: TEST_UNPAIRED_TRANSFER_KEY,
+      });
+    }
+
+    // A pending authorisation in the final week that never settles.
+    if (m.UNSETTLED_PENDING.week_index < weeks) {
+      push({
+        key: "messy-unsettled-pending",
+        account: "checking",
+        date: day(m.UNSETTLED_PENDING.week_index, m.UNSETTLED_PENDING.day_offset),
+        amount_cents: -m.UNSETTLED_PENDING.amount_cents,
+        merchant_raw: m.UNSETTLED_PENDING.merchant_raw,
+        merchant_normalized: m.UNSETTLED_PENDING.merchant_normalized,
+        description: m.UNSETTLED_PENDING.description,
+        flow_type: "OPERATING_OUTFLOW",
+        category_hint: m.UNSETTLED_PENDING.category_hint,
+        status: "pending",
+      });
+    }
+  }
+
   // -- Planted one-off: derived from the vendor's own prior payments ---------
   const oneOffWeek = Math.min(ONE_OFF.week_index, weeks - 2);
   const oneOffDate = day(oneOffWeek, ONE_OFF.day_offset);
@@ -714,7 +832,12 @@ export function assertFixtureInvariants(gen: GeneratedCompany): string[] {
   for (const t of transactions.filter((t) => t.transfer_pair_id)) {
     byPair.set(t.transfer_pair_id!, (byPair.get(t.transfer_pair_id!) ?? 0) + t.amount_cents);
   }
-  for (const [pair, sum] of byPair) if (sum !== 0) problems.push(`transfer pair ${pair} nets ${sum}, expected 0`);
+  for (const [pair, sum] of byPair) {
+    // The test profile plants one deliberately unpaired leg; an orphan is the
+    // fixture, not a defect in the fixture.
+    if (pair === TEST_UNPAIRED_TRANSFER_KEY) continue;
+    if (sum !== 0) problems.push(`transfer pair ${pair} nets ${sum}, expected 0`);
+  }
 
   for (const id of fixture.card_settlement_ids) {
     const legs = transactions.filter((t) => t.settlement_pair_id === id && t.flow_type === "CARD_SETTLEMENT");

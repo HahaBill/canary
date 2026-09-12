@@ -19,6 +19,7 @@ import {
 } from "@canary/shared";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_DEMO_OPTIONS, assertFixtureInvariants, generateDemoCompany } from "./index.ts";
+import { TEST_MESSY, TEST_UNPAIRED_TRANSFER_KEY } from "./plan.ts";
 
 /** Compile-time proof that the export satisfies the shared contract. */
 const _contract: GenerateDemoCompany = generateDemoCompany;
@@ -428,5 +429,110 @@ describe("company profile", () => {
     expect(demo.company.as_of).toBe(DEMO.END_DATE);
     expect(demo.company.accounts).toBe(demo.accounts);
     expect(demo.accounts).toBe(SANDBOX_ACCOUNTS);
+  });
+});
+
+/**
+ * Messy statement shapes, test profile only (contract §4). These are patterns
+ * that show up on real business bank statements — not how a tidy ledger is
+ * supposed to look. Every one of them breaks a naive reconciliation somewhere.
+ */
+describe("profile: test — messy statement shapes", () => {
+  const messy = (key: string) => test.transactions.filter((t) => t.merchant_raw === key);
+
+  it("keeps the demo profile clean of every messy shape", () => {
+    const messyDescriptors = [
+      TEST_MESSY.REVERSAL.merchant_raw,
+      TEST_MESSY.OVER_CREDIT.merchant_raw,
+      TEST_MESSY.CHECK_TO_INDIVIDUAL.merchant_raw,
+      TEST_MESSY.AMBIGUOUS_ACH.merchant_raw,
+      TEST_MESSY.AMBIGUOUS_ONLINE.merchant_raw,
+      TEST_MESSY.ORPHAN_TRANSFER.merchant_raw,
+      TEST_MESSY.UNSETTLED_PENDING.merchant_raw,
+    ];
+    for (const descriptor of messyDescriptors) {
+      expect(demo.transactions.some((t) => t.merchant_raw === descriptor)).toBe(false);
+    }
+    // In the demo profile every pending row is superseded by a settled twin.
+    const demoOrphanPending = demo.transactions.filter(
+      (t) => t.status === "pending" && !demo.transactions.some((s) => s.pending_of === t.id),
+    );
+    expect(demoOrphanPending).toHaveLength(0);
+  });
+
+  it("plants a same-day double-post and the reversal that cancels one leg", () => {
+    const posts = messy(TEST_MESSY.DOUBLE_POST.merchant_raw);
+    expect(posts).toHaveLength(2);
+    // Identical amount, identical day, different ids. Nothing in the data says
+    // which one is the mistake.
+    expect(posts[0]!.date).toBe(posts[1]!.date);
+    expect(posts[0]!.amount_cents).toBe(posts[1]!.amount_cents);
+    expect(posts[0]!.id).not.toBe(posts[1]!.id);
+
+    const [reversal] = messy(TEST_MESSY.REVERSAL.merchant_raw);
+    expect(reversal!.flow_type).toBe("REFUND");
+    expect(reversal!.amount_cents).toBe(-posts[0]!.amount_cents);
+    expect(reversal!.date > posts[0]!.date).toBe(true);
+    // Net effect on the vendor: exactly one charge.
+    expect(posts.reduce((s, t) => s + t.amount_cents, 0) + reversal!.amount_cents).toBe(posts[0]!.amount_cents);
+  });
+
+  it("plants a credit larger than that vendor's charges", () => {
+    const [credit] = messy(TEST_MESSY.OVER_CREDIT.merchant_raw);
+    expect(credit!.flow_type).toBe("REFUND");
+    expect(credit!.amount_cents).toBeGreaterThan(0);
+
+    const sameWeekCharges = test.transactions.filter(
+      (t) => t.merchant_normalized === credit!.merchant_normalized && t.amount_cents < 0,
+    );
+    const largestCharge = Math.max(...sameWeekCharges.map((t) => Math.abs(t.amount_cents)));
+    expect(credit!.amount_cents).toBeGreaterThan(largestCharge);
+  });
+
+  it("plants a check to a person and descriptors that identify nothing", () => {
+    const [check] = messy(TEST_MESSY.CHECK_TO_INDIVIDUAL.merchant_raw);
+    expect(check!.category_hint).toBe("NEEDS_REVIEW");
+    expect(check!.amount_cents).toBeLessThan(0);
+
+    // Two mystery ACH debits: enough to be a repeat, too few for vendor history.
+    const ach = messy(TEST_MESSY.AMBIGUOUS_ACH.merchant_raw);
+    expect(ach).toHaveLength(TEST_MESSY.AMBIGUOUS_ACH.week_indexes.length);
+    expect(ach.every((t) => t.description === "")).toBe(true);
+    expect(ach.length).toBeLessThan(3); // below MIN_PRIOR_VENDOR_PAYMENTS: new vendor, never anomalous
+
+    expect(messy(TEST_MESSY.AMBIGUOUS_ONLINE.merchant_raw)).toHaveLength(1);
+  });
+
+  it("plants an internal transfer whose other leg never arrives", () => {
+    const legs = test.transactions.filter((t) => t.transfer_pair_id === TEST_UNPAIRED_TRANSFER_KEY);
+    expect(legs).toHaveLength(1);
+    expect(legs[0]!.flow_type).toBe("INTERNAL_TRANSFER");
+    expect(legs[0]!.amount_cents).toBeLessThan(0);
+    // Every other pair still nets to zero.
+    const byPair = new Map<string, number>();
+    for (const t of test.transactions.filter((t) => t.transfer_pair_id && t.transfer_pair_id !== TEST_UNPAIRED_TRANSFER_KEY)) {
+      byPair.set(t.transfer_pair_id!, (byPair.get(t.transfer_pair_id!) ?? 0) + t.amount_cents);
+    }
+    for (const sum of byPair.values()) expect(sum).toBe(0);
+  });
+
+  it("plants a pending authorisation that never settles", () => {
+    const [pending] = messy(TEST_MESSY.UNSETTLED_PENDING.merchant_raw);
+    expect(pending!.status).toBe("pending");
+    // Nothing supersedes it: the money is gone as far as the founder is concerned.
+    expect(test.transactions.some((t) => t.pending_of === pending!.id)).toBe(false);
+    expect(test.fixture.pending_settled_pairs.some((p) => p.pending_id === pending!.id)).toBe(false);
+  });
+
+  it("still closes on the sandbox bank balance with all of it in place", () => {
+    // The whole point: messy input, exact cash.
+    const cashIds = new Set(SANDBOX_ACCOUNTS.filter((a) => a.type !== "card").map((a) => a.id));
+    const superseded = new Set(test.transactions.filter((t) => t.pending_of).map((t) => t.pending_of!));
+    const net = test.transactions
+      .filter((t) => cashIds.has(t.account_id) && !superseded.has(t.id))
+      .reduce((s, t) => s + t.amount_cents, 0);
+
+    expect(test.fixture.opening_balance_cents + net).toBe(test.fixture.closing_balance_cents);
+    expect(test.fixture.closing_balance_cents).toBe(sandboxClosingCashCents());
   });
 });
