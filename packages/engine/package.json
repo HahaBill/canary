@@ -9,5 +9,6 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --passWithNoTests"
   },
-  "dependencies": { "@canary/shared": "*" }
+  "dependencies": { "@canary/shared": "*" },
+  "devDependencies": { "@canary/generator": "*" }
 }
