@@ -12,6 +12,8 @@ import {
   formatUsdWhole,
   IMESSAGE_COMMANDS,
   numberToWords,
+  ONE_OFF_MEDIAN_MULTIPLE,
+  ONE_OFF_MIN_ABS_DIFF_CENTS,
   speakMonths,
   speakUsd,
   type DerivedDemoObject,
@@ -110,7 +112,14 @@ export function renderAlert(incident: Incident, baseUrl: string): AlertRendering
   };
 }
 
-/** WHY — the change period, the rate change, the top drivers, the runway effect. */
+/**
+ * WHY — OBSERVED (what the money did) → DETECTED (which rule fired, with its
+ * parameters) → ESTIMATE (modeled runway effect), per docs/AGENT_BEHAVIOR.md §5.
+ *
+ * The DETECTED line is required: naming the rule and when it fired is what
+ * separates Canary from a chart that happens to look alarming. A founder can
+ * then argue with the method, not just the conclusion.
+ */
 export function whyMessage(derived: DerivedDemoObject, incident: Incident): string {
   const lines: string[] = [];
 
@@ -124,6 +133,9 @@ export function whyMessage(derived: DerivedDemoObject, incident: Incident): stri
     if (oneOff?.vendor_median_cents) {
       lines.push(`Prior ${vendor} payments ran around ${formatUsdWhole(oneOff.vendor_median_cents)} (${oneOff.prior_payment_count} payments).`);
     }
+    lines.push(
+      `Rule: vendor-relative one-off — at least ${ONE_OFF_MEDIAN_MULTIPLE}× this vendor's median and at least ${formatUsdWhole(ONE_OFF_MIN_ABS_DIFF_CENTS)} above it. It still counts in burn, but it's kept out of the trend analysis.`,
+    );
   } else {
     if (incident.estimated_change_point) {
       lines.push(`Since the week of ${formatDateShort(incident.estimated_change_point)}, variable spending has stayed elevated.`);
@@ -140,9 +152,16 @@ export function whyMessage(derived: DerivedDemoObject, incident: Incident): stri
       lines.push(`Top contributors: ${parts.join(", ")}.`);
     }
 
+    const cusum = incident.detection.cusum;
+    if (cusum?.alarm_week_start) {
+      lines.push(
+        `Rule: CUSUM change-point detection on weekly variable spend (${cusum.baseline_weeks}-week baseline, alarm above ${formatUsdWhole(cusum.h_cents)}), alarm in the week of ${formatDateShort(cusum.alarm_week_start)}.`,
+      );
+    }
+
     const { runway_before_months, runway_after_months } = incident.financial_impact;
     if (runway_before_months !== null && runway_after_months !== null) {
-      lines.push(`Runway: ${formatMonths(runway_before_months)} → ${formatMonths(runway_after_months)}.`);
+      lines.push(`Modeled runway: ${formatMonths(runway_before_months)} → ${formatMonths(runway_after_months)}.`);
     }
   }
 

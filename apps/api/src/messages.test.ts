@@ -1,5 +1,5 @@
 /** iMessage templates. Every figure must come from the shared money helpers. */
-import { formatMonths, formatSignedUsd, formatUsdWhole, IMESSAGE_COMMANDS } from "@canary/shared";
+import { CUSUM_DEFAULTS, formatMonths, formatSignedUsd, formatUsdWhole, IMESSAGE_COMMANDS, ONE_OFF_MEDIAN_MULTIPLE, type CusumResult } from "@canary/shared";
 import { buildMockDerived } from "@canary/shared/fixtures";
 import { describe, expect, it } from "vitest";
 import { positiveContributors, variableSpendRates } from "./derive.ts";
@@ -66,7 +66,42 @@ describe("whyMessage", () => {
     expect(lines[0]).toBe(`Since the week of ${formatDateShort(incident.estimated_change_point)}, variable spending has stayed elevated.`);
     expect(lines.at(-1)).toBe("Reply SHOW ME for the incident page.");
     expect(lines.length).toBeGreaterThanOrEqual(4);
-    expect(lines.length).toBeLessThanOrEqual(6);
+    expect(lines.length).toBeLessThanOrEqual(7);
+  });
+
+  it("names the detector and when it fired (AGENT_BEHAVIOR.md: the DETECTED line is required)", () => {
+    // The shared mock ships `detection: {}`, so attach a CUSUM result the way
+    // the real pipeline does. Every figure in the line comes from this payload.
+    const cusum: CusumResult = {
+      fired: true,
+      config: CUSUM_DEFAULTS,
+      baseline_weeks: 8,
+      baseline_median_cents: 1_547_083,
+      sigma_cents: 112_395,
+      k_cents: 56_198,
+      h_cents: 449_581,
+      statistic_cents: [],
+      alarm_week_index: 12,
+      alarm_week_start: "2026-07-20",
+      estimated_change_point_index: 8,
+      estimated_change_point_week_start: "2026-06-29",
+      pre_change_rate_weekly_cents: 1_535_218,
+      post_change_rate_weekly_cents: 1_947_909,
+      delta_weekly_cents: 412_691,
+      detection_lag_weeks: 3,
+      post_change_weeks: 11,
+    };
+    const detected = whyMessage(derived, { ...incident, detection: { cusum } });
+
+    expect(detected).toContain("CUSUM change-point detection on weekly variable spend");
+    expect(detected).toContain("8-week baseline");
+    expect(detected).toContain(formatUsdWhole(cusum.h_cents));
+    expect(detected).toContain("alarm in the week of Jul 20, 2026");
+  });
+
+  it("omits the detector line rather than inventing one when no detector payload is attached", () => {
+    expect(incident.detection.cusum).toBeUndefined();
+    expect(message).not.toContain("CUSUM");
   });
 
   it("quotes pre/post weekly variable spend from the engine", () => {
@@ -83,13 +118,16 @@ describe("whyMessage", () => {
 
   it("shows runway before → after", () => {
     const { runway_before_months, runway_after_months } = incident.financial_impact;
-    expect(message).toContain(`Runway: ${formatMonths(runway_before_months)} → ${formatMonths(runway_after_months)}.`);
+    // "Modeled", not "Runway:" — runway is a present-tense ratio, not a promise.
+    expect(message).toContain(`Modeled runway: ${formatMonths(runway_before_months)} → ${formatMonths(runway_after_months)}.`);
   });
 
   it("describes a one-off incident differently", () => {
     const text = whyMessage(derived, oneOff);
     expect(text).toContain("one-off payment to Figma");
     expect(text).toContain(formatUsdWhole(oneOff.financial_impact.one_off_amount_cents!));
+    expect(text).toContain("Rule: vendor-relative one-off");
+    expect(text).toContain(`${ONE_OFF_MEDIAN_MULTIPLE}× this vendor's median`);
     expect(text).toContain("Reply SHOW ME for the incident page.");
   });
 });
