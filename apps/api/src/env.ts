@@ -12,6 +12,9 @@ export interface Env {
   WEBHOOK_SECRET?: string;
   FOUNDER_PHONE?: string;
   PUBLIC_BASE_URL?: string;
+  /** ElevenLabs TTS for the iMessage voice note. Optional — alerts degrade to text only. */
+  ELEVENLABS_API_KEY?: string;
+  ELEVENLABS_VOICE_ID?: string;
 }
 
 export const API_VERSION = "0.0.1";

@@ -4,7 +4,7 @@ import { buildMockDerived } from "@canary/shared/fixtures";
 import { describe, expect, it } from "vitest";
 import { positiveContributors, variableSpendRates } from "./derive.ts";
 import { displayName, formatDateShort } from "./format.ts";
-import { alertMessage, dashboardMessage, helpMessage, showMeMessage, sourcesMessage, whyMessage } from "./messages.ts";
+import { alertMessage, alertVoiceScript, renderAlert, dashboardMessage, helpMessage, showMeMessage, sourcesMessage, whyMessage } from "./messages.ts";
 
 const derived = buildMockDerived();
 const incident = derived.primary_incident!;
@@ -30,10 +30,31 @@ describe("formatDateShort", () => {
 });
 
 describe("alertMessage", () => {
-  it("matches the DEMO.md wording", () => {
+  it("matches the DEMO.md wording, plus the runway impact line", () => {
+    const { runway_before_months: before, runway_after_months: after } = incident.financial_impact;
     expect(alertMessage(incident)).toBe(
-      ["🐤 Canary", "I detected a sustained increase in variable spending.", "AWS is currently the largest contributor.", "Reply WHY or SHOW ME."].join("\n"),
+      [
+        "🐤 Canary",
+        "I detected a sustained increase in variable spending.",
+        "AWS is currently the largest contributor.",
+        `Impact: modeled runway ${formatMonths(before)} → ${formatMonths(after)} versus the previous spending regime.`,
+        "Reply WHY or SHOW ME.",
+      ].join("\n"),
     );
+  });
+
+  it("renders a short, rounded voice script from the same incident (no exact figures, no URLs)", () => {
+    const script = alertVoiceScript(incident);
+    expect(script).toContain("AWS is the largest contributor");
+    expect(script).toMatch(/Reply why for the breakdown, or show me/);
+    expect(script).not.toMatch(/\$|https?:\/\/|\d/); // exact numbers stay in the text
+    const words = script.split(/\s+/).length;
+    expect(words).toBeGreaterThan(25);
+    expect(words).toBeLessThan(80); // ~10–20 seconds spoken
+    const rendering = renderAlert(incident, "https://canary.test");
+    expect(rendering.text_summary).toBe(alertMessage(incident));
+    expect(rendering.voice_summary).toBe(script);
+    expect(rendering.app_path).toBe(`/incidents/${incident.id}`);
   });
 });
 

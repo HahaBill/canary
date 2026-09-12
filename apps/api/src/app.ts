@@ -18,11 +18,14 @@ import { registerIncidentRoutes } from "./routes/incidents.ts";
 import { registerToolRoutes } from "./routes/tools.ts";
 import { registerWebhookRoutes } from "./routes/webhooks.ts";
 import { SendblueClient, type FetchLike } from "./sendblue/client.ts";
+import { ElevenLabsTts, type TextToSpeech } from "./voice/elevenlabs.ts";
 
 export interface AppDeps {
   /** Defaults to `MockDataProvider` (+ D1 status overlay when `DB` is bound). */
   provider?: DataProvider;
   sendblue?: SendblueClient;
+  /** Defaults to ElevenLabs from env; unconfigured → alerts are text-only. */
+  tts?: TextToSpeech;
   bank?: BankProvider;
   /** Overrides the `DB` binding — tests pass an in-memory fake. */
   db?: SqlDatabase;
@@ -70,6 +73,16 @@ export function createApp(deps: AppDeps = {}): CanaryApp {
           apiKey: appEnv.SENDBLUE_API_KEY,
           apiSecret: appEnv.SENDBLUE_API_SECRET,
           fromNumber: appEnv.SENDBLUE_FROM_NUMBER,
+          ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
+        }),
+    );
+
+    c.set(
+      "tts",
+      deps.tts ??
+        new ElevenLabsTts({
+          apiKey: appEnv.ELEVENLABS_API_KEY,
+          voiceId: appEnv.ELEVENLABS_VOICE_ID,
           ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
         }),
     );

@@ -6,10 +6,14 @@
  * word of it.
  */
 import {
+  daysBetween,
   formatMonths,
   formatSignedUsd,
   formatUsdWhole,
   IMESSAGE_COMMANDS,
+  numberToWords,
+  speakMonths,
+  speakUsd,
   type DerivedDemoObject,
   type IMessageCommand,
   type Incident,
@@ -28,14 +32,82 @@ const COMMAND_HELP: Record<IMessageCommand, string> = {
   HELP: "this list",
 };
 
-/** The outbound alert that opens the demo (docs/DEMO.md 0:15). */
+/**
+ * The outbound alert that opens the demo (docs/DEMO.md 0:15).
+ * Text carries the exact facts and labels; the voice note (below) is the
+ * conversational summary of the SAME incident object, so they can't disagree.
+ */
 export function alertMessage(incident: Incident): string {
+  const lines = [CANARY];
+  if (incident.type === "ONE_OFF_VENDOR_PAYMENT") {
+    lines.push(`I flagged an unusual one-off payment to ${displayName(incident.entity)}.`);
+    const amount = incident.financial_impact.one_off_amount_cents;
+    if (amount) lines.push(`Amount: ${formatUsdWhole(amount)}, well above this vendor's usual payments.`);
+  } else {
+    lines.push("I detected a sustained increase in variable spending.", `${displayName(driverEntity(incident))} is currently the largest contributor.`);
+    const { runway_before_months, runway_after_months } = incident.financial_impact;
+    if (runway_before_months !== null && runway_after_months !== null) {
+      lines.push(`Impact: modeled runway ${formatMonths(runway_before_months)} → ${formatMonths(runway_after_months)} versus the previous spending regime.`);
+    }
+  }
+  lines.push("Reply WHY or SHOW ME.");
+  return lines.join("\n");
+}
+
+/**
+ * Script for the ElevenLabs voice note that follows the alert. ~10–20 seconds
+ * when spoken. Rounded, conversational, and derived from the same incident —
+ * no exact figures (those stay in the text), no URLs, nothing prescriptive.
+ */
+export function alertVoiceScript(incident: Incident): string {
+  const driver = displayName(driverEntity(incident));
+  if (incident.type === "ONE_OFF_VENDOR_PAYMENT") {
+    const amount = incident.financial_impact.one_off_amount_cents;
+    return [
+      `Hi, it's Canary. I flagged a one-off payment to ${driver} that's ${amount ? `${speakUsd(amount)}, ` : ""}well above what you usually pay them.`,
+      "It still counts in your burn, but I've kept it out of the trend analysis so it doesn't look like a lasting shift.",
+      "Reply why for the details, or show me to open it.",
+    ].join(" ");
+  }
+  const when = incident.estimated_change_point ? weeksAgoPhrase(incident.estimated_change_point, incident.last_updated) : "recently";
+  const { runway_before_months, runway_after_months } = incident.financial_impact;
+  const runway =
+    runway_before_months !== null && runway_after_months !== null && runway_after_months < runway_before_months
+      ? ` At the new rate, modeled runway is ${speakMonths(runway_after_months).replace(/^about /, "about ")}, down from ${speakMonths(runway_before_months)}.`
+      : "";
   return [
-    CANARY,
-    "I detected a sustained increase in variable spending.",
-    `${displayName(driverEntity(incident))} is currently the largest contributor.`,
-    "Reply WHY or SHOW ME.",
-  ].join("\n");
+    `Hi, it's Canary. I noticed your spending pattern shifted upward ${when}, and ${driver} is the largest contributor to that change.`,
+    `I've summarized the main drivers and what it means for runway.${runway}`,
+    "Reply why for the breakdown, or show me to open the full investigation.",
+  ].join(" ");
+}
+
+/** "about three weeks ago" / "several weeks ago" — rounded, from the incident's own dates. */
+function weeksAgoPhrase(changePoint: string, asOf: string): string {
+  const weeks = Math.round(daysBetween(changePoint, asOf.slice(0, 10)) / 7);
+  if (weeks <= 1) return "about a week ago";
+  if (weeks <= 4) return `about ${numberToWords(weeks)} weeks ago`;
+  if (weeks <= 8) return "several weeks ago";
+  return `about ${numberToWords(Math.round(weeks / 4))} months ago`;
+}
+
+export interface AlertRendering {
+  incident_id: string;
+  /** Precise, data-heavy iMessage text. */
+  text_summary: string;
+  /** Natural, rounded voice-note script. */
+  voice_summary: string;
+  app_path: string;
+}
+
+/** One incident → both renderings, so text and voice can never disagree. */
+export function renderAlert(incident: Incident, baseUrl: string): AlertRendering {
+  return {
+    incident_id: incident.id,
+    text_summary: alertMessage(incident),
+    voice_summary: alertVoiceScript(incident),
+    app_path: incidentLink(incident.id, baseUrl).path,
+  };
 }
 
 /** WHY — the change period, the rate change, the top drivers, the runway effect. */

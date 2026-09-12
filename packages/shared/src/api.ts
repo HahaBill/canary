@@ -112,6 +112,18 @@ export interface SendAlertRequest {
   /** E.164. Defaults to env FOUNDER_PHONE. */
   to?: string;
   incident_id?: string;
+  /** Also send an ElevenLabs voice note after the text (default true when TTS is configured). */
+  voice?: boolean;
+}
+export interface SendAlertVoiceResult {
+  sent: boolean;
+  /** The exact script that was voiced — rendered from the same incident as the text. */
+  transcript: string;
+  media_url?: string;
+  seconds?: number;
+  provider_message_id?: string;
+  /** Present when the voice note was skipped or failed; the text alert is unaffected. */
+  error?: string;
 }
 export interface SendAlertResponse {
   sent: boolean;
@@ -119,6 +131,7 @@ export interface SendAlertResponse {
   message: string;
   provider_message_id?: string;
   error?: string;
+  voice?: SendAlertVoiceResult;
 }
 
 export interface ErrorResponse {

@@ -5,10 +5,12 @@ import type { D1Store } from "./data/d1.ts";
 import type { DataProvider } from "./data/provider.ts";
 import { publicBaseUrl, type Env } from "./env.ts";
 import type { SendblueClient } from "./sendblue/client.ts";
+import type { TextToSpeech } from "./voice/elevenlabs.ts";
 
 export interface Variables {
   provider: DataProvider;
   sendblue: SendblueClient;
+  tts: TextToSpeech;
   bank: BankProvider;
   /** Null when no D1 binding is available (unit tests, `wrangler dev` without D1). */
   store: D1Store | null;

@@ -63,6 +63,12 @@ export function createHarness(options: HarnessOptions = {}): Harness {
       headers: { ...((init?.headers ?? {}) as Record<string, string>) },
       body: typeof init?.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : null,
     });
+    if (String(input).endsWith("/api/upload-file")) {
+      return new Response(JSON.stringify({ status: "OK", media_url: "https://storage.test/inbound-file-store/abc_CanaryAlert.caf" }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      });
+    }
     return sendblueResponse
       ? sendblueResponse()
       : new Response(JSON.stringify({ status: "QUEUED", message_handle: "msg_test_handle" }), {
