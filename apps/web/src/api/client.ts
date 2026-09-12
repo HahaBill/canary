@@ -1,0 +1,122 @@
+/**
+ * Typed fetchers for the Worker API. Paths are derived from `API_ROUTES` in
+ * `@canary/shared` so the client cannot drift from the contract, and they stay
+ * relative so the SPA works wherever the Worker mounts it.
+ */
+import {
+  API_ROUTES,
+  type DemoResponse,
+  type ErrorResponse,
+  type Incident,
+  type IncidentDetailResponse,
+  type IncidentStatus,
+  type IncidentStatusRequest,
+  type IncidentsResponse,
+  type SimulateRequest,
+  type SimulateResponse,
+  type WhatIfRequest,
+} from "@canary/shared";
+
+/** Why a call failed — `useDerived` uses this to decide whether to fall back to fixtures. */
+export type ApiErrorKind = "network" | "http" | "parse";
+
+export class ApiError extends Error {
+  readonly kind: ApiErrorKind;
+  readonly status: number;
+  readonly detail?: string;
+
+  constructor(message: string, kind: ApiErrorKind, status = 0, detail?: string) {
+    super(message);
+    this.name = "ApiError";
+    this.kind = kind;
+    this.status = status;
+    if (detail !== undefined) this.detail = detail;
+  }
+
+  /** A 404 is a real answer ("no such incident"), not a dead backend. */
+  get isNotFound(): boolean {
+    return this.kind === "http" && this.status === 404;
+  }
+
+  /** Nothing usable came back, so serving fixtures instead is reasonable in dev. */
+  get isUnreachable(): boolean {
+    return this.kind !== "http" || this.status >= 500;
+  }
+}
+
+/** `"GET /api/incidents/:id"` + `{ id }` → `"/api/incidents/inc_x"`. */
+function routePath(route: string, params: Record<string, string> = {}): string {
+  const path = route.slice(route.indexOf(" ") + 1);
+  return path.replace(/:([A-Za-z_]+)/g, (_match, key: string) => {
+    const value = params[key];
+    if (value === undefined) throw new Error(`Missing route param "${key}" for ${route}`);
+    return encodeURIComponent(value);
+  });
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      ...init,
+      headers: { Accept: "application/json", ...(init?.body ? { "Content-Type": "application/json" } : {}), ...init?.headers },
+    });
+  } catch (cause) {
+    throw new ApiError(`Could not reach ${path}`, "network", 0, cause instanceof Error ? cause.message : undefined);
+  }
+
+  const body = await response.text();
+  let parsed: unknown;
+  try {
+    parsed = body ? JSON.parse(body) : null;
+  } catch {
+    // A built SPA without the Worker in front of it answers /api/* with index.html.
+    throw new ApiError(`${path} did not return JSON`, "parse", response.status);
+  }
+
+  if (!response.ok) {
+    const err = parsed as ErrorResponse | null;
+    throw new ApiError(err?.error ?? `Request failed (${response.status})`, "http", response.status, err?.detail);
+  }
+  return parsed as T;
+}
+
+export function getDemo(signal?: AbortSignal): Promise<DemoResponse> {
+  return request<DemoResponse>(routePath(API_ROUTES.demo), signal ? { signal } : undefined);
+}
+
+export function getIncidents(signal?: AbortSignal): Promise<Incident[]> {
+  return request<IncidentsResponse>(routePath(API_ROUTES.incidents), signal ? { signal } : undefined).then(
+    (r) => r.incidents,
+  );
+}
+
+export function getIncident(id: string, signal?: AbortSignal): Promise<IncidentDetailResponse> {
+  return request<IncidentDetailResponse>(
+    routePath(API_ROUTES.incident, { id }),
+    signal ? { signal } : undefined,
+  );
+}
+
+export function simulate(req: WhatIfRequest, signal?: AbortSignal): Promise<SimulateResponse> {
+  const body: SimulateRequest = req;
+  return request<SimulateResponse>(routePath(API_ROUTES.simulate), {
+    method: "POST",
+    body: JSON.stringify(body),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+/**
+ * `api.ts` declares the request body but no response type for this route, so we
+ * accept either `{ incident }` or a bare `Incident` (see "Contract gaps").
+ */
+export async function setIncidentStatus(id: string, status: IncidentStatus): Promise<Incident | null> {
+  const body: IncidentStatusRequest = { status };
+  const result = await request<{ incident?: Incident } | Incident>(
+    routePath(API_ROUTES.incidentStatus, { id }),
+    { method: "POST", body: JSON.stringify(body) },
+  );
+  if (result && typeof result === "object" && "incident" in result) return result.incident ?? null;
+  return (result as Incident) ?? null;
+}
