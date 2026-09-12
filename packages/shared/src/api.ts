@@ -62,6 +62,8 @@ export const API_ROUTES = {
   availability: "GET /api/availability",
   alertHistory: "GET /api/alerts/history",
   alertsPending: "GET /api/alerts/pending",
+  /** Secret-protected: run the deferred-alert delivery job now (same code path as the cron). */
+  alertsDeliverPending: "POST /api/alerts/deliver-pending",
   needsReview: "GET /api/needs-review",
   classificationOverride: "POST /api/classifications/override",
 } as const;

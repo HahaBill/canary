@@ -135,11 +135,31 @@ describe("withD1Overlay", () => {
 });
 
 describe("PipelineDataProvider", () => {
-  it("fails loudly for the view methods the engine has not wired yet", async () => {
+  it("serves the ledger pivot, cell detail, and calendar from the real engine, consistent with the pipeline", async () => {
     const provider = new PipelineDataProvider();
-    await expect(provider.getLedgerPivot("month")).rejects.toThrow("not wired");
-    await expect(provider.getLedgerCell("vendor:aws", "2026-09", "month")).rejects.toThrow("not wired");
-    await expect(provider.getCalendarEvents("2026-09-01", "2026-09-30")).rejects.toThrow("not wired");
+    const derived = await provider.getDerived();
+
+    const pivot = await provider.getLedgerPivot("week");
+    expect(pivot.periods).toHaveLength(derived.weeks.length);
+    const variable = pivot.rows.find((r) => r.id === "section:VARIABLE_SPEND")!;
+    // The sheet must agree with the CUSUM monitoring series to the cent, every week.
+    expect(variable.cells.map((c) => c.amount_cents)).toEqual(derived.weeks.map((w) => w.variable_spend_cents));
+    const cashEnd = pivot.rows.find((r) => r.section === "CASH_END")!;
+    expect(cashEnd.cells[cashEnd.cells.length - 1]!.amount_cents).toBe(derived.cash_cents);
+    expect(pivot.regime_start).toBe(derived.primary_incident!.detection.cusum!.estimated_change_point_week_start);
+    const awsRow = pivot.rows.find((r) => r.entity === "aws" && r.section === "VARIABLE_SPEND")!;
+    expect(awsRow.incident_id).toBe(derived.primary_incident!.id);
+
+    const monthly = await provider.getLedgerPivot("month");
+    const firstVendor = monthly.rows.find((r) => r.level === 2)!;
+    const cell = await provider.getLedgerCell(firstVendor.id, monthly.periods[monthly.periods.length - 1]!.key, "month");
+    expect(cell).not.toBeNull();
+    expect(await provider.getLedgerCell("vendor:nope", "2026-09", "month")).toBeNull();
+
+    const events = await provider.getCalendarEvents("2026-08-31", "2026-10-15");
+    expect(events.some((e) => e.kind === "actual")).toBe(true);
+    expect(events.some((e) => e.kind === "expected" && e.date > "2026-09-13")).toBe(true);
+    expect(events.some((e) => e.kind === "busy")).toBe(false); // busy blocks are merged by the route, not the provider
   });
 });
 

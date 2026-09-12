@@ -23,11 +23,14 @@ import type {
 } from "@canary/shared";
 import { simulateCostChange } from "@canary/engine";
 import { loadDemoCaches, runPipeline } from "@canary/pipeline";
+import { buildCashCalendarEvents, pivotCell, pivotLedger, projectRecurring } from "@canary/engine";
+import { addDays } from "@canary/shared";
+import type { Ledger, RecurringSeries } from "@canary/shared";
 import { noChangeExplanation, whatIfSpeech } from "../speech.ts";
 import { MockDataProvider, type DataProvider } from "./provider.ts";
 
 export class PipelineDataProvider implements DataProvider {
-  private inner: Promise<{ provider: MockDataProvider; transactions: Transaction[] }> | null = null;
+  private inner: Promise<{ provider: MockDataProvider; transactions: Transaction[]; ledger: Ledger; recurring: RecurringSeries[] }> | null = null;
 
   constructor(private readonly options: { seed?: number; now?: string } = {}) {}
 
@@ -35,9 +38,11 @@ export class PipelineDataProvider implements DataProvider {
     if (!this.inner) {
       this.inner = (async () => {
         const caches = await loadDemoCaches();
-        const { derived, generated } = await runPipeline({ ...caches, seed: this.options.seed, now: this.options.now });
+        const { derived, generated, ledger } = await runPipeline({ ...caches, seed: this.options.seed, now: this.options.now });
+        // Project recurring charges ~6 months past history end for the cash calendar.
+        const recurring = projectRecurring(ledger, { horizonEnd: addDays(ledger.history_end, 183) });
         // Reuse the in-memory status overlay machinery over the real derived object.
-        return { provider: new MockDataProvider(derived), transactions: generated.transactions };
+        return { provider: new MockDataProvider(derived), transactions: generated.transactions, ledger, recurring };
       })();
     }
     return this.inner;
@@ -81,16 +86,32 @@ export class PipelineDataProvider implements DataProvider {
   // were pipeline output.
   // ---------------------------------------------------------------------------
 
-  async getLedgerPivot(_granularity: PivotGranularity): Promise<LedgerPivot> {
-    throw new Error("not wired");
+  async getLedgerPivot(granularity: PivotGranularity): Promise<LedgerPivot> {
+    const { ledger } = await this.load();
+    const derived = await this.getDerived();
+    const cusum = derived.primary_incident?.detection.cusum;
+    const regimeStart = cusum?.estimated_change_point_week_start ?? null;
+    const incidentByEntity: Record<string, string> = {};
+    for (const inc of derived.incidents) {
+      incidentByEntity[inc.entity] ??= inc.id;
+      for (const c of inc.contributors) if (c.delta_weekly_cents > 0) incidentByEntity[c.entity] ??= inc.id;
+    }
+    return pivotLedger(ledger, { granularity, regimeStart, incidentByEntity });
   }
 
-  async getLedgerCell(_rowId: string, _periodKey: string, _granularity: PivotGranularity): Promise<PivotCellDetail | null> {
-    throw new Error("not wired");
+  async getLedgerCell(rowId: string, periodKey: string, granularity: PivotGranularity): Promise<PivotCellDetail | null> {
+    const { ledger } = await this.load();
+    try {
+      return pivotCell(ledger, rowId, periodKey, granularity);
+    } catch {
+      return null; // unknown row id / period key → 404 at the route
+    }
   }
 
-  async getCalendarEvents(_from: ISODate, _to: ISODate): Promise<CalendarEvent[]> {
-    throw new Error("not wired");
+  async getCalendarEvents(from: ISODate, to: ISODate): Promise<CalendarEvent[]> {
+    const { ledger, recurring } = await this.load();
+    const derived = await this.getDerived();
+    return buildCashCalendarEvents({ ledger, incidents: derived.incidents, recurring, from, to });
   }
 
   /** Real pipeline data: `needs_review` + `classifications` are already in the derived object. */

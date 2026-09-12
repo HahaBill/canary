@@ -171,6 +171,8 @@ export type NotifyDecision =
   | { send: false; reason: "not_open" | "already_notified" | "not_material" | "calendar_busy"; until?: ISODateTime };
 
 export interface PendingAlert {
+  /** Deterministic id (incident + recipient), server-assigned. */
+  id?: string;
   incident_id: string;
   to: string;
   voice: boolean;
