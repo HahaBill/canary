@@ -4,12 +4,15 @@
  * plain Node vitest environment.
  */
 import { buildMockDerived } from "@canary/shared/fixtures";
-import type { DerivedDemoObject } from "@canary/shared";
-import { createApp, type AppDeps } from "../app.ts";
+import type { DerivedDemoObject, ISODate, ISODateTime } from "@canary/shared";
+import type { PendingRunSummary } from "../alerts/pending.ts";
+import { createApp, createScheduled, type AppDeps } from "../app.ts";
+import type { BusyStatus, CalendarFeed, CalendarFeedEvent, CalendarFeedResult } from "../calendar/ics.ts";
 import type { CanaryApp } from "../context.ts";
 import { MockDataProvider } from "../data/provider.ts";
 import type { Env } from "../env.ts";
 import type { FetchLike } from "../sendblue/client.ts";
+import type { TextToSpeech, TtsMp3Result, TtsResult } from "../voice/elevenlabs.ts";
 import { FakeD1 } from "./fake-d1.ts";
 
 export const TEST_ENV = {
@@ -23,6 +26,62 @@ export const TEST_ENV = {
 
 export const FIXED_NOW = "2026-09-14T12:00:00.000Z";
 
+/**
+ * A calendar you can flip mid-test: `feed.busy = {...}` makes the founder busy,
+ * `feed.busy = null` frees them. `source: "none"` reproduces an unconfigured feed.
+ */
+export class FakeCalendar implements CalendarFeed {
+  configured = true;
+  /** Busy block covering "now", or null when free. */
+  busy: { until: ISODateTime | null } | null = null;
+  next_busy_start: ISODateTime | null = null;
+  source: BusyStatus["source"] = "ics";
+  events: CalendarFeedEvent[] = [];
+  /** Every range `fetchEvents` was asked for. */
+  readonly requested: Array<{ from: ISODate; to: ISODate }> = [];
+
+  async fetchEvents(from: ISODate, to: ISODate): Promise<CalendarFeedResult> {
+    this.requested.push({ from, to });
+    return { events: this.source === "none" ? [] : this.events, source: this.source };
+  }
+
+  async isBusyAt(): Promise<BusyStatus> {
+    if (this.source === "none") return { busy: false, until: null, next_busy_start: null, source: "none" };
+    return this.busy
+      ? { busy: true, until: this.busy.until, next_busy_start: null, source: this.source }
+      : { busy: false, until: null, next_busy_start: this.next_busy_start, source: this.source };
+  }
+}
+
+export interface FakeTtsOptions {
+  configured?: boolean;
+  pcm?: () => TtsResult;
+  mp3?: () => TtsMp3Result;
+}
+
+/** A TTS that records what it was asked to speak. */
+export interface FakeTts extends TextToSpeech {
+  spoken: string[];
+  spokenMp3: string[];
+}
+
+export function fakeTts(options: FakeTtsOptions = {}): FakeTts {
+  const silence = new Uint8Array(48_000); // 1s at 24kHz S16LE
+  return {
+    configured: options.configured ?? true,
+    spoken: [],
+    spokenMp3: [],
+    async synthesizePcm(text: string) {
+      this.spoken.push(text);
+      return options.pcm ? options.pcm() : { ok: true, pcm: silence, sampleRate: 24_000, status: 200 };
+    },
+    async synthesizeMp3(text: string) {
+      this.spokenMp3.push(text);
+      return options.mp3 ? options.mp3() : { ok: true, mp3: new Uint8Array([0xff, 0xfb, 0x90, 0x64]), status: 200 };
+    },
+  };
+}
+
 export interface CapturedFetch {
   url: string;
   method: string;
@@ -35,6 +94,8 @@ export interface Harness {
   provider: MockDataProvider;
   derived: DerivedDemoObject;
   db: FakeD1;
+  /** The injected calendar, so a test can flip the founder busy or free. */
+  calendar: FakeCalendar;
   /** Every outbound HTTP call the Sendblue client attempted. */
   calls: CapturedFetch[];
   /** Convenience view of the Sendblue message bodies. */
@@ -43,6 +104,8 @@ export interface Harness {
   post<T>(path: string, body?: unknown, init?: RequestInit): Promise<{ status: number; body: T }>;
   /** POST with the shared secret in `x-canary-secret` (privileged routes: webhook, alerts). */
   authed<T>(path: string, body?: unknown, init?: RequestInit): Promise<{ status: number; body: T }>;
+  /** Runs the cron handler's job against the same dependencies as the app. */
+  runScheduled(): Promise<PendingRunSummary>;
 }
 
 export interface HarnessOptions extends Omit<AppDeps, "env" | "fetchImpl"> {
@@ -56,6 +119,7 @@ export function createHarness(options: HarnessOptions = {}): Harness {
   const derived = buildMockDerived();
   const provider = (deps.provider as MockDataProvider | undefined) ?? new MockDataProvider(derived);
   const db = (deps.db as FakeD1 | undefined) ?? new FakeD1();
+  const calendar = (deps.calendar as FakeCalendar | undefined) ?? new FakeCalendar();
   const calls: CapturedFetch[] = [];
 
   const fetchImpl: FetchLike = async (input, init) => {
@@ -79,14 +143,16 @@ export function createHarness(options: HarnessOptions = {}): Harness {
         });
   };
 
-  const app = createApp({
+  const appDeps: AppDeps = {
     ...deps,
     provider,
     db,
+    calendar,
     fetchImpl,
     now: deps.now ?? (() => FIXED_NOW),
     env: { ...TEST_ENV, ...env },
-  });
+  };
+  const app = createApp(appDeps);
 
   const json = async <T>(path: string, init?: RequestInit): Promise<{ status: number; body: T }> => {
     const res = await app.request(path, init);
@@ -105,6 +171,7 @@ export function createHarness(options: HarnessOptions = {}): Harness {
     provider,
     derived,
     db,
+    calendar,
     calls,
     get messages() {
       return calls.map((c) => c.body as { number: string; content: string; from_number: string });
@@ -113,6 +180,7 @@ export function createHarness(options: HarnessOptions = {}): Harness {
     post,
     authed: <T>(path: string, body?: unknown, init?: RequestInit) =>
       post<T>(path, body, { ...init, headers: { "x-canary-secret": TEST_ENV.WEBHOOK_SECRET, ...((init?.headers ?? {}) as Record<string, string>) } }),
+    runScheduled: () => createScheduled(appDeps)({ ...TEST_ENV, ...env } as unknown as Env),
   };
 }
 

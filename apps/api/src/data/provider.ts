@@ -7,10 +7,17 @@
  * implementation without touching a single route.
  */
 import type {
+  CalendarEvent,
+  ClassificationOverride,
   DerivedDemoObject,
   Incident,
   IncidentStatus,
+  ISODate,
   ISODateTime,
+  LedgerPivot,
+  NeedsReviewResponse,
+  PivotCellDetail,
+  PivotGranularity,
   VendorEnrichment,
   WhatIfRequest,
   WhatIfResult,
@@ -18,6 +25,7 @@ import type {
 import { buildMockDerived, mockWhatIf } from "@canary/shared/fixtures";
 import { whatIfSpeech } from "../speech.ts";
 import { D1Store, type SqlDatabase } from "./d1.ts";
+import { mockCalendarEvents, mockLedgerPivot, mockPivotCell, needsReviewItems } from "./mock-views.ts";
 
 export interface DataProvider {
   getDerived(): Promise<DerivedDemoObject>;
@@ -27,6 +35,15 @@ export interface DataProvider {
   getEnrichment(entity: string): Promise<VendorEnrichment | null>;
   /** Deterministic what-if. Backed by `@canary/engine`'s `simulateCostChange` at integration. */
   simulate(req: WhatIfRequest): Promise<WhatIfResult>;
+  /** The ledger sheet. `@canary/engine`'s `pivotLedger` at integration. */
+  getLedgerPivot(granularity: PivotGranularity): Promise<LedgerPivot>;
+  /** Transactions behind one cell; null when the row or period does not exist. */
+  getLedgerCell(rowId: string, periodKey: string, granularity: PivotGranularity): Promise<PivotCellDetail | null>;
+  /** Actual + expected + canary events. Busy blocks come from the calendar feed, not here. */
+  getCalendarEvents(from: ISODate, to: ISODate): Promise<CalendarEvent[]>;
+  getNeedsReview(): Promise<NeedsReviewResponse["items"]>;
+  /** Applies a reviewer's decision and returns the remaining Needs Review count. */
+  applyClassificationOverride(o: ClassificationOverride): Promise<{ needs_review_count: number }>;
 }
 
 interface StatusOverlay {
@@ -62,6 +79,10 @@ function applyOverlay(base: DerivedDemoObject, overlay: ReadonlyMap<string, Stat
 export class MockDataProvider implements DataProvider {
   private readonly base: DerivedDemoObject;
   private readonly overlay = new Map<string, StatusOverlay>();
+  /** Transaction ids a reviewer has categorised, so they leave Needs Review. */
+  private readonly reviewed = new Set<string>();
+  /** Merchants categorised with `apply_to_merchant`. */
+  private readonly reviewedMerchants = new Set<string>();
 
   constructor(derived: DerivedDemoObject = buildMockDerived()) {
     this.base = derived;
@@ -99,6 +120,29 @@ export class MockDataProvider implements DataProvider {
     const result = mockWhatIf(derived, req.entity, req.percentage) as WhatIfResult;
     // The fixture ships placeholder speech; render it from shared helpers instead.
     return { ...result, speech: whatIfSpeech(result) };
+  }
+
+  async getLedgerPivot(granularity: PivotGranularity): Promise<LedgerPivot> {
+    return mockLedgerPivot(await this.getDerived(), granularity);
+  }
+
+  async getLedgerCell(rowId: string, periodKey: string, granularity: PivotGranularity): Promise<PivotCellDetail | null> {
+    return mockPivotCell(await this.getDerived(), rowId, periodKey, granularity);
+  }
+
+  async getCalendarEvents(from: ISODate, to: ISODate): Promise<CalendarEvent[]> {
+    return mockCalendarEvents(await this.getDerived(), from, to);
+  }
+
+  async getNeedsReview(): Promise<NeedsReviewResponse["items"]> {
+    const items = needsReviewItems(await this.getDerived());
+    return items.filter((i) => !this.reviewed.has(i.transaction_id) && !this.reviewedMerchants.has(i.merchant_normalized));
+  }
+
+  async applyClassificationOverride(o: ClassificationOverride): Promise<{ needs_review_count: number }> {
+    this.reviewed.add(o.transaction_id);
+    if (o.apply_to_merchant && o.merchant_normalized) this.reviewedMerchants.add(o.merchant_normalized);
+    return { needs_review_count: (await this.getNeedsReview()).length };
   }
 }
 
@@ -172,5 +216,11 @@ export function withD1Overlay(provider: DataProvider, db: SqlDatabase): DataProv
       return enrichment;
     },
     simulate: (req) => provider.simulate(req),
+    // Views are pure projections of the ledger — nothing for D1 to overlay.
+    getLedgerPivot: (granularity) => provider.getLedgerPivot(granularity),
+    getLedgerCell: (rowId, periodKey, granularity) => provider.getLedgerCell(rowId, periodKey, granularity),
+    getCalendarEvents: (from, to) => provider.getCalendarEvents(from, to),
+    getNeedsReview: () => provider.getNeedsReview(),
+    applyClassificationOverride: (o) => provider.applyClassificationOverride(o),
   };
 }

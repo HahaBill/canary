@@ -1,50 +1,56 @@
 /**
- * `POST /api/alerts/send` — the outbound iMessage that opens the demo.
+ * `POST /api/alerts/send` — the outbound iMessage that opens the demo — plus the
+ * deferred-alert queue and the alert log.
  *
- * Material incident → one `AlertRendering` (text + voice script from the same
- * incident) → Sendblue text → ElevenLabs PCM → CAF → Sendblue-hosted media →
- * native iMessage voice note. The voice note is best-effort: any failure
- * leaves the text alert delivered and is reported in `voice.error`.
+ * The route decides WHETHER to speak (`decideNotify`, docs/AGENT_BEHAVIOR.md §1);
+ * `src/alerts/deliver.ts` decides HOW, and is shared with the cron. Three
+ * outcomes:
+ *   200 `{ sent: true, … }`   — text (and voice note) delivered.
+ *   200 `{ sent: false, decision }` — the policy declined; nothing was sent and
+ *                                     no Sendblue credit was spent.
+ *   202 `{ sent: false, decision, pending }` — the founder is in a meeting; the
+ *                                     alert is queued for the cron.
  */
-import type { SendAlertResponse, SendAlertVoiceResult } from "@canary/shared";
+import type { AlertHistoryResponse, AlertsPendingResponse, SendAlertResponse } from "@canary/shared";
+import { deliverAlert, type AlertRuntime } from "../alerts/deliver.ts";
+import { listPending, queuePendingAlert, runPendingAlerts, type PendingRunSummary } from "../alerts/pending.ts";
+import { decideNotify, deliverAfter, isDeferred } from "../alerts/policy.ts";
 import { baseUrl, jsonError, readJson, type CanaryApp, type CanaryContext } from "../context.ts";
 import { primaryIncident } from "../derive.ts";
 import { renderAlert } from "../messages.ts";
-import { normalizePcm16, pcmDurationSeconds, pcmToCaf } from "../voice/caf.ts";
 import { requestAuthorized } from "../security.ts";
 
-export const VOICE_NOTE_FILENAME = "CanaryAlert.caf";
+export const DEFAULT_ALERT_HISTORY_LIMIT = 50;
+export const MAX_ALERT_HISTORY_LIMIT = 200;
 
-async function sendVoiceNote(c: CanaryContext, to: string, script: string): Promise<SendAlertVoiceResult> {
-  const tts = c.get("tts");
-  if (!tts.configured) return { sent: false, transcript: script, error: "ELEVENLABS_NOT_CONFIGURED" };
+export type DeliverPendingResponse = { ok: true; result: PendingRunSummary };
 
-  const synth = await tts.synthesizePcm(script);
-  if (!synth.ok || !synth.pcm) return { sent: false, transcript: script, error: `tts: ${synth.error ?? synth.status}` };
+/** The subset of the request context that sending an alert needs. */
+function runtimeOf(c: CanaryContext): AlertRuntime {
+  return {
+    provider: c.get("provider"),
+    sendblue: c.get("sendblue"),
+    tts: c.get("tts"),
+    store: c.get("store"),
+    now: c.get("now"),
+    appEnv: c.get("appEnv"),
+  };
+}
 
-  // TTS output is quiet as a voice memo — bring the peak up to just under full scale.
-  const { pcm } = normalizePcm16(synth.pcm);
-  const caf = pcmToCaf(pcm, synth.sampleRate);
-  const seconds = Math.round(pcmDurationSeconds(pcm.length, synth.sampleRate) * 10) / 10;
-
-  const sendblue = c.get("sendblue");
-  const upload = await sendblue.uploadFile({ bytes: caf, filename: VOICE_NOTE_FILENAME, contentType: "audio/x-caf" });
-  if (!upload.ok || !upload.media_url) return { sent: false, transcript: script, seconds, error: `upload: ${upload.error ?? upload.status}` };
-
-  const sent = await sendblue.sendMessage({ to, media_url: upload.media_url });
-  const result: SendAlertVoiceResult = { sent: sent.sent, transcript: script, media_url: upload.media_url, seconds };
-  if (sent.provider_message_id) result.provider_message_id = sent.provider_message_id;
-  if (!sent.sent) result.error = `send: ${sent.error ?? sent.status}`;
-  return result;
+/** Shared-secret gate for the routes that spend credit or text a real phone. */
+function authorize(c: CanaryContext): Response | null {
+  const auth = requestAuthorized(c.req.raw.headers, c.get("appEnv").WEBHOOK_SECRET);
+  if (auth === "unconfigured") return jsonError(c, 503, "webhook_not_configured", "WEBHOOK_SECRET is not set.");
+  if (auth === "unauthorized") return jsonError(c, 401, "unauthorized", "Missing or invalid x-canary-secret.");
+  return null;
 }
 
 export function registerAlertRoutes(app: CanaryApp): void {
   app.post("/api/alerts/send", async (c) => {
     // Privileged: this route spends Sendblue/ElevenLabs credit and texts a real phone.
     // Requires the shared secret in `x-canary-secret` (public URL, PRD §31 exemption does not apply).
-    const auth = requestAuthorized(c.req.raw.headers, c.get("appEnv").WEBHOOK_SECRET);
-    if (auth === "unconfigured") return jsonError(c, 503, "webhook_not_configured", "WEBHOOK_SECRET is not set.");
-    if (auth === "unauthorized") return jsonError(c, 401, "unauthorized", "Missing or invalid x-canary-secret.");
+    const unauthorized = authorize(c);
+    if (unauthorized) return unauthorized;
 
     const body = await readJson(c);
     if (!body) return jsonError(c, 400, "invalid_json", "Request body must be a JSON object.");
@@ -55,6 +61,7 @@ export function registerAlertRoutes(app: CanaryApp): void {
 
     const incidentId = typeof body.incident_id === "string" ? body.incident_id.trim() : "";
     const wantVoice = body.voice === undefined ? true : body.voice === true;
+    const force = body.force === true;
 
     const provider = c.get("provider");
     const derived = await provider.getDerived();
@@ -63,45 +70,71 @@ export function registerAlertRoutes(app: CanaryApp): void {
       return jsonError(c, 404, "incident_not_found", incidentId ? `No incident with id ${incidentId}.` : "No incident to alert on.");
     }
 
-    const rendering = renderAlert(incident, baseUrl(c));
-    const message = rendering.text_summary;
-    const result = await c.get("sendblue").sendMessage({ to, content: message });
     const now = c.get("now")();
+    // Availability is only consulted when the alert would otherwise go out, so a
+    // declined alert never costs a calendar fetch.
+    const availability = force ? null : await c.get("calendar").isBusyAt(now);
+    const decision = decideNotify({ incident, force, availability, now });
 
-    if (!result.sent) {
-      const response: SendAlertResponse = { sent: false, to, message, error: result.error ?? "send_failed" };
-      return c.json(response, result.error === "SENDBLUE_NOT_CONFIGURED" ? 503 : 502);
+    // A withheld alert still reports the text it would have sent, so whoever asked
+    // can see exactly what was held back. Rendering has no side effects.
+    const withheldMessage = () => renderAlert(incident, baseUrl(c)).text_summary;
+
+    if (isDeferred(decision)) {
+      const pending = await queuePendingAlert(c.get("store"), {
+        incident_id: incident.id,
+        to,
+        voice: wantVoice,
+        now,
+        deliver_after: deliverAfter(decision, now),
+      });
+      const deferredResponse: SendAlertResponse = {
+        sent: false,
+        to,
+        message: withheldMessage(),
+        decision,
+        ...(pending ? { pending } : {}),
+      };
+      return c.json(deferredResponse, 202);
     }
 
-    const store = c.get("store");
-    await store?.logMessage({
-      direction: "outbound",
-      phone: to,
-      body: message,
-      created_at: now,
-      command: null,
-      provider_message_id: result.provider_message_id ?? null,
-    });
-    await provider.markNotified(incident.id, now);
-
-    const response: SendAlertResponse = { sent: true, to, message };
-    if (result.provider_message_id) response.provider_message_id = result.provider_message_id;
-
-    if (wantVoice) {
-      const voice = await sendVoiceNote(c, to, rendering.voice_summary);
-      response.voice = voice;
-      if (voice.sent) {
-        await store?.logMessage({
-          direction: "outbound",
-          phone: to,
-          body: `[voice note ${voice.seconds ?? "?"}s] ${voice.transcript}`,
-          created_at: now,
-          command: null,
-          provider_message_id: voice.provider_message_id ?? null,
-        });
-      }
+    if (!decision.send) {
+      // Deliberately not an error: the caller asked a reasonable question and the
+      // answer is "not now".
+      const declined: SendAlertResponse = { sent: false, to, message: withheldMessage(), decision };
+      return c.json(declined);
     }
 
+    const outcome = await deliverAlert(runtimeOf(c), { incident, to, voice: wantVoice });
+    if (!outcome.sent) {
+      const failed: SendAlertResponse = { sent: false, to, message: outcome.message, error: outcome.error ?? "send_failed" };
+      return c.json(failed, outcome.error === "SENDBLUE_NOT_CONFIGURED" ? 503 : 502);
+    }
+
+    const response: SendAlertResponse = { sent: true, to, message: outcome.message };
+    if (outcome.provider_message_id) response.provider_message_id = outcome.provider_message_id;
+    if (outcome.voice) response.voice = outcome.voice;
     return c.json(response);
+  });
+
+  app.get("/api/alerts/history", async (c) => {
+    const raw = Number.parseInt(c.req.query("limit") ?? "", 10);
+    const limit = Number.isFinite(raw) && raw > 0 ? Math.min(raw, MAX_ALERT_HISTORY_LIMIT) : DEFAULT_ALERT_HISTORY_LIMIT;
+    const body: AlertHistoryResponse = { items: (await c.get("store")?.listMessages(limit)) ?? [] };
+    return c.json(body);
+  });
+
+  app.get("/api/alerts/pending", async (c) => {
+    const body: AlertsPendingResponse = { pending: await listPending(c.get("store")) };
+    return c.json(body);
+  });
+
+  app.post("/api/alerts/deliver-pending", async (c) => {
+    // Same job the cron runs. Privileged for the same reason as /alerts/send.
+    const unauthorized = authorize(c);
+    if (unauthorized) return unauthorized;
+    const result = await runPendingAlerts({ ...runtimeOf(c), calendar: c.get("calendar") });
+    const body: DeliverPendingResponse = { ok: true, result };
+    return c.json(body);
   });
 }
