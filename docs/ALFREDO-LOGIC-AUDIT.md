@@ -3,9 +3,23 @@
 Owner: Alfredo (behaviour and logic). Audience: Bill.
 Date: 2026-09-12. Baseline commit: `c0c4399`.
 
-This is the written record of the detector/engine audit. It lists what was
-broken, what I changed, what I deliberately did **not** change, and the three
-proposals that need your sign-off because they touch `packages/shared`.
+The written record of the logic work: what was broken, what I changed, what I
+deliberately did **not** change, and the proposals that need your sign-off
+because they touch `packages/shared`.
+
+Six commits on `main`, in order:
+
+| Commit | What |
+|---|---|
+| `c8915b6` | `npm run verify` actually runs on Windows |
+| `9ba75e9` | Detector audit: 27 tests, one real fix |
+| `49f8a40` | `docs/AGENT_BEHAVIOR.md`; WHY names the rule that fired |
+| `542884b` | Recurring-charge drift detector (third detector) |
+| `d6089da` | Messy statement shapes in the test profile |
+| `d827134` | What-if says why nothing changed; credit-balance fix |
+
+Nothing in `packages/shared` was edited. Three additive diffs are proposed in §6
+and are ready to apply.
 
 Every demo number is unchanged. `npm run verify` prints the same cash, runway,
 alarm week, change point, primary driver and one-off multiple as before the
@@ -267,6 +281,22 @@ enforcing. One line in `.github/workflows/deploy.yml` after `npm test`:
 It is offline and deterministic (it reads the committed caches), so it needs no
 secrets.
 
+### Proposal 4 — surface the what-if reason in the UI
+
+The reason reaches voice and every API/tool caller today. The web what-if panel
+shows numbers only, so a founder who types a fixed-category vendor still sees
+four zeros and no explanation. One additive field fixes that:
+
+```diff
+   runway_delta_months: number | null;
++  /** Why the scenario changed nothing, already phrased for a reader. Null when it did. */
++  no_change_reason?: string | null;
+```
+
+`apps/api` already computes the string (`noChangeExplanation`); it would just
+stop throwing it away, and `WhatIfPanel.tsx` renders it under the tiles. Purely
+additive — every existing consumer keeps working untouched.
+
 ### Also proposed, lower priority
 
 - One-off severity `HIGH` when the amount is ≥25% of monthly gross burn. Today
@@ -277,12 +307,94 @@ secrets.
 
 ---
 
+## 6b. Built after the audit
+
+### Recurring-charge drift (`542884b`) — third detector, PRD §29 P1
+
+`detectRecurringDrift(ledger, burn)` in `packages/detectors/src/recurring-drift.ts`.
+
+The gap it closes: Datadog went from $3,688 to $6,026 across five monthly
+charges and **neither existing detector could see it**. The one-off rule asks
+"was this payment unusual?" — every charge is normal next to the one before it.
+CUSUM sees the aggregate but attributes it to a week, not to a bill.
+
+Method, same shape as `one-off.ts`: group by vendor, compare the median of the
+earlier half of its charges against the later half, so no single invoice can
+move both sides. Fires at >= 40% (PRD's wording) **and** >= $1,000/month of real
+cost, so +100% on a $9 seat stays quiet.
+
+It reports **dollars per charge, not per week** — deliberately. Contributor
+decomposition already owns the weekly rate; a second weekly number would read as
+a contradiction. "$3,782 → $6,026 per charge" is complementary, and it is what
+the invoice says.
+
+`attachDriftSignals` implements contract §10 grouping including the
+**time-overlap clause that had no implementation**: a drift joins a parent
+incident only when its entity is in that incident's contributors AND its last
+charge lands at or after the change point. It enriches the existing child signal
+and adds one OBSERVED evidence line. Contributors, rates, severity and summary
+are untouched. A drift with no parent creates no incident — `IncidentType` has
+no member for it, and inventing one is the duplicate-alerting §10 forbids.
+
+On the demo: exactly one drift (datadog, +59%, ~$2,213/month more), folded into
+`inc_5b393334`. A new verify assertion covers it.
+
+### Messy statement shapes (`d6089da`) — test profile only
+
+Contract §4 says the test seed may carry reconciliation edge cases. It carried
+none, so the engine had only ever been tested against a tidy ledger. Added, all
+`profile: "test"`:
+
+- a same-day double-post and the reversal that cancels one leg
+- a vendor credit larger than anything that vendor was charged that week
+- a paper check to a person (`CHECK 1042 J MORALES`)
+- descriptors that identify nothing (`ACH DEBIT 0392481`, `ONLINE PAYMENT THANK YOU`)
+- an internal transfer whose other leg never arrives
+- a pending authorisation in the final week that never settles
+
+`packages/pipeline/src/messy-profile.test.ts` proves what survives: cash closes
+on the bank balance to the cent; the double-post plus reversal nets to exactly
+one charge with both debits kept as real rows (the engine never guesses which
+was the mistake); the over-credit drives that vendor's week negative rather than
+clamping at zero, which would overstate burn; check and anonymous descriptors
+reach Needs Review and still count; the never-settled pending row counts; the
+orphan leg is counted and warned about. CUSUM still finds the shift and only the
+planted one-off is flagged.
+
+The demo profile is asserted clean of every one of these shapes, and its 246
+transactions are unchanged.
+
+### What-if now says why (`d827134`)
+
+Closes the P1 gap in HANDOFF §6, and fixes a bug the messy profile exposed:
+scaling a **negative** weekly figure (credits outweighing charges) by
+`1 + pct/100` moves it toward zero, so "20% lower" reported burn **rising**.
+
+Split by what each layer can honestly know. The engine returns
+`ZERO_PERCENTAGE` / `NOT_MONITORED` / `NO_SPEND_TO_CHANGE`; `BurnSummary` carries
+only monitored variable spend, so it genuinely cannot tell a fixed-category
+vendor from one never seen, and it does not pretend to. `apps/api` has the full
+derived object and refines `NOT_MONITORED` into the case that matters:
+
+> "Gusto payroll is payroll, which Canary treats as fixed rather than variable
+> spend, so this scenario does not move modeled burn."
+
+versus
+
+> "I have no spending on record for Acme Widgets, so there is nothing to model."
+
+One means "that's payroll", the other means "check the spelling".
+
+**This is the one place a shared change would still help** — see Proposal 4.
+
+---
+
 ## 7. What runs green
 
 ```
 npm run typecheck   all workspaces, no errors
-npm test            535 tests
-npm run verify      21 checks, ALL CHECKS PASSED (on Windows, finally)
+npm test            589 tests (was 508)
+npm run verify      22 checks, ALL CHECKS PASSED (on Windows, finally)
 ```
 
 Demo numbers, unchanged throughout:
@@ -297,3 +409,8 @@ Demo numbers, unchanged throughout:
 | primary driver | aws +$2,999/wk |
 | one-off | figma $13,827.00 = 12.0× median $1,152.14 |
 | incidents | `inc_5b393334` · `inc_079155c3` |
+
+Every commit above was gated on those numbers being byte-identical. The only
+deliberate change to what an incident *contains* is the drift signal folded into
+`inc_5b393334` (one enriched child signal, one extra OBSERVED evidence line) —
+no rate, impact, severity or summary moved.

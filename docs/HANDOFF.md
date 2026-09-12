@@ -62,19 +62,35 @@ Sendblue dashboard config: Inbound Messages webhook = `https://canary.bill-nguye
 
 ## 5. Testing & verification
 
-- `npm test` — ~510 unit tests, offline. Live OpenAI/Tavily tests auto-skip without keys.
+- `npm test` — ~590 unit tests, offline. Live OpenAI/Tavily tests auto-skip without keys.
 - `npm run verify` — runs the full pipeline and asserts contract §15 (closing balance exact, transfer $0, settlements not double counted, one-off ≥3 priors and fires, winsorized out of CUSUM, CUSUM fires before last week, change point within ±2 weeks, post-change burn window, contributor sums, dedup incl. driver drift and stale incidents, Tavily cited, Ashby corroborated). Must print `ALL CHECKS PASSED`.
 - Local e2e: `npm run dev:api` then curl the routes above against `localhost:8787` (use `x-canary-secret` from `.dev.vars` for the webhook/alerts).
+- `npm run verify` had never actually run on Windows (the `import.meta.url` entry-point guard never matched, so it printed nothing and exited 0). Fixed in `c8915b6`. CI still does not run it — see `docs/ALFREDO-LOGIC-AUDIT.md` proposal 3.
 
 ## 6. Known gaps / P1 backlog
 
 - Embedded "Ask Canary" ElevenLabs web voice agent (tool endpoints exist; no UI yet).
 - Cron triggers (bank sync / detector rerun) — `scheduled()` is a no-op.
-- What-if for a fixed-category or unknown entity reports "no change" without saying why (`packages/engine/src/whatif.ts`).
 - Statement reconciliation UI beyond the data-quality strip; `reconciliation.warnings` not rendered in the SPA.
 - SPA bundle is one 742 kB chunk (Recharts); `/api/demo` includes the full `classifications` map the SPA doesn't read.
 - `miguel_santos` (a contractor paid by name) lands in Needs Review by design — that's the "nothing falls through silently" demo beat.
 - Rotate all API keys after the hackathon (they were shared in chat).
+
+## 6b. Logic layer (Alfredo)
+
+`docs/AGENT_BEHAVIOR.md` — the speech contract binding iMessage, the incident
+copy and any voice agent: when Canary may interrupt, the OBSERVED → DETECTED →
+EVIDENCE → ESTIMATE → SUGGESTION order, where numbers may come from, what it
+must refuse, and the exact answer shapes for runway / why / what-if.
+
+`docs/ALFREDO-LOGIC-AUDIT.md` — the detector/engine audit: what was broken, the
+81 tests added, threshold rationale for every constant in `config.ts`, gaps left
+alone on purpose, and four additive `packages/shared` diffs awaiting sign-off.
+
+Added since: a third detector (recurring-charge drift, folded into the incident
+it contributes to per contract §10), messy statement shapes in the `test`
+profile with end-to-end reconciliation assertions, and a what-if that explains
+why a scenario changed nothing.
 
 ## 7. How it was built
 

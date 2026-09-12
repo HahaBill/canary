@@ -2,6 +2,8 @@
 
 Read this first. Then `docs/HANDOFF.md` (what is built and how it fits together), and the product docs (`docs/PRD.md`, `docs/BUILD.md`, `docs/DATA_AND_DETECTOR_CONTRACT.md`, `docs/DEMO.md`).
 
+Before changing anything Canary *says*, read `docs/AGENT_BEHAVIOR.md` — it is the speech contract for iMessage, incident copy and any voice agent. Before changing a detector or a threshold, read `docs/ALFREDO-LOGIC-AUDIT.md` — it carries the rationale for every constant in `config.ts` and the gaps that are open on purpose.
+
 ## What this is
 
 Canary is an explainable early-warning system for startup cash: it reconciles a (fictional) company's bank ledger, detects sustained spending shifts (CUSUM) and one-off vendor anomalies, researches unknown vendors (OpenAI + Tavily), and alerts the founder over iMessage (Sendblue text + ElevenLabs voice note) with a React incident page and a deterministic what-if simulator. Production: https://canary.bill-nguyentonhoang.workers.dev
@@ -13,7 +15,7 @@ Canary is an explainable early-warning system for startup cash: it reconciles a 
 3. **Integer cents everywhere.** Transactions are signed (inflow > 0, outflow < 0); aggregates are positive magnitudes. `WEEKS_PER_MONTH = 52/12`, never 4.
 4. **Determinism.** No `Date.now()` / `Math.random()` in production paths; `now` and `seed` are injected. Two pipeline runs must be byte-identical.
 5. **`packages/shared` is the contract.** Change types/config there first, then consumers. Don't duplicate types elsewhere.
-6. **Evidence taxonomy** on every user-facing explanation: OBSERVED → DETECTED → EVIDENCE → ESTIMATE → SUGGESTION. Suggestions are never prescriptive operational decisions.
+6. **Evidence taxonomy** on every user-facing explanation: OBSERVED → DETECTED → EVIDENCE → ESTIMATE → SUGGESTION. Suggestions are never prescriptive operational decisions. `docs/AGENT_BEHAVIOR.md` is the full contract.
 7. **Secrets** live only in `apps/api/.dev.vars` (gitignored) and Cloudflare Worker secrets. Never commit or print them.
 8. **D1 migrations are additive only** (`apps/api/migrations/NNNN_*.sql`): CI applies them before the new Worker goes live.
 
@@ -21,9 +23,9 @@ Canary is an explainable early-warning system for startup cash: it reconciles a 
 
 ```text
 packages/shared          types, config (all thresholds), company profile, dates, money, API + tool contracts, test fixtures
-packages/generator       deterministic 20-week synthetic ledger anchored to the sandbox bank balance (planted shift, one-off, unknown vendor)
+packages/generator       deterministic 20-week synthetic ledger anchored to the sandbox bank balance (planted shift, one-off, unknown vendor; `test` profile adds messy statement shapes)
 packages/engine          reconciliation ledger, weekly buckets, burn/runway windows, what-if
-packages/detectors       one-off rule, one-sided CUSUM, contributor decomposition, materiality, incidents + dedup
+packages/detectors       one-off rule, one-sided CUSUM, recurring-charge drift, contributor decomposition, materiality, incidents + dedup
 packages/classification  merchant rules → OpenAI → Tavily corroboration → Needs Review; cache/
 packages/pipeline        runPipeline() → DerivedDemoObject; verify.ts (contract §15 assertions); committed demo caches
 apps/api                 Cloudflare Worker (Hono): REST API, Sendblue webhook + alerts (text + voice), agent tools, D1, sandbox bank
