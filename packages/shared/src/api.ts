@@ -6,8 +6,20 @@
  * inbound Sendblue webhook which checks a shared secret.
  */
 import type {
+  AlertHistoryItem,
+  AvailabilityResponse,
+  CashCalendar,
+  ClassificationOverride,
+  LedgerPivot,
+  NotifyDecision,
+  PendingAlert,
+  PivotCellDetail,
+  PivotGranularity,
+} from "./views.ts";
+import type {
   BankAccount,
   BurnSummary,
+  Category,
   Cents,
   DataProvenance,
   DerivedDemoObject,
@@ -41,6 +53,15 @@ export const API_ROUTES = {
   toolGetIncident: "POST /api/tools/get_incident",
   toolSimulate: "POST /api/tools/simulate_cost_change",
   toolCreateAppLink: "POST /api/tools/create_app_link",
+  // Views (ledger sheet, calendar) and notification policy
+  ledger: "GET /api/ledger",
+  ledgerCell: "GET /api/ledger/cell",
+  calendar: "GET /api/calendar",
+  availability: "GET /api/availability",
+  alertHistory: "GET /api/alerts/history",
+  alertsPending: "GET /api/alerts/pending",
+  needsReview: "GET /api/needs-review",
+  classificationOverride: "POST /api/classifications/override",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -114,6 +135,11 @@ export interface SendAlertRequest {
   incident_id?: string;
   /** Also send an ElevenLabs voice note after the text (default true when TTS is configured). */
   voice?: boolean;
+  /**
+   * Bypass the notification policy (status must be OPEN, not already notified,
+   * founder not in a meeting). Demo/operator use only.
+   */
+  force?: boolean;
 }
 export interface SendAlertVoiceResult {
   sent: boolean;
@@ -132,7 +158,61 @@ export interface SendAlertResponse {
   provider_message_id?: string;
   error?: string;
   voice?: SendAlertVoiceResult;
+  /** Present when the policy declined or deferred the alert (`sent` is false). */
+  decision?: NotifyDecision;
+  /** Present when deferred: the queued alert (delivered by cron once the founder is free). */
+  pending?: PendingAlert;
 }
+
+// ---------------------------------------------------------------------------
+// Views
+// ---------------------------------------------------------------------------
+
+export interface LedgerQuery {
+  granularity?: PivotGranularity; // default "month"
+}
+export type LedgerResponse = { pivot: LedgerPivot };
+export interface LedgerCellQuery {
+  row_id: string;
+  period_key: string;
+  granularity?: PivotGranularity;
+}
+export type LedgerCellResponse = { detail: PivotCellDetail };
+
+export interface CalendarQuery {
+  /** Inclusive, `YYYY-MM-DD`. Defaults to the month containing history_end. */
+  from?: ISODate;
+  to?: ISODate;
+}
+export type CalendarResponse = { calendar: CashCalendar };
+
+export type { AvailabilityResponse };
+export type AlertHistoryResponse = { items: AlertHistoryItem[] };
+export type AlertsPendingResponse = { pending: PendingAlert[] };
+
+export interface NeedsReviewResponse {
+  count: number;
+  outflow_cents: Cents;
+  items: Array<{
+    transaction_id: string;
+    date: ISODate;
+    merchant_raw: string;
+    merchant_normalized: string;
+    amount_cents: Cents;
+    reason: string;
+    /** Signals recorded by classification (OPENAI/TAVILY proposals), for the reviewer. */
+    proposals: Array<{ source: string; category?: string; detail: string; url?: string }>;
+  }>;
+  overrides: ClassificationOverride[];
+}
+
+export interface ClassificationOverrideRequest {
+  transaction_id: string;
+  category: Category;
+  apply_to_merchant?: boolean;
+  note?: string;
+}
+export type ClassificationOverrideResponse = { override: ClassificationOverride; needs_review_count: number };
 
 export interface ErrorResponse {
   error: string;

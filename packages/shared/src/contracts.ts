@@ -175,3 +175,32 @@ export interface ClassifyResult {
 }
 
 export type ClassifyTransactions = (transactions: Transaction[], opts?: ClassifyOptions) => Promise<ClassifyResult>;
+
+// ---------------------------------------------------------------------------
+// Views (engine → api → web). Pure functions; all figures engine-derived.
+// ---------------------------------------------------------------------------
+
+import type { CalendarEvent, LedgerPivot, PivotCellDetail, PivotGranularity, RecurringSeries } from "./views.ts";
+
+export interface PivotLedgerOptions {
+  granularity: PivotGranularity;
+  /** First week (Monday) of the confirmed new regime, for `post_change` tinting. */
+  regimeStart?: ISODate | null;
+  /** entity → incident id, for vendor-row deep links. */
+  incidentByEntity?: Record<string, string>;
+}
+export type PivotLedger = (ledger: Ledger, opts: PivotLedgerOptions) => LedgerPivot;
+
+export type PivotCellLookup = (ledger: Ledger, rowId: string, periodKey: string, granularity: PivotGranularity) => PivotCellDetail;
+
+export interface ProjectRecurringOptions {
+  /** Project from the day after history_end through this date (inclusive). */
+  horizonEnd: ISODate;
+  /** Minimum observations before a series is projected. Default 3. */
+  minObservations?: number;
+}
+/** Detects recurring vendor charges (weekly/biweekly/monthly) and projects their next dates. */
+export type ProjectRecurring = (ledger: Ledger, opts: ProjectRecurringOptions) => RecurringSeries[];
+
+/** Actual + expected + canary events for a date range (no busy blocks — the API merges those). */
+export type BuildCashCalendarEvents = (input: { ledger: Ledger; incidents: Incident[]; recurring: RecurringSeries[]; from: ISODate; to: ISODate }) => CalendarEvent[];
