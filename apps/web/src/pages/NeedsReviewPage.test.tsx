@@ -42,8 +42,8 @@ describe("NeedsReviewPage", () => {
     renderApp("/needs-review");
     await screen.findByText(item.merchant_raw);
 
-    expect(screen.getByText("OpenAI → Professional Services")).toBeInTheDocument();
-    const tavily = screen.getByText("Tavily → Saas Software ↗");
+    expect(screen.getByText("OpenAI → Professional services")).toBeInTheDocument();
+    const tavily = screen.getByText("Tavily → SaaS software ↗");
     expect(tavily.closest("a")).toHaveAttribute("href", derived.vendor_enrichments[0]!.source_url);
   });
 

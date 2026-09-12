@@ -178,7 +178,7 @@ export function entityDisplayName(entity: string): string {
   return known ?? titleCase(entity);
 }
 
-/** `CLOUD_INFRASTRUCTURE` → `Cloud Infrastructure`. */
+/** `CLOUD_INFRASTRUCTURE` → `Cloud infrastructure`; acronyms/ampersands via CATEGORY_LABELS. */
 const CATEGORY_LABELS: Partial<Record<Category, string>> = {
   SAAS_SOFTWARE: "SaaS software",
   CLOUD_INFRASTRUCTURE: "Cloud infrastructure",

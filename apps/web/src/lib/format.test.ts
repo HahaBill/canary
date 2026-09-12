@@ -27,7 +27,8 @@ describe("entityDisplayName", () => {
 
 describe("labels", () => {
   it("humanizes categories and materiality rules", () => {
-    expect(categoryLabel("CLOUD_INFRASTRUCTURE")).toBe("Cloud Infrastructure");
+    expect(categoryLabel("CLOUD_INFRASTRUCTURE")).toBe("Cloud infrastructure");
+    expect(categoryLabel("SAAS_SOFTWARE")).toBe("SaaS software");
     expect(categoryLabel(null)).toBeNull();
     expect(ruleLabel("MIN_MONTHLY_DELTA")).toBe("Min monthly delta");
   });
