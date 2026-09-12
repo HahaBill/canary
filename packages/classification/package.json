@@ -3,11 +3,15 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/core.ts"
+  },
   "types": "./src/index.ts",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "seed-cache": "node --experimental-strip-types scripts/seed-cache.ts"
   },
   "dependencies": { "@canary/shared": "*" }
 }

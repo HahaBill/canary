@@ -1,0 +1,12 @@
+{
+  "ashby": {
+    "vendor_name": "Ashby",
+    "merchant_normalized": "ashby",
+    "business_type": "PLACEHOLDER — no live Tavily result yet. Run `npm run seed-cache -w @canary/classification` with TAVILY_API_KEY (and OPENAI_API_KEY) set to replace this entry with the real retrieved description.",
+    "mapped_category": "NEEDS_REVIEW",
+    "source_url": "https://example.invalid/placeholder",
+    "source_title": "PLACEHOLDER — run seed-cache",
+    "retrieved_at": "1970-01-01T00:00:00.000Z",
+    "cached": true
+  }
+}
