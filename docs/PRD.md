@@ -15,7 +15,7 @@
 Company:      Perch Analytics, Inc.
 Stage:        Seed, B2B analytics SaaS, cloud-heavy
 Team:         14 people
-Raised:       ~$2.4M
+Raised:       ~$3.0M
 Bank:         Canary Sandbox Bank (fictional)
 Accounts:     Operating checking, savings/reserve, corporate card
 ```

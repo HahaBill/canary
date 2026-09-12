@@ -45,7 +45,7 @@ export const COMPANY: CompanyProfile = {
   description: "Fictional seed-stage B2B analytics SaaS company used for the Canary demo.",
   stage: "Seed",
   headcount: 14,
-  raised_cents: 240_000_000, // $2.4M
+  raised_cents: 300_000_000, // $3.0M (opening balance ~$2.66M must be ≤ raised)
   bank_name: "Canary Sandbox Bank",
   as_of: DEMO.END_DATE,
   accounts: SANDBOX_ACCOUNTS,

@@ -124,6 +124,8 @@ export interface Transaction {
   /**
    * Ground-truth category from the generator. FOR TESTS/ASSERTIONS ONLY.
    * Classification code must never read this in a production path.
+   * For a REFUND row this is the category of the vendor being refunded (the
+   * engine nets the refund into that category), not `REFUND`.
    */
   category_hint?: Category;
 }

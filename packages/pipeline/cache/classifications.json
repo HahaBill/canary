@@ -1,0 +1,50 @@
+{
+  "ashby": {
+    "merchant_normalized": "ashby",
+    "category": "RECRUITING",
+    "method": "LLM_CORROBORATED",
+    "reason": "OpenAI proposed RECRUITING (Ashby provides recruiting software solutions for hiring and talent management.) and external research describing this vendor as \"Ashby is a software development company that helps high-growth firms streamline their hiring processes and scale efficiently. It operates remotely with teams worldwide and focuses on innovative peopl…\" mapped to the same category.",
+    "supporting_signals": [
+      {
+        "source": "RULE",
+        "detail": "No deterministic rule matched \"ashby\"."
+      },
+      {
+        "source": "OPENAI",
+        "detail": "openai: Ashby provides recruiting software solutions for hiring and talent management.",
+        "proposed_category": "RECRUITING"
+      },
+      {
+        "source": "TAVILY",
+        "detail": "Ashby is a software development company that helps high-growth firms streamline their hiring processes and scale efficiently. It operates remotely with teams worldwide and focuses on innovative peopl… (previously retrieved)",
+        "proposed_category": "RECRUITING",
+        "url": "https://jobs.ashbyhq.com/ashby"
+      }
+    ],
+    "confidence_level": "HIGH"
+  },
+  "miguel_santos": {
+    "merchant_normalized": "miguel_santos",
+    "category": "NEEDS_REVIEW",
+    "method": "NEEDS_REVIEW",
+    "reason": "Signals disagreed: OpenAI proposed PROFESSIONAL_SERVICES, external research (\"Miguel Santos leads Technisys, a digital banking technology company that provides scalable solutions for banks to enhance customer experience and product offerings.\") mapped to SAAS_SOFTWARE. Left as Needs Review.",
+    "supporting_signals": [
+      {
+        "source": "RULE",
+        "detail": "No deterministic rule matched \"miguel_santos\"."
+      },
+      {
+        "source": "OPENAI",
+        "detail": "openai: Miguel Santos provides design services on a retainer basis.",
+        "proposed_category": "PROFESSIONAL_SERVICES"
+      },
+      {
+        "source": "TAVILY",
+        "detail": "Miguel Santos leads Technisys, a digital banking technology company that provides scalable solutions for banks to enhance customer experience and product offerings.",
+        "proposed_category": "SAAS_SOFTWARE",
+        "url": "https://www.forbes.com/sites/brucerogers/2019/06/03/miguel-santos-builds-technisys-to-enable-a-better-digital-banking-experience"
+      }
+    ],
+    "confidence_level": "LOW"
+  }
+}
