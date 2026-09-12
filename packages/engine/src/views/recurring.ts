@@ -20,8 +20,7 @@ import {
   type ISODate,
   type LedgerTransaction,
   type ProjectRecurring,
-  type RecurringSeries,
-} from "@canary/shared";
+  type RecurringSeries, RECURRING } from "@canary/shared";
 import { addMonthsClamped, dayOfMonth } from "./periods.ts";
 
 type Cadence = RecurringSeries["cadence"];
@@ -37,20 +36,14 @@ interface CadenceSpec {
   tolerance: number;
 }
 
-const CADENCES: readonly CadenceSpec[] = [
-  { cadence: "weekly", days: 7, minMedianGap: 6, maxMedianGap: 8, tolerance: 2 },
-  { cadence: "biweekly", days: 14, minMedianGap: 13, maxMedianGap: 15, tolerance: 2 },
-  { cadence: "monthly", days: 30, minMedianGap: 27, maxMedianGap: 32, tolerance: 4 },
-];
+// All thresholds live in shared config (AGENTS.md rule: no hard-coded thresholds).
+const CADENCES: readonly CadenceSpec[] = RECURRING.CADENCES;
 
-const MONTHLY = CADENCES[2]!;
+const MONTHLY = CADENCES.find((c) => c.cadence === "monthly")!;
 
-/** Share of gaps that must land within the cadence tolerance. */
-const MIN_ON_CADENCE_SHARE = 0.7;
-/** How far a day-of-month may drift before "the 1st of the month" stops being true. */
-const DAY_OF_MONTH_TOLERANCE = 3;
-/** Below this median gap a day-of-month match is a coincidence, not a monthly bill. */
-const MIN_MONTHLY_FALLBACK_GAP = 20;
+const MIN_ON_CADENCE_SHARE = RECURRING.MIN_ON_CADENCE_SHARE;
+const DAY_OF_MONTH_TOLERANCE = RECURRING.DAY_OF_MONTH_TOLERANCE_DAYS;
+const MIN_MONTHLY_FALLBACK_GAP = RECURRING.MIN_MONTHLY_FALLBACK_GAP_DAYS;
 /** Guard against a pathological horizon; 5 years of weekly charges. */
 const MAX_PROJECTED_DATES = 260;
 
@@ -61,7 +54,7 @@ interface Observation {
 }
 
 export const projectRecurring: ProjectRecurring = (ledger, opts): RecurringSeries[] => {
-  const minObservations = opts.minObservations ?? 3;
+  const minObservations = opts.minObservations ?? RECURRING.MIN_OBSERVATIONS;
   const byEntity = new Map<string, Observation[]>();
 
   for (const tx of ledger.transactions) {

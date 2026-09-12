@@ -95,6 +95,29 @@ export const SEVERITY_THRESHOLDS = {
 } as const;
 
 // ---------------------------------------------------------------------------
+// Recurring-charge projection (cash calendar "expected" events)
+// ---------------------------------------------------------------------------
+
+export const RECURRING = {
+  /** Prior observations required before a vendor is projected. */
+  MIN_OBSERVATIONS: 3,
+  /** Share of inter-payment gaps that must land within the cadence tolerance. */
+  MIN_ON_CADENCE_SHARE: 0.7,
+  /** Day-of-month drift tolerated for monthly bills. */
+  DAY_OF_MONTH_TOLERANCE_DAYS: 3,
+  /** Below this median gap a day-of-month match is coincidence, not a monthly bill. */
+  MIN_MONTHLY_FALLBACK_GAP_DAYS: 20,
+  /** Median-gap windows (days) that select each cadence, and per-gap tolerance. */
+  CADENCES: [
+    { cadence: "weekly", days: 7, minMedianGap: 6, maxMedianGap: 8, tolerance: 2 },
+    { cadence: "biweekly", days: 14, minMedianGap: 13, maxMedianGap: 15, tolerance: 2 },
+    { cadence: "monthly", days: 30, minMedianGap: 27, maxMedianGap: 32, tolerance: 4 },
+  ] as ReadonlyArray<{ cadence: "weekly" | "biweekly" | "monthly"; days: number; minMedianGap: number; maxMedianGap: number; tolerance: number }>,
+  /** Hide projected charges below this magnitude in the calendar UI (trivia floor). */
+  MIN_EXPECTED_AMOUNT_CENTS: 20_000, // $200
+} as const;
+
+// ---------------------------------------------------------------------------
 // Demo fixture constants (contract §4–5, §13)
 // ---------------------------------------------------------------------------
 
