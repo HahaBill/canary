@@ -1,6 +1,6 @@
 import { CHANGE_POINT_TOLERANCE_WEEKS, CUSUM_DEFAULTS, DEMO, MAD_TO_SIGMA, mad, median } from "@canary/shared";
 import { describe, expect, it } from "vitest";
-import { ewma, runCusum } from "./cusum.ts";
+import { NO_PRE_CHANGE_SEGMENT, ewma, runCusum } from "./cusum.ts";
 import { buildWeeks } from "./test-helpers.ts";
 
 describe("runCusum", () => {
@@ -183,5 +183,103 @@ describe("ewma", () => {
   it("rejects an alpha outside (0, 1]", () => {
     expect(() => ewma([1, 2], 0)).toThrow();
     expect(() => ewma([1, 2], 1.5)).toThrow();
+  });
+});
+
+/**
+ * Cases the demo series never produces. Each one is a contract §6 clause that
+ * had no test: the alarm landing on the final week, the "statistic never
+ * returned to zero" sentinel, the sigma floor carrying the whole estimate, and
+ * a dead week inside the series.
+ */
+describe("runCusum — edge cases outside the demo path", () => {
+  /** A flat series with one large week. Baseline MAD is 0, so sigma is the floor. */
+  const flatWithSpike = (index: number, amount = 765_000) =>
+    buildWeeks({ changeAt: null, noiseFraction: 0, spike: { index, amount } });
+
+  it("fires on the final week and reports a post-change rate from very few weeks", () => {
+    const weeks = buildWeeks({ changeAt: DEMO.WEEKS - 1, noiseFraction: 0.03, step: { aws: 2_000_000 } });
+    const result = runCusum(weeks);
+    const last = weeks.length - 1;
+    const regimeStart = result.estimated_change_point_index! + 1;
+    const post = weeks.slice(regimeStart).map((w) => w.variable_spend_cents);
+
+    expect(result.fired).toBe(true);
+    expect(result.alarm_week_index).toBe(last);
+    expect(result.estimated_change_point_index!).toBeLessThan(last);
+    // The whole post-change segment is one or two weeks, so everything the
+    // incident says about "the new rate" rests on that tiny sample. Nothing in
+    // the detector refuses to publish it — MIN_POST_CHANGE_WEEKS guards the burn
+    // window, not the narrative. See docs/AGENT_BEHAVIOR.md.
+    expect(result.post_change_weeks).toBe(weeks.length - regimeStart);
+    expect(result.post_change_weeks!).toBeLessThanOrEqual(2);
+    expect(result.post_change_rate_weekly_cents).toBe(Math.round(post.reduce((a, b) => a + b, 0) / post.length));
+    expect(result.detection_lag_weeks).toBe(last - regimeStart);
+    expect(Number.isInteger(result.pre_change_rate_weekly_cents!)).toBe(true);
+  });
+
+  it("reports no pre-change segment when the statistic never returned to zero before the alarm", () => {
+    // Week 0 is double the flat level, so the statistic clears h immediately and
+    // there is no earlier zero to point at.
+    const weeks = flatWithSpike(0);
+    const result = runCusum(weeks);
+
+    expect(result.fired).toBe(true);
+    expect(result.alarm_week_index).toBe(0);
+    expect(result.estimated_change_point_index).toBe(NO_PRE_CHANGE_SEGMENT);
+    // An unknown pre-change rate stays null rather than becoming a misleading zero.
+    expect(result.pre_change_rate_weekly_cents).toBeNull();
+    expect(result.delta_weekly_cents).toBeNull();
+    // The date still resolves: the elevated regime covers the whole series.
+    expect(result.estimated_change_point_week_start).toBe(weeks[0]!.week_start);
+    expect(result.post_change_weeks).toBe(DEMO.WEEKS);
+  });
+
+  it("falls back to the sigma floor when the baseline has no dispersion", () => {
+    const weeks = flatWithSpike(0);
+    const result = runCusum(weeks);
+    const flatLevel = weeks[1]!.variable_spend_cents;
+
+    // MAD of an identical baseline is 0, so sigma is entirely the config floor.
+    expect(result.baseline_median_cents).toBe(flatLevel);
+    expect(result.sigma_cents).toBe(Math.round(CUSUM_DEFAULTS.sigma_floor_fraction * flatLevel));
+    expect(result.h_cents).toBe(Math.round(CUSUM_DEFAULTS.h_multiplier * result.sigma_cents));
+  });
+
+  it("alarms on a single modest week once the sigma floor is the only dispersion estimate", () => {
+    // h is 4 x 2% = 8% of the median, so a +10% week clears it on its own.
+    // This is why the floor fraction is a real threshold decision, not a guard value.
+    const weeks = buildWeeks({ changeAt: null, noiseFraction: 0, spike: { index: 9, amount: 76_500 } });
+    const result = runCusum(weeks);
+
+    expect(result.fired).toBe(true);
+    expect(result.alarm_week_index).toBe(9);
+  });
+
+  it("survives an all-zero week in the baseline and in the monitored window", () => {
+    const zeroed = (index: number) =>
+      buildWeeks({ changeAt: DEMO.CHANGE_START_INDEX }).map((w, i) =>
+        i === index ? { ...w, variable_spend_cents: 0, variable_by_entity: {}, variable_by_category: {} } : w,
+      );
+
+    const inBaseline = runCusum(zeroed(3));
+    expect(inBaseline.sigma_cents).toBeGreaterThan(0);
+    expect(inBaseline.fired).toBe(true);
+    expect(inBaseline.statistic_cents.every((s) => s >= 0)).toBe(true);
+
+    const inWindow = runCusum(zeroed(DEMO.CHANGE_START_INDEX + 2));
+    expect(inWindow.fired).toBe(true);
+    expect(inWindow.statistic_cents.every((s) => s >= 0)).toBe(true);
+  });
+
+  it("tolerates a negative week (a refund larger than that week's charges)", () => {
+    const weeks = buildWeeks({ changeAt: DEMO.CHANGE_START_INDEX }).map((w, i) =>
+      i === 12 ? { ...w, variable_spend_cents: -50_000 } : w,
+    );
+    const result = runCusum(weeks);
+
+    // The statistic floors at zero, so a credit week cannot push it negative.
+    expect(result.statistic_cents.every((s) => s >= 0)).toBe(true);
+    expect(result.statistic_cents).toHaveLength(weeks.length);
   });
 });

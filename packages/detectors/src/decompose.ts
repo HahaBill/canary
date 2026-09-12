@@ -16,6 +16,12 @@ import { weeklyToMonthly, type Cents, type Contributor, type CusumResult, type D
 export const decomposeContributors: DecomposeContributors = (weeks: WeeklyBucket[], cusum: CusumResult): Contributor[] => {
   const changePointIndex = cusum.estimated_change_point_index;
   if (!cusum.fired || changePointIndex === null) return [];
+  // NO_PRE_CHANGE_SEGMENT (-1): the statistic never returned to zero before the
+  // alarm, so there is no "before" to compare against. CUSUM reports an unknown
+  // pre-change rate as null; an empty pre-segment here would instead give every
+  // entity a pre-rate of 0 and report its full-series average as a DELTA — a
+  // change that never happened. No comparison is the honest answer.
+  if (changePointIndex < 0) return [];
 
   const regimeStart = changePointIndex + 1;
   if (regimeStart >= weeks.length) return [];

@@ -116,3 +116,47 @@ describe("detectOneOffs", () => {
     expect(detectOneOffs(ledger, BURN)).toEqual(detectOneOffs(ledger, BURN));
   });
 });
+
+/** The rule is `>=` on both conditions. These pin the exact edges. */
+describe("detectOneOffs — threshold boundaries", () => {
+  const MEDIAN = 100_000; // $1,000
+  const PRIORS = [MEDIAN, MEDIAN, MEDIAN];
+  /** Exactly 3x the median AND exactly $2,000 above it — both rules at equality. */
+  const AT_BOTH_EDGES = ONE_OFF_MEDIAN_MULTIPLE * MEDIAN;
+
+  const detect = (amount: number) => {
+    const ledger = makeLedger([
+      ...priorPayments("figma", PRIORS, "2026-08-01"),
+      makeTx({ id: "candidate", date: "2026-09-05", amount_cents: -amount, merchant_normalized: "figma" }),
+    ]);
+    return detectOneOffs(ledger, BURN).find((r) => r.transaction_id === "candidate") ?? null;
+  };
+
+  it("fires when both conditions are met at exact equality", () => {
+    expect(AT_BOTH_EDGES - MEDIAN).toBe(ONE_OFF_MIN_ABS_DIFF_CENTS);
+    const result = detect(AT_BOTH_EDGES);
+
+    expect(result?.is_anomalous).toBe(true);
+    expect(result?.multiple_of_median).toBe(ONE_OFF_MEDIAN_MULTIPLE);
+  });
+
+  it("stays quiet one cent below either edge", () => {
+    // One cent under the multiple (and therefore also under the absolute floor).
+    expect(detect(AT_BOTH_EDGES - 1)).toBeNull();
+  });
+
+  it("still needs the absolute floor when the median is tiny", () => {
+    // 10x a $50 median is only a $450 difference: a big multiple of a small
+    // number is noise, not an event worth interrupting a founder for.
+    const ledger = makeLedger([
+      ...priorPayments("linear", [5_000, 5_000, 5_000], "2026-08-01"),
+      makeTx({ id: "tiny", date: "2026-09-05", amount_cents: -50_000, merchant_normalized: "linear" }),
+    ]);
+    expect(detectOneOffs(ledger, BURN).find((r) => r.transaction_id === "tiny")).toBeUndefined();
+  });
+
+  it("reports the count it used, exactly at the minimum prior payments", () => {
+    const result = detect(AT_BOTH_EDGES);
+    expect(result?.prior_payment_count).toBe(MIN_PRIOR_VENDOR_PAYMENTS);
+  });
+});

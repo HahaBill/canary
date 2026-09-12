@@ -428,3 +428,71 @@ describe("reconciliation against a bank-reported opening balance", () => {
     expect(bad.reconciliation.warnings.some((w) => /mismatch/.test(w))).toBe(true);
   });
 });
+
+/**
+ * Messy-statement shapes the demo profile never produces. The engine must keep
+ * cash exact and stay honest about what it could not pair.
+ */
+describe("buildLedger — messy statement shapes", () => {
+  it("nets a refund larger than the charge into a negative entity week", () => {
+    const transactions = [
+      tx({
+        id: "c1", account_id: "chk", date: "2026-08-18", amount_cents: -40_000,
+        merchant_raw: "UPWORK CONTRACTOR", merchant_normalized: "upwork", description: "Contractor",
+        flow_type: "OPERATING_OUTFLOW", category_hint: "CONTRACTORS",
+      }),
+      tx({
+        id: "r1", account_id: "chk", date: "2026-08-20", amount_cents: 100_000,
+        merchant_raw: "UPWORK REFUND", merchant_normalized: "upwork", description: "Cancelled contract",
+        flow_type: "REFUND", category_hint: "CONTRACTORS",
+      }),
+    ];
+    const ledger = buildSampleLedger({ transactions });
+
+    // A credit bigger than the charge is real: the vendor owed money back. Burn
+    // for that week is genuinely negative for that entity, and clamping it to
+    // zero would silently overstate spend.
+    expect(ledger.weeks[0]!.variable_by_entity["upwork"]).toBe(-60_000);
+    expect(ledger.weeks[0]!.variable_spend_cents).toBe(-60_000);
+    expect(ledger.reconciliation.refunds_netted_cents).toBe(100_000);
+    // Cash still reconciles exactly against the bank anchor.
+    expect(ledger.reconciliation.computed_closing_balance_cents).toBe(ledger.reconciliation.reported_closing_balance_cents);
+  });
+
+  it("keeps an unpaired transfer leg out of burn but records it as unreconciled", () => {
+    const transactions = [
+      tx({
+        id: "x1", account_id: "chk", date: "2026-08-18", amount_cents: -500_000,
+        merchant_raw: "TRANSFER 0001234", merchant_normalized: "internal_transfer", description: "Transfer out",
+        flow_type: "INTERNAL_TRANSFER", transfer_pair_id: "xfer_orphan", category_hint: "INTERNAL_TRANSFER",
+      }),
+    ];
+    const ledger = buildSampleLedger({ transactions });
+
+    expect(ledger.reconciliation.unpaired_transfer_legs).toBe(1);
+    expect(ledger.reconciliation.warnings.length).toBeGreaterThan(0);
+    // Known gap (see docs/ALFREDO-LOGIC-AUDIT.md): the leg is trusted as internal
+    // and stays out of burn on its flow type alone. It is counted and warned
+    // about, but it is NOT routed to Needs Review the way an unclassifiable
+    // outflow would be.
+    expect(byId(ledger, "x1").counts_in_burn).toBe(false);
+    expect(ledger.reconciliation.needs_review_count).toBe(0);
+  });
+
+  it("counts two same-day identical charges as two real charges", () => {
+    const twice = (id: string) =>
+      tx({
+        id, account_id: "chk", date: "2026-08-18", amount_cents: -12_500,
+        merchant_raw: "DOORDASH*TEAM LUNCH", merchant_normalized: "doordash", description: "Team lunch",
+        flow_type: "OPERATING_OUTFLOW", category_hint: "MEALS",
+      });
+    const ledger = buildSampleLedger({ transactions: [twice("d1"), twice("d2")] });
+
+    // The engine only de-duplicates on explicit id references (pending_of,
+    // transfer_pair_id, settlement_pair_id). Two ids means two events — a team
+    // that orders lunch twice is not a data error.
+    expect(ledger.weeks[0]!.variable_by_entity["doordash"]).toBe(25_000);
+    expect(ledger.weeks[0]!.transaction_count).toBe(2);
+    expect(ledger.reconciliation.warnings.filter((w) => /duplicate/i.test(w))).toEqual([]);
+  });
+});

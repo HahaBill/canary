@@ -332,3 +332,69 @@ describe("incident dedup", () => {
     expect(after[1]).toEqual(nearDuplicate);
   });
 });
+
+/**
+ * Lifecycle and boundary cases contract §11 specifies but no test pinned.
+ */
+describe("incident lifecycle edges", () => {
+  const FLAT: SeriesOptions = { noiseFraction: 0 };
+  const at = (changeAt: number) => ({ ...FLAT, changeAt });
+
+  it("still dedups when the change point moved by exactly the dedup window", () => {
+    const stored = build(at(DEMO.CHANGE_START_INDEX), { rows: [] }).find((i) => i.type === "BURN_RATE_SHIFT")!;
+    const after = build(at(DEMO.CHANGE_START_INDEX + INCIDENT_DEDUP_WEEKS), { existing: [stored], now: LATER, rows: [] });
+
+    // Exactly ±2 weeks is inside the window: the rule is "within", not "closer than".
+    expect(Math.abs(daysBetween(stored.estimated_change_point!, after[0]!.estimated_change_point!)) / 7).toBe(INCIDENT_DEDUP_WEEKS);
+    expect(after).toHaveLength(1);
+    expect(after[0]!.id).toBe(stored.id);
+    expect(after[0]!.last_updated).toBe(LATER);
+  });
+
+  it("refreshes a RESOLVED incident's numbers without reopening or re-notifying it", () => {
+    // A founder resolved this last week. The spend never went back down, so the
+    // detector still fires. The incident must NOT silently reopen, and it must
+    // not look like a new notification is owed.
+    const stored: Incident = {
+      ...build(at(DEMO.CHANGE_START_INDEX), { rows: [] }).find((i) => i.type === "BURN_RATE_SHIFT")!,
+      status: "RESOLVED",
+      last_notified: NOTIFIED_AT,
+    };
+    const after = build(at(DEMO.CHANGE_START_INDEX + 1), { existing: [stored], now: LATER, rows: [] });
+    const updated = after[0]!;
+
+    expect(after).toHaveLength(1);
+    expect(updated.status).toBe("RESOLVED");
+    expect(updated.last_notified).toBe(NOTIFIED_AT);
+    expect(updated.first_detected).toBe(stored.first_detected);
+    // Numbers and narrative ARE refreshed — a resolved incident a user reopens
+    // shows current figures, not a stale snapshot.
+    expect(updated.last_updated).toBe(LATER);
+    expect(updated.estimated_change_point).not.toBe(stored.estimated_change_point);
+  });
+
+  it("publishes an incident even when the alarm lands on the final week", () => {
+    const incidents = build({ changeAt: DEMO.WEEKS - 1, noiseFraction: 0.03, step: { aws: 2_000_000 } }, { rows: [] });
+    const shift = incidents.find((i) => i.type === "BURN_RATE_SHIFT")!;
+    const cusum = shift.detection.cusum!;
+
+    // Nothing in the detector requires a minimum post-change sample before it
+    // publishes a rate and a runway impact. MIN_POST_CHANGE_WEEKS guards the
+    // burn WINDOW, not the incident narrative. Documented in docs/AGENT_BEHAVIOR.md.
+    expect(shift).toBeDefined();
+    expect(cusum.post_change_weeks!).toBeLessThanOrEqual(2);
+    expect(shift.summary).toContain("Variable spend rose");
+  });
+
+  it("builds no incident when there is no pre-change segment to quantify", () => {
+    // Statistic clears h in week 0: CUSUM fires but cannot say what changed,
+    // so there is no delta, no contributors, and nothing to interrupt anyone with.
+    const spiked = { changeAt: null, noiseFraction: 0, spike: { index: 0, amount: 765_000 } } as SeriesOptions;
+    const { cusum, contributors } = scenario(spiked, []);
+
+    expect(cusum.fired).toBe(true);
+    expect(cusum.delta_weekly_cents).toBeNull();
+    expect(contributors).toEqual([]);
+    expect(build(spiked, { rows: [] }).filter((i) => i.type === "BURN_RATE_SHIFT")).toEqual([]);
+  });
+});

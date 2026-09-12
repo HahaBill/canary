@@ -204,3 +204,45 @@ describe("computeBurn — sample fixture", () => {
     });
   });
 });
+
+/**
+ * Runway boundaries the demo never reaches. `null` means "not burning";
+ * it must never be confused with a small or negative number.
+ */
+describe("computeBurn — runway boundaries", () => {
+  const weeksWith = (variable: number, inflow: number): WeekSpec[] =>
+    Array.from({ length: 10 }, () => ({ variable, fixed: 0, inflow, by_entity: { aws: variable } }));
+
+  it("reports no runway when revenue exceeds spend over the window", () => {
+    const burn = computeBurn(makeLedger(makeWeeks(weeksWith(100_000, 400_000))), { regimeStartWeekIndex: null });
+
+    expect(burn.weekly_net_burn_cents).toBeLessThan(0);
+    expect(burn.monthly_net_burn_cents).toBeLessThan(0);
+    // Dividing cash by a negative burn would print a negative runway. "Not
+    // burning" is the truthful answer, and formatMonths renders it as such.
+    expect(burn.runway_months).toBeNull();
+  });
+
+  it("reports no runway when spend exactly equals revenue", () => {
+    const burn = computeBurn(makeLedger(makeWeeks(weeksWith(400_000, 400_000))), { regimeStartWeekIndex: null });
+
+    expect(burn.monthly_net_burn_cents).toBe(0);
+    expect(burn.runway_months).toBeNull();
+  });
+
+  it("does not invent cash the company does not have", () => {
+    const overdrawn = SAMPLE_ACCOUNTS.map((a) => (a.type === "checking" ? { ...a, balance_cents: -1_000_000 } : a));
+    const ledger = makeLedger(makeWeeks(weeksWith(400_000, 0)), overdrawn);
+    const burn = computeBurn(ledger, { regimeStartWeekIndex: null });
+
+    // Savings still covers the overdraft here, so cash stays positive.
+    expect(burn.available_operating_cash_cents).toBe(availableOperatingCashCents(overdrawn));
+    expect(burn.runway_months!).toBeGreaterThan(0);
+
+    // With every account empty there is no runway left to report.
+    const empty = SAMPLE_ACCOUNTS.map((a) => ({ ...a, balance_cents: 0 }));
+    const broke = computeBurn(makeLedger(makeWeeks(weeksWith(400_000, 0)), empty), { regimeStartWeekIndex: null });
+    expect(broke.available_operating_cash_cents).toBe(0);
+    expect(broke.runway_months).toBe(0);
+  });
+});

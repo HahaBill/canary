@@ -135,3 +135,57 @@ describe("runwayImpactMonths and severity", () => {
     expect(severityFromRunwayImpact(null)).toBe("LOW");
   });
 });
+
+/**
+ * Every materiality rule is `>=`. Only MIN_ONE_OFF_AMOUNT_CENTS was pinned at
+ * its exact edge; these cover the rest, so a future `>` typo fails loudly.
+ */
+describe("materiality thresholds at their exact edges", () => {
+  it("fires the share-of-burn rule at exactly the threshold, not one cent below", () => {
+    const monthlyGross = 10_000_000; // $100K/month → 5% = $5,000
+    const threshold = Math.round(MATERIALITY.MIN_BURN_PERCENT * monthlyGross);
+    // Keep the absolute-delta rule out of it by pinning that threshold above the share.
+    const burnBefore = makeBurn({ monthly_gross_burn_cents: monthlyGross, runway_months: 14.3 });
+    const burnAfter = makeBurn({ monthly_gross_burn_cents: monthlyGross, runway_months: 14.3 });
+    const weeklyFor = (monthly: number) => Math.round(monthly / (52 / 12));
+
+    const atEdge = evaluateRateMateriality(weeklyFor(threshold), burnBefore, burnAfter);
+    expect(atEdge.values.monthly_delta_cents!).toBeGreaterThanOrEqual(threshold);
+    expect(atEdge.rules_triggered).toContain(RATE_MATERIALITY_RULES.MIN_BURN_PERCENT);
+
+    const below = evaluateRateMateriality(weeklyFor(threshold) - 1, burnBefore, burnAfter);
+    expect(below.values.monthly_delta_cents!).toBeLessThan(threshold);
+    expect(below.rules_triggered).not.toContain(RATE_MATERIALITY_RULES.MIN_BURN_PERCENT);
+  });
+
+  it("fires the runway rule at exactly MIN_RUNWAY_IMPACT_MONTHS", () => {
+    const before = makeBurn({ ...LARGE_BURN, runway_months: 25 });
+    const atEdge = makeBurn({ ...LARGE_BURN, runway_months: 25 - MATERIALITY.MIN_RUNWAY_IMPACT_MONTHS });
+    const below = makeBurn({ ...LARGE_BURN, runway_months: 25 - MATERIALITY.MIN_RUNWAY_IMPACT_MONTHS + 0.1 });
+
+    expect(evaluateRateMateriality(null, before, atEdge).rules_triggered).toContain(RATE_MATERIALITY_RULES.MIN_RUNWAY_IMPACT_MONTHS);
+    expect(evaluateRateMateriality(null, before, below).rules_triggered).not.toContain(RATE_MATERIALITY_RULES.MIN_RUNWAY_IMPACT_MONTHS);
+  });
+
+  it("fires the one-off share rule at exactly the threshold, not one cent below", () => {
+    const monthlyGross = 10_000_000; // 3% = $3,000, below MIN_ONE_OFF_AMOUNT_CENTS
+    const threshold = Math.round(MATERIALITY.MIN_ONE_OFF_BURN_PERCENT * monthlyGross);
+    const burn = makeBurn({ monthly_gross_burn_cents: monthlyGross });
+    expect(threshold).toBeLessThan(MATERIALITY.MIN_ONE_OFF_AMOUNT_CENTS);
+
+    expect(evaluateOneOffMateriality(threshold, burn).rules_triggered).toEqual([ONE_OFF_MATERIALITY_RULES.MIN_ONE_OFF_BURN_PERCENT]);
+    expect(evaluateOneOffMateriality(threshold - 1, burn).material).toBe(false);
+  });
+
+  it("treats an exhausted runway (0 months) as a number, not as 'not burning'", () => {
+    // null means "not burning"; 0 means "out of cash". They must not collapse.
+    const before = makeBurn({ ...LARGE_BURN, runway_months: 2 });
+    const after = makeBurn({ ...LARGE_BURN, runway_months: 0 });
+    const verdict = evaluateRateMateriality(null, before, after);
+
+    expect(runwayImpactMonths(2, 0)).toBe(2);
+    expect(verdict.values.runway_after_months).toBe(0);
+    expect(verdict.rules_triggered).toContain(RATE_MATERIALITY_RULES.MIN_RUNWAY_IMPACT_MONTHS);
+    expect(runwayImpactMonths(2, null)).toBeNull();
+  });
+});

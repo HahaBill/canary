@@ -1,6 +1,6 @@
-import { CONTRIBUTOR_SUM_TOLERANCE, weeklyToMonthly } from "@canary/shared";
+import { CONTRIBUTOR_SUM_TOLERANCE, DEMO, weeklyToMonthly } from "@canary/shared";
 import { describe, expect, it } from "vitest";
-import { runCusum } from "./cusum.ts";
+import { NO_PRE_CHANGE_SEGMENT, runCusum } from "./cusum.ts";
 import { decomposeContributors } from "./decompose.ts";
 import { BASE_WEEKLY, STEP_WEEKLY, buildWeeks } from "./test-helpers.ts";
 
@@ -76,5 +76,54 @@ describe("decomposeContributors", () => {
 
   it("is deterministic", () => {
     expect(decomposeContributors(weeks, cusum)).toEqual(decomposeContributors(buildWeeks(), runCusum(buildWeeks())));
+  });
+});
+
+/**
+ * Decomposition is a BEFORE/AFTER comparison, so it is only meaningful when a
+ * "before" exists. These cover the segments the demo never produces.
+ */
+describe("decomposeContributors — segments the demo never produces", () => {
+  it("returns nothing when there is no pre-change segment to compare against", () => {
+    // Week 0 is double the flat level: the statistic clears h immediately, so
+    // `estimated_change_point_index` is -1 and the pre-change rate is unknown
+    // (CUSUM reports it as null rather than 0).
+    const weeks = buildWeeks({ changeAt: null, noiseFraction: 0, spike: { index: 0, amount: 765_000 } });
+    const cusum = runCusum(weeks);
+
+    expect(cusum.estimated_change_point_index).toBe(NO_PRE_CHANGE_SEGMENT);
+    expect(cusum.pre_change_rate_weekly_cents).toBeNull();
+
+    // With an empty pre-segment every entity's "pre rate" would be 0, which
+    // would report each entity's full-series average as its DELTA — a change
+    // that never happened. No comparison is the honest answer.
+    expect(decomposeContributors(weeks, cusum)).toEqual([]);
+  });
+
+  it("handles a single-entity series", () => {
+    const weeks = buildWeeks({ base: { aws: 500_000 }, step: { aws: 300_000 }, noiseFraction: 0.02 });
+    const cusum = runCusum(weeks);
+    const contributors = decomposeContributors(weeks, cusum);
+
+    expect(contributors).toHaveLength(1);
+    expect(contributors[0]!.entity).toBe("aws");
+    expect(contributors[0]!.delta_weekly_cents).toBe(cusum.delta_weekly_cents);
+    expect(contributors[0]!.share_of_total_delta).toBeCloseTo(1, 5);
+  });
+
+  it("reports a negative rate for an entity whose refunds outweigh its charges", () => {
+    // A credit larger than that week's charges leaves a negative entity-week.
+    // The mean is sign-agnostic; nothing clamps it to zero.
+    const weeks = buildWeeks({ changeAt: DEMO.CHANGE_START_INDEX }).map((w, i) =>
+      i < DEMO.CHANGE_START_INDEX
+        ? w
+        : { ...w, variable_by_entity: { ...w.variable_by_entity, upwork: -20_000 } },
+    );
+    const contributors = decomposeContributors(weeks, runCusum(weeks));
+    const upwork = contributors.find((c) => c.entity === "upwork")!;
+
+    expect(upwork.post_rate_weekly_cents).toBe(-20_000);
+    expect(upwork.delta_weekly_cents).toBeLessThan(0);
+    expect(Number.isInteger(upwork.delta_weekly_cents)).toBe(true);
   });
 });
