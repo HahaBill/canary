@@ -819,6 +819,37 @@ No hand-written example numbers in production UI/docs.
 
 # 26. ElevenLabs — P1
 
+## 26a. iMessage voice note (high P1 — shipped)
+
+Every material alert is delivered as **text + a native iMessage voice note**. The text carries the exact facts and labels (financial safety); the voice note is the conversational summary. Both are rendered from the **same incident object** so they can never disagree.
+
+```text
+Material incident
+      ↓
+renderAlert(incident) → { text_summary, voice_summary, incident_id, app_path }
+      ↓                          ↓
+Sendblue text            ElevenLabs TTS (raw PCM, pcm_24000)
+                                 ↓
+                         CAF container written in-Worker (no ffmpeg, no R2)
+                                 ↓
+                         Sendblue upload-file → hosted media_url (.caf)
+                                 ↓
+                         Sendblue send-message { media_url }
+                                 ↓
+                iMessage: text bubble + native playable voice memo
+```
+
+Rules for the voice script:
+
+- 10–20 seconds (~40–55 words);
+- rounded, spoken numbers only (`speakMonths`, `speakUsd`); exact figures stay in the text;
+- no URLs, no prescriptions;
+- ElevenLabs only *voices* the script — it never composes it.
+
+The voice note is best-effort: if ElevenLabs or the upload fails, the text alert has already been delivered and the failure is reported in `SendAlertResponse.voice.error`.
+
+## 26b. Ask Canary (embedded voice agent)
+
 ElevenLabs reuses the same backend tools.
 
 Feature:
@@ -864,17 +895,17 @@ Cloudflare
 │   ├── Sendblue webhook
 │   └── agent tools
 ├── D1
-│   ├── transactions
+│   ├── incidents (status overlay)
 │   ├── classifications
-│   ├── incidents
-│   ├── evidence
-│   └── job state
-├── Cron
-│   ├── bank sync (sandbox BankProvider)
-│   └── detector run
-└── R2
-    └── optional media
+│   ├── vendor_enrichments
+│   ├── imessage_log
+│   └── job_state
+└── Cron (P1)
+    ├── bank sync (sandbox BankProvider)
+    └── detector run
 ```
+
+Voice-note audio is hosted on Sendblue's CDN via its `upload-file` endpoint, so no R2 bucket is required.
 
 Do not depend on Cloudflare Queues.
 

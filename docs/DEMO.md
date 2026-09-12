@@ -44,7 +44,16 @@ Canary message:
 > 🐤 **Canary**  
 > I detected a sustained increase in variable spending.  
 > [PRIMARY DRIVER] is currently the largest contributor.  
+> Impact: modeled runway [BEFORE] → [AFTER] versus the previous spending regime.  
 > Reply **WHY** or **SHOW ME**.
+
+Immediately below it, a native iMessage **voice note** (ElevenLabs, ~15 s) gives the conversational version of the same incident. Play it.
+
+Say:
+
+> "The text has the exact numbers. The voice note is the same incident, spoken. Both come from one incident object, so they can't disagree."
+
+Trigger: `POST /api/alerts/send` (sends to FOUNDER_PHONE).
 
 Do not start with architecture.
 
