@@ -5,13 +5,22 @@
  * `/webhooks/*` always run the Worker first (see wrangler.jsonc).
  */
 import { createApp } from "./app.ts";
+import { PipelineDataProvider } from "./data/pipeline-provider.ts";
 import type { Env } from "./env.ts";
 
 export type { Env } from "./env.ts";
 export { createApp, type AppDeps } from "./app.ts";
 
-/** Built once per isolate. Tests build their own with injected dependencies. */
-export const app = createApp();
+/**
+ * Built once per isolate. Production serves the REAL pipeline (generator →
+ * classification → engine → detectors) — never the mock fixture. Tests build
+ * their own app with injected dependencies.
+ */
+const pipelineProvider = new PipelineDataProvider();
+export const app = createApp({
+  provider: pipelineProvider,
+  bankTransactions: () => pipelineProvider.getTransactions(),
+});
 
 export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response> {

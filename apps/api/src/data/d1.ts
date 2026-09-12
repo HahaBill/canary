@@ -114,10 +114,15 @@ export class D1Store {
         .run();
     } catch {
       // Migration 0002 may not be applied yet — fall back to the 0001 columns.
-      await this.db
-        .prepare("INSERT INTO imessage_log (direction, phone, body, created_at) VALUES (?, ?, ?, ?)")
-        .bind(row.direction, row.phone, row.body, row.created_at)
-        .run();
+      try {
+        await this.db
+          .prepare("INSERT INTO imessage_log (direction, phone, body, created_at) VALUES (?, ?, ?, ?)")
+          .bind(row.direction, row.phone, row.body, row.created_at)
+          .run();
+      } catch (err) {
+        // Logging is best-effort: never let an audit-log failure block a reply to the founder.
+        console.warn(JSON.stringify({ msg: "imessage_log_failed", error: err instanceof Error ? err.message : String(err) }));
+      }
     }
   }
 }

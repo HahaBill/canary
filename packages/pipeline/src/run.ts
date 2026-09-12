@@ -16,7 +16,8 @@ import {
 import { DEFAULT_DEMO_OPTIONS, generateDemoCompany } from "@canary/generator";
 import { buildLedger, computeBurn } from "@canary/engine";
 import { buildIncidents, decomposeContributors, detectOneOffs, ewma, runCusum } from "@canary/detectors";
-import { classifyTransactions } from "@canary/classification";
+// Import the node-free core so the Worker bundle never pulls in node:fs.
+import { classifyTransactions } from "@canary/classification/core";
 
 export interface PipelineOptions {
   seed?: number;
