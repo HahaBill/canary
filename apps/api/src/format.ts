@@ -8,7 +8,7 @@ import type { ISODate } from "@canary/shared";
  * Vendor keys are `merchant_normalized` (lower_snake). Only entities whose
  * casing a title-case fallback would get wrong need an entry here.
  */
-const DISPLAY_NAMES: Record<string, string> = {
+export const DISPLAY_NAMES: Record<string, string> = {
   aws: "AWS",
   gcp: "GCP",
   github: "GitHub",

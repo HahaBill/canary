@@ -201,6 +201,49 @@ export function helpMessage(): string {
   return [`${CANARY} commands`, ...IMESSAGE_COMMANDS.map((c) => `${c} — ${COMMAND_HELP[c]}`)].join("\n");
 }
 
+/**
+ * The things Canary declines, per docs/AGENT_BEHAVIOR.md §4. Each refusal names
+ * the limit and then the nearest real answer — §4 again: "Canary says what it
+ * *can* answer." Fixed text, never model-written, so a refusal cannot be
+ * negotiated one message at a time.
+ */
+export type RefusalKind = "MOVE_MONEY" | "OPERATIONAL" | "ADVICE" | "PREDICTION";
+
+const REFUSALS: Record<RefusalKind, string[]> = {
+  MOVE_MONEY: [
+    "I can't move money. I only read this ledger — I have no ability to pay, transfer or stop a payment, and I wouldn't take that instruction over text if I did.",
+    "I can show you what a vendor costs per week and what a change to it would do to modeled burn and runway.",
+  ],
+  OPERATIONAL: [
+    "That's your call, not mine. I don't recommend cancelling, downgrading or switching a vendor — I surface the change and its size, and the decision belongs to you.",
+    "I can show you what changed, how much of it this vendor is, and what a percentage change would do to modeled runway.",
+  ],
+  ADVICE: [
+    "I report, I don't advise. I can't tell you what you should do.",
+    "I can tell you what the money did, which rule flagged it, and what a scenario would model.",
+  ],
+  PREDICTION: [
+    "I don't forecast. Modeled runway is a present-tense ratio of cash to current burn, not a prediction of when you run out.",
+    "I can give you the current figures, the window they're measured over, and a what-if scenario.",
+  ],
+};
+
+export function refusalMessage(kind: RefusalKind): string {
+  return REFUSALS[kind].join("\n");
+}
+
+/**
+ * The deterministic answer the conversational path falls back to when the number
+ * guard rejects a generated reply and there is no incident to explain.
+ */
+export function healthLineMessage(derived: DerivedDemoObject): string {
+  const { monthly_net_burn_cents, runway_months, weeks_in_window } = derived.burn;
+  const lines = [`${formatUsdWhole(derived.cash_cents)} in the bank, burning ${formatUsdWhole(monthly_net_burn_cents)} a month.`];
+  lines.push(`That burn is measured over ${weeks_in_window} weeks. Modeled runway is ${formatMonths(runway_months)}.`);
+  lines.push("Reply HELP for what I can do.");
+  return lines.join("\n");
+}
+
 /** Reply when the founder asks about an incident and Canary has none. */
 export function noIncidentMessage(): string {
   return [CANARY, "Nothing is flagged right now — spending is tracking with its baseline.", "Reply HELP for what I can do."].join("\n");

@@ -12,6 +12,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { runPendingAlerts, type PendingRunSummary } from "./alerts/pending.ts";
 import { calendarFor, type CalendarFeed } from "./calendar/ics.ts";
+import { openAiClient, type LlmClient } from "./conversation/openai.ts";
 import type { AppEnv, CanaryApp, Variables } from "./context.ts";
 import { D1Store, type SqlDatabase } from "./data/d1.ts";
 import { MockDataProvider, withD1Overlay, type DataProvider } from "./data/provider.ts";
@@ -35,6 +36,8 @@ export interface AppDeps {
   tts?: TextToSpeech;
   /** Defaults to the ICS feed at `CALENDAR_ICS_URL`; unset → Canary never defers an alert. */
   calendar?: CalendarFeed;
+  /** Defaults to OpenAI from env; unset key → conversational replies fall back to HELP. */
+  llm?: LlmClient;
   bank?: BankProvider;
   /** Overrides the `DB` binding — tests pass an in-memory fake. */
   db?: SqlDatabase;
@@ -92,6 +95,13 @@ export function buildVariables(appEnv: Env, deps: AppDeps): Variables {
       calendarFor({
         url: appEnv.CALENDAR_ICS_URL,
         now,
+        ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
+      }),
+    llm:
+      deps.llm ??
+      openAiClient({
+        ...(appEnv.OPENAI_API_KEY ? { apiKey: appEnv.OPENAI_API_KEY } : {}),
+        ...(appEnv.OPENAI_MODEL ? { model: appEnv.OPENAI_MODEL } : {}),
         ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
       }),
   };

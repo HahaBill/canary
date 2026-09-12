@@ -8,6 +8,8 @@ export interface Env {
   SENDBLUE_API_SECRET?: string;
   SENDBLUE_FROM_NUMBER?: string;
   OPENAI_API_KEY?: string;
+  /** Chat model for conversational iMessage. Defaults to `gpt-4o-mini`. */
+  OPENAI_MODEL?: string;
   TAVILY_API_KEY?: string;
   WEBHOOK_SECRET?: string;
   FOUNDER_PHONE?: string;
