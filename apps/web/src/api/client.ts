@@ -5,6 +5,8 @@
  */
 import {
   API_ROUTES,
+  type AlertHistoryItem,
+  type AlertHistoryResponse,
   type DemoResponse,
   type ErrorResponse,
   type Incident,
@@ -119,4 +121,39 @@ export async function setIncidentStatus(id: string, status: IncidentStatus): Pro
   );
   if (result && typeof result === "object" && "incident" in result) return result.incident ?? null;
   return (result as Incident) ?? null;
+}
+
+/**
+ * Outbound alerts and inbound founder replies, newest first. Optional chrome:
+ * callers hide the strip on failure rather than surfacing an error.
+ */
+export function getAlertHistory(limit = 8, signal?: AbortSignal): Promise<AlertHistoryItem[]> {
+  const path = `${routePath(API_ROUTES.alertHistory)}?limit=${encodeURIComponent(String(limit))}`;
+  return request<AlertHistoryResponse>(path, signal ? { signal } : undefined).then((r) => r.items ?? []);
+}
+
+/**
+ * The rendered voice note for an incident as `audio/mpeg`. `API_ROUTES` has no
+ * entry for it (see "Contract gaps"), so the path is composed from the incident
+ * route rather than hand-written. A 503 means TTS is not configured, which is a
+ * normal deployment state, not a failure.
+ */
+export async function getIncidentVoice(id: string, signal?: AbortSignal): Promise<Blob> {
+  const path = `${routePath(API_ROUTES.incident, { id })}/voice`;
+
+  let response: Response;
+  try {
+    response = await fetch(path, { headers: { Accept: "audio/mpeg" }, ...(signal ? { signal } : {}) });
+  } catch (cause) {
+    throw new ApiError(`Could not reach ${path}`, "network", 0, cause instanceof Error ? cause.message : undefined);
+  }
+
+  if (!response.ok) {
+    throw new ApiError(
+      response.status === 503 ? "Voice not configured" : `Request failed (${response.status})`,
+      "http",
+      response.status,
+    );
+  }
+  return response.blob();
 }

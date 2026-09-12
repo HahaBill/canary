@@ -15,10 +15,13 @@ const buttonVariants = cva(
         link: "text-neutral-900 underline-offset-4 hover:underline",
       },
       size: {
-        sm: "h-8 px-3 text-xs",
-        md: "h-10 px-4",
+        // `pointer-coarse:` lifts the compact sizes to a 44 px tap target on
+        // touch devices; `min-height` wins over `height`, so desktop density is
+        // untouched. (WCAG 2.5.8 / Apple HIG.)
+        sm: "h-8 px-3 text-xs pointer-coarse:min-h-11",
+        md: "h-10 px-4 pointer-coarse:min-h-11",
         lg: "h-11 px-5 text-base",
-        icon: "h-9 w-9",
+        icon: "h-9 w-9 pointer-coarse:min-h-11 pointer-coarse:min-w-11",
       },
     },
     defaultVariants: { variant: "primary", size: "md" },

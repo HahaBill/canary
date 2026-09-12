@@ -1,15 +1,17 @@
 import { Link } from "react-router-dom";
-import type { Incident } from "@canary/shared";
+import type { ISODate, Incident, WeeklyBucket } from "@canary/shared";
 import { SeverityBadge } from "@/components/SeverityBadge.tsx";
+import { Sparkline } from "@/components/Sparkline.tsx";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import {
   entityDisplayName,
   formatMonths,
   formatSignedUsd,
+  formatUsdWhole,
   formatWeekLabel,
   formatDateMedium,
 } from "@/lib/format.ts";
-import { topPositiveContributor } from "@/lib/incident.ts";
+import { topPositiveContributor, variableRates } from "@/lib/incident.ts";
 
 /**
  * The one-sentence "what changed" line. Built entirely from engine figures —
@@ -38,8 +40,33 @@ export function incidentSummarySentence(incident: Incident): string {
   return clauses.length > 0 ? `${clauses.join("; ")}.` : incident.summary;
 }
 
-export function IncidentCard({ incident }: { incident: Incident }) {
+/**
+ * Describes the thumbnail for screen readers using the same engine rates the
+ * incident quotes, so the alt text can never disagree with the picture.
+ */
+export function sparklineLabel(incident: Incident, weeks: WeeklyBucket[]): string {
+  const { pre, post } = variableRates(incident);
+  const shape =
+    pre !== null && post !== null
+      ? `, from ${formatUsdWhole(pre)} per week before the change point to ${formatUsdWhole(post)} per week after`
+      : "";
+  return `Weekly variable spend across ${weeks.length} weeks${shape}.`;
+}
+
+export function IncidentCard({
+  incident,
+  weeks,
+  changePoint,
+}: {
+  incident: Incident;
+  /** Omitted on surfaces that have no weekly series; the card renders without the thumbnail. */
+  weeks?: WeeklyBucket[];
+  /** Defaults to the incident's own change point. */
+  changePoint?: ISODate | null;
+}) {
   const impact = incident.financial_impact;
+  const series = weeks ?? [];
+  const marker = changePoint === undefined ? incident.estimated_change_point : changePoint;
 
   return (
     <Card className="border-canary-300 ring-1 ring-canary-200">
@@ -52,6 +79,14 @@ export function IncidentCard({ incident }: { incident: Incident }) {
         </div>
         <CardTitle>{incident.title}</CardTitle>
         <p className="text-sm leading-relaxed text-neutral-600">{incidentSummarySentence(incident)}</p>
+        {series.length > 1 ? (
+          <Sparkline
+            weeks={series}
+            changePoint={marker}
+            label={sparklineLabel(incident, series)}
+            className="mt-1.5 h-12 w-full max-w-[220px]"
+          />
+        ) : null}
       </CardHeader>
 
       <CardContent className="grid grid-cols-2 gap-4 sm:grid-cols-3">

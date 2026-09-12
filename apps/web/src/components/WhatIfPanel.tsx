@@ -1,6 +1,6 @@
 import { ArrowRight } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
-import type { BurnSummary } from "@canary/shared";
+import type { BurnSummary, WhatIfResult } from "@canary/shared";
 import { useSimulate } from "@/api/useDerived.ts";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { Slider } from "@/components/ui/slider.tsx";
@@ -13,11 +13,14 @@ import {
   formatWeeklyLevel,
 } from "@/lib/format.ts";
 import { whatIfEntities } from "@/lib/incident.ts";
+import { cn } from "@/lib/utils.ts";
 
 const MIN_PERCENT = -50;
 const MAX_PERCENT = 50;
 const STEP_PERCENT = 5;
 const DEFAULT_PERCENT = -20;
+/** The reductions founders actually ask about, so the common cases are one tap. */
+const QUICK_PICKS = [-10, -20, -30] as const;
 
 /**
  * Asks the backend what a spend change would do. All arithmetic happens in the
@@ -73,6 +76,24 @@ export function WhatIfPanel({ burn, defaultEntity }: { burn: BurnSummary; defaul
               {formatSignedPercent(percentage)}
             </output>
           </div>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {QUICK_PICKS.map((pick) => (
+              <button
+                key={pick}
+                type="button"
+                aria-pressed={percentage === pick}
+                onClick={() => setPercentage(pick)}
+                className={cn(
+                  "rounded-full border px-2.5 py-1 text-xs font-medium tabular-nums transition-colors pointer-coarse:min-h-11",
+                  percentage === pick
+                    ? "border-neutral-300 bg-neutral-100 text-neutral-900"
+                    : "border-neutral-200 text-neutral-500 hover:text-neutral-800",
+                )}
+              >
+                {formatSignedPercent(pick)}
+              </button>
+            ))}
+          </div>
           <Slider
             id="whatif-percentage"
             min={MIN_PERCENT}
@@ -100,7 +121,14 @@ export function WhatIfPanel({ burn, defaultEntity }: { burn: BurnSummary; defaul
         </div>
       ) : result ? (
         <>
-          <dl className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {/* A new scenario is in flight: dim the grid so stale numbers read as stale. */}
+          <dl
+            aria-busy={loading}
+            className={cn(
+              "grid gap-5 transition-opacity sm:grid-cols-2 lg:grid-cols-4",
+              loading && "opacity-50",
+            )}
+          >
             <Result
               label={`${entityDisplayName(result.entity)} spend`}
               value={
@@ -137,11 +165,7 @@ export function WhatIfPanel({ burn, defaultEntity }: { burn: BurnSummary; defaul
                   {formatMonths(result.scenario_runway_months)}
                 </span>
               }
-              caption={
-                result.runway_delta_months !== null
-                  ? `${formatMonths(result.runway_delta_months)} difference`
-                  : "current → scenario"
-              }
+              caption={runwayDeltaCaption(result)}
             />
           </dl>
 
@@ -150,6 +174,22 @@ export function WhatIfPanel({ burn, defaultEntity }: { burn: BurnSummary; defaul
       ) : null}
     </div>
   );
+}
+
+/**
+ * Same phrasing as the incident's Financial impact panel, but note the opposite
+ * sign convention: `runway_delta_months` is scenario − current, so positive
+ * means the scenario buys time. (`runway_impact_months` on an incident is
+ * positive when runway got shorter.)
+ */
+export function runwayDeltaCaption(result: WhatIfResult): string {
+  const delta = result.runway_delta_months;
+  if (delta === 0) return "no change";
+  if (delta === null) {
+    // -100% can take burn to zero, and "no change" would contradict the figure above.
+    return result.scenario_runway_months === null ? "not burning cash in this scenario" : "current → scenario";
+  }
+  return `${formatMonths(Math.abs(delta))} ${delta > 0 ? "longer" : "shorter"}`;
 }
 
 function Result({

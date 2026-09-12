@@ -1,4 +1,5 @@
 import { useDerived } from "@/api/useDerived.ts";
+import { AlertsStrip } from "@/components/AlertsStrip.tsx";
 import { DataQualityStrip } from "@/components/DataQualityStrip.tsx";
 import { IncidentCard } from "@/components/IncidentCard.tsx";
 import { SignalCard } from "@/components/SignalCard.tsx";
@@ -59,7 +60,11 @@ export function Dashboard() {
         <div className="grid gap-4 lg:grid-cols-3">
           {data.primary_incident ? (
             <div className="lg:col-span-2">
-              <IncidentCard incident={data.primary_incident} />
+              <IncidentCard
+                incident={data.primary_incident}
+                weeks={data.weeks}
+                changePoint={data.primary_incident.estimated_change_point}
+              />
             </div>
           ) : null}
           {data.one_off_incident ? <SignalCard incident={data.one_off_incident} /> : null}
@@ -69,6 +74,8 @@ export function Dashboard() {
           No open incidents. Canary is watching variable spend week over week.
         </p>
       )}
+
+      <AlertsStrip />
 
       <DataQualityStrip reconciliation={reconciliation} needsReview={needs_review} />
     </div>
