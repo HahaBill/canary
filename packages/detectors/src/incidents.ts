@@ -39,6 +39,7 @@ import {
 } from "@canary/shared";
 import { compareContributors } from "./decompose.ts";
 import { incidentIdFor } from "./ids.ts";
+import type { RecurringDriftResult } from "./recurring-drift.ts";
 import {
   ONE_OFF_RULE_PARAMETERS,
   evaluateRateMateriality,
@@ -167,6 +168,73 @@ function buildOneOffCandidate(oneOff: OneOffResult): IncidentCandidate {
     materiality: oneOff.materiality,
     evidence: oneOffEvidence(oneOff),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Recurring-charge drift — contract §10 grouping
+// ---------------------------------------------------------------------------
+
+/**
+ * Folds recurring-charge drift into the incident it already belongs to
+ * (contract §10): a signal joins a parent incident when its entity appears in
+ * that incident's contributor decomposition AND its timing overlaps the
+ * incident's regime window. Both halves are checked here — the time-overlap
+ * clause had no implementation before.
+ *
+ * A drifting vendor that is already a contributor is NOT a second alert. It
+ * becomes a better explanation of the one that exists: "SaaS is up" turns into
+ * "Datadog's bill went from $3,783 to $6,026 per charge". Contributors are left
+ * untouched, so the drivers table and every published rate stay exactly as the
+ * decomposition computed them.
+ *
+ * A drift with no parent incident is returned to the caller but produces no
+ * incident of its own: `IncidentType` has no member for it, and inventing a
+ * standalone alert for a vendor whose spend is already inside a material
+ * incident is the duplicate-alerting the contract forbids.
+ */
+export function attachDriftSignals(incidents: Incident[], drifts: RecurringDriftResult[]): Incident[] {
+  if (drifts.length === 0) return incidents;
+
+  return incidents.map((incident) => {
+    if (incident.type !== "BURN_RATE_SHIFT") return incident;
+
+    const contributors = new Set(incident.contributors.map((c) => c.entity));
+    const joined = drifts.filter((d) => contributors.has(d.entity) && overlapsRegime(d, incident));
+    if (joined.length === 0) return incident;
+
+    return {
+      ...incident,
+      child_signals: incident.child_signals.map((signal) => {
+        const drift = joined.find((d) => d.entity === signal.entity);
+        return drift ? { ...signal, description: `${signal.description} ${driftSentence(drift)}` } : signal;
+      }),
+      evidence: [...incident.evidence, ...joined.map(driftEvidence)],
+    };
+  });
+}
+
+/** The drift must still be running at or after the incident's change point. */
+function overlapsRegime(drift: RecurringDriftResult, incident: Incident): boolean {
+  const changePoint = incident.estimated_change_point;
+  if (changePoint === null) return false;
+  return drift.last_charge_date >= changePoint;
+}
+
+function driftSentence(drift: RecurringDriftResult): string {
+  return `Its recurring charge also rose from ${formatUsdWhole(drift.early_median_cents)} to ${formatUsdWhole(drift.late_median_cents)} per charge (${formatPercent(drift.increase_fraction)}).`;
+}
+
+function driftEvidence(drift: RecurringDriftResult): EvidenceItem {
+  return {
+    kind: "OBSERVED",
+    text: `${drift.entity} is charging more each cycle: ${formatUsdWhole(drift.early_median_cents)} → ${formatUsdWhole(drift.late_median_cents)} per charge across ${drift.charge_count} charges since ${drift.first_charge_date} (${formatPercent(drift.increase_fraction)}), about ${formatUsdWhole(drift.estimated_monthly_delta_cents)}/month more.`,
+  };
+}
+
+/** `0.593` → `+59%`. A ratio for display, not money. */
+function formatPercent(fraction: number): string {
+  const pct = Math.round(fraction * 100);
+  return `${pct > 0 ? "+" : ""}${pct}%`;
 }
 
 // ---------------------------------------------------------------------------

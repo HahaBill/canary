@@ -15,7 +15,7 @@ import {
 } from "@canary/shared";
 import { DEFAULT_DEMO_OPTIONS, generateDemoCompany } from "@canary/generator";
 import { buildLedger, computeBurn } from "@canary/engine";
-import { buildIncidents, decomposeContributors, detectOneOffs, ewma, runCusum } from "@canary/detectors";
+import { attachDriftSignals, buildIncidents, decomposeContributors, detectOneOffs, detectRecurringDrift, ewma, runCusum } from "@canary/detectors";
 // Import the node-free core so the Worker bundle never pulls in node:fs.
 import { classifyTransactions } from "@canary/classification/core";
 
@@ -99,7 +99,15 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
 
   // 6. Decomposition + incidents
   const contributors = cusum.fired ? decomposeContributors(ledger.weeks, cusum) : [];
-  const incidents = buildIncidents({ ledger, cusum, contributors, oneOffs, burnBefore, burnAfter, existing: opts.existingIncidents ?? [], now });
+  // Recurring-charge drift runs on the SECOND-pass ledger, where one-offs are
+  // already tagged, so a planted spike can never read as a billing trend. A
+  // drifting vendor that already contributes to the rate shift is folded into
+  // that incident rather than raising a second alert (contract §10).
+  const drifts = detectRecurringDrift(ledger, burnAfter);
+  const incidents = attachDriftSignals(
+    buildIncidents({ ledger, cusum, contributors, oneOffs, burnBefore, burnAfter, existing: opts.existingIncidents ?? [], now }),
+    drifts,
+  );
   // Only incidents (re)detected THIS run (last_updated === now) can drive the dashboard;
   // a stored incident that no current detection claimed is stale and must not become primary.
   const fresh = incidents.filter((i) => i.last_updated === now);

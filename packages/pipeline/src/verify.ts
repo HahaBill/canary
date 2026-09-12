@@ -14,6 +14,7 @@ import {
   weekIndexOf,
 } from "@canary/shared";
 import { pathToFileURL } from "node:url";
+import { detectRecurringDrift } from "@canary/detectors";
 import { runPipeline } from "./run.ts";
 import { loadDemoCaches } from "./caches.ts";
 
@@ -98,6 +99,17 @@ export async function verifyDemo(): Promise<{ checks: Check[]; ok: boolean }> {
   const stale = { ...derived.primary_incident!, id: "inc_stale", entity: "ghost_vendor", estimated_change_point: "2026-01-05" };
   const staleRun = await runPipeline({ includeFixture: true, ...caches, existingIncidents: [stale], now: "2026-09-14T12:00:00.000Z" });
   add("stale stored incident never becomes primary", staleRun.derived.primary_incident?.entity === DEMO.PRIMARY_DRIVER_ENTITY && staleRun.derived.primary_incident?.id !== "inc_stale", `primary=${staleRun.derived.primary_incident?.id}:${staleRun.derived.primary_incident?.entity}`);
+
+  // Recurring-charge drift joins the incident it already contributes to (contract §10)
+  const drifts = detectRecurringDrift(ledger, derived.burn);
+  const drift = drifts[0];
+  const driftIsContributor = drift ? (derived.primary_incident?.contributors ?? []).some((c) => c.entity === drift.entity) : false;
+  const driftEvidence = (derived.primary_incident?.evidence ?? []).filter((e) => e.text.includes("charging more each cycle"));
+  add(
+    "recurring drift folds into the burn incident, not a second alert",
+    drifts.length > 0 && driftIsContributor && driftEvidence.length === drifts.length && derived.incidents.filter((i) => i.type === "BURN_RATE_SHIFT").length === 1,
+    drift ? `${drift.entity} ${formatUsd(drift.early_median_cents)}→${formatUsd(drift.late_median_cents)}/charge (+${Math.round(drift.increase_fraction * 100)}%), ${drifts.length} drift(s), ${driftEvidence.length} evidence line(s)` : "no drift detected",
+  );
 
   // Tavily
   const enr = derived.vendor_enrichments.find((e) => e.merchant_normalized === DEMO.UNKNOWN_VENDOR.merchant_normalized);

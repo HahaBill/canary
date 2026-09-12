@@ -15,6 +15,9 @@
  *   4. `computeBurn` twice: once for the pre-change regime and once with
  *      `regimeStartWeekIndex = cusum.estimated_change_point_index + 1`.
  *   5. `buildIncidents({ ... })`.
+ *   6. `detectRecurringDrift(ledger, burn)` → `attachDriftSignals(incidents, drifts)`,
+ *      which folds a drifting vendor into the incident it already contributes to
+ *      instead of raising a second alert (contract §10).
  *
  * Every threshold comes from `@canary/shared` config. Nothing here reads the
  * clock or a random source: `buildIncidents` takes `now` as a parameter, so the
@@ -32,5 +35,6 @@ export {
   runwayImpactMonths,
   severityFromRunwayImpact,
 } from "./materiality.ts";
-export { VARIABLE_SPEND_ENTITY, buildIncidents, categoriesByEntity } from "./incidents.ts";
+export { VARIABLE_SPEND_ENTITY, attachDriftSignals, buildIncidents, categoriesByEntity } from "./incidents.ts";
+export { RECURRING_DRIFT, detectRecurringDrift, type DetectRecurringDrift, type RecurringDriftResult } from "./recurring-drift.ts";
 export { fnv1a32, fnv1a32Hex, incidentIdFor } from "./ids.ts";
