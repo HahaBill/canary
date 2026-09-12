@@ -114,6 +114,7 @@ export function VariableSpendChart({
               strokeWidth={2}
               dot={false}
               activeDot={{ r: 4 }}
+              isAnimationActive={false}
             />
             {hasEwma && showEwma ? (
               <Line
@@ -123,6 +124,7 @@ export function VariableSpendChart({
                 strokeWidth={1.5}
                 strokeDasharray="5 4"
                 dot={false}
+                isAnimationActive={false}
               />
             ) : null}
           </LineChart>

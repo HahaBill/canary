@@ -69,6 +69,7 @@ export function CusumChart({
               strokeWidth={1.5}
               fill={CHART.accentWash}
               fillOpacity={0.9}
+              isAnimationActive={false}
             />
           </AreaChart>
         </ResponsiveContainer>
