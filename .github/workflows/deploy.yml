@@ -55,7 +55,7 @@ jobs:
     # In GitHub: Settings -> Environments -> production
     #   Deployment branches: Selected branches -> main
     #   Secret:   CLOUDFLARE_API_TOKEN
-    #   Variable: CLOUDFLARE_ACCOUNT_ID
+    #   Secret or variable: CLOUDFLARE_ACCOUNT_ID
     # Environment secrets are only released once the environment's
     # protection rules pass, so the branch rule must actually be configured.
     environment: production
@@ -80,7 +80,7 @@ jobs:
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/api
           command: d1 migrations apply canary --remote
 
@@ -88,6 +88,6 @@ jobs:
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/api
           command: deploy
