@@ -40,6 +40,7 @@ import {
   type VendorEnrichment,
 } from "@canary/shared";
 import { truncate } from "./http.ts";
+import { prettyVendorName } from "./providers/tavily.ts";
 import { mapBusinessTypeToCategory } from "./business-type.ts";
 import { matchFlowTypeRule, matchMerchantRule } from "./rules.ts";
 
@@ -246,6 +247,9 @@ async function decideGroup(group: MerchantGroup, ctx: PipelineContext): Promise<
       enrichment = await ctx.research.enrichVendor({
         merchant_raw: representative.merchant_raw,
         merchant_normalized: group.merchant_normalized,
+        // Human-readable name derived from the entity key steers research
+        // toward the company rather than local business directories.
+        display_name: prettyVendorName(group.merchant_normalized),
       });
       if (enrichment === null) {
         signals.push({ source: "TAVILY", detail: `${ctx.research.name} found no indexed result for "${group.merchant_normalized}".` });

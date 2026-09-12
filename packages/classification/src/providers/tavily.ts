@@ -35,7 +35,17 @@ export interface TavilyVendorInput {
 
 /** `"Ashby company what does it do"` */
 export function buildTavilyQuery(input: TavilyVendorInput): string {
-  const subject = (input.display_name ?? "").trim() || input.merchant_raw.trim() || prettyVendorName(input.merchant_normalized);
+  const display = (input.display_name ?? "").trim();
+  const raw = input.merchant_raw.trim();
+  // Add the descriptor's brand token next to the display name: "Ashby" alone is
+  // ambiguous, but "ASHBYHQ" steers search toward ashbyhq.com. The rest of the
+  // descriptor (city/state/ids) only attracts local business directories.
+  const brandToken = raw.split(/\s+/)[0] ?? "";
+  const subject = display
+    ? brandToken && brandToken.toLowerCase() !== display.toLowerCase()
+      ? `${display} ${brandToken}`
+      : display
+    : raw || prettyVendorName(input.merchant_normalized);
   return `${subject} company what does it do`;
 }
 
@@ -72,6 +82,44 @@ function readResults(body: Record<string, unknown> | null): TavilyResult[] {
     });
   }
   return out;
+}
+
+/**
+ * Exported for tests. Picks the result whose hostname contains the vendor key
+ * (official site) if any, else the first result. Never fabricates a URL.
+ */
+export function pickCitation(results: TavilyResult[], merchantNormalized: string): TavilyResult {
+  const key = merchantNormalized.replace(/[^a-z0-9]/g, "");
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const hostOf = (url: string): string => {
+    try {
+      return norm(new URL(url).hostname);
+    } catch {
+      return "";
+    }
+  };
+  // 1. Relevance: keep results that mention the vendor anywhere; if none do, keep Tavily's list.
+  const relevant = key.length >= 3 ? results.filter((r) => hostOf(r.url).includes(key) || norm(r.title).includes(key) || norm(r.content).includes(key)) : [];
+  const pool = relevant.length > 0 ? relevant : results;
+  // 2. Prefer the vendor's own domain (shallowest page first, avoiding legal/login pages).
+  const LOW_VALUE_PATH = /privacy|terms|legal|login|sign-?in/i;
+  const own = pool
+    .filter((r) => key.length >= 3 && hostOf(r.url).includes(key))
+    .map((r, i) => {
+      const path = (() => {
+        try {
+          return new URL(r.url).pathname;
+        } catch {
+          return "/";
+        }
+      })();
+      const depth = path.split("/").filter(Boolean).length;
+      return { r, score: -depth * 2 - (LOW_VALUE_PATH.test(path) ? 10 : 0) - i * 0.1 };
+    })
+    .sort((a, b) => b.score - a.score);
+  if (own.length > 0) return own[0]!.r;
+  // 3. Otherwise trust Tavily's ranking within the relevant pool.
+  return pool[0]!;
 }
 
 /**
@@ -117,7 +165,10 @@ export function TavilyProvider(apiKey: string, fetchImpl?: FetchLike, options: T
       const results = readResults(body);
       if (results.length === 0) return null;
 
-      const top = results[0]!;
+      // Prefer the vendor's own site as the citation: a result whose hostname
+      // contains the normalized merchant key (e.g. ashbyhq.com for "ashby")
+      // beats aggregator/job-board pages that merely mention it.
+      const top = pickCitation(results, input.merchant_normalized);
       const answer = body?.["answer"];
       const businessType =
         truncate(typeof answer === "string" ? answer : "", BUSINESS_TYPE_MAX_CHARS) ||

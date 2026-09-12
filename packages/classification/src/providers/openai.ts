@@ -33,11 +33,13 @@ export interface OpenAiProviderOptions {
 export function buildOpenAiSystemPrompt(allowedCategories: readonly Category[]): string {
   return [
     "You categorize a single business bank transaction for a startup finance tool.",
+    "Use your knowledge of the real company behind the merchant descriptor (bank descriptors are abbreviated, e.g. 'ASHBYHQ INC' is Ashby, 'AMZN WEB SERV' is Amazon Web Services).",
     `Allowed categories (use exactly one, verbatim): ${allowedCategories.join(", ")}.`,
     'Respond with JSON only: {"category": "<one of the allowed categories>", "reason": "<one sentence>"}.',
     "Rules:",
     "- The category must be one of the allowed strings, uppercase, with no other value and no new categories.",
-    "- The reason is one short sentence about what the vendor is or does.",
+    "- Choose the MOST SPECIFIC category that describes what the company is used for. A software product is only SAAS_SOFTWARE when no more specific category applies: recruiting/ATS software is RECRUITING, hosting/compute/CDN is CLOUD_INFRASTRUCTURE, ad/CRM/email-marketing tools are MARKETING, payroll/HR platforms are PAYROLL.",
+    "- The reason is one short sentence naming the company and what it does.",
     "- Never include amounts, numbers, URLs, citations, or a confidence score.",
     "- If the vendor is unfamiliar, pick the closest allowed category; the caller decides whether to trust you.",
   ].join("\n");

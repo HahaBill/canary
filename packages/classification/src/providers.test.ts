@@ -147,7 +147,7 @@ describe("TavilyProvider", () => {
     expect(calls[0]!.url).toBe(TAVILY_SEARCH_URL);
     expect(calls[0]!.body).toEqual({
       api_key: "tvly-test",
-      query: "Ashby company what does it do",
+      query: "Ashby ASHBYHQ company what does it do",
       search_depth: "basic",
       include_answer: true,
       max_results: 5,
@@ -213,7 +213,7 @@ describe("TavilyProvider", () => {
   });
 
   it("builds the query from the display name, falling back to the raw descriptor", () => {
-    expect(buildTavilyQuery(tavilyInput)).toBe("Ashby company what does it do");
+    expect(buildTavilyQuery(tavilyInput)).toBe("Ashby ASHBYHQ company what does it do");
     expect(buildTavilyQuery({ merchant_raw: "ACME WIDGETS", merchant_normalized: "acme_widgets" })).toBe(
       "ACME WIDGETS company what does it do",
     );
@@ -255,4 +255,23 @@ describe("live providers", () => {
     },
     30_000,
   );
+});
+
+describe("pickCitation", () => {
+  it("prefers the vendor's own domain over aggregators, else the first result", async () => {
+    const { pickCitation } = await import("./providers/tavily.ts");
+    const results = [
+      { title: "Jobs", url: "https://www.ziprecruiter.com/Jobs/Ashbyhq", content: "" },
+      { title: "Ashby", url: "https://www.ashbyhq.com/", content: "" },
+    ];
+    expect(pickCitation(results, "ashby").url).toBe("https://www.ashbyhq.com/");
+    // No own-domain match and neither result mentions "datadog" → Tavily's ranking stands.
+    expect(pickCitation(results, "datadog").url).toBe("https://www.ziprecruiter.com/Jobs/Ashbyhq");
+    // Irrelevant results are dropped when at least one result mentions the vendor.
+    const mixed = [
+      { title: "A F Evans Company Inc", url: "https://www.directionus.com/ca/sf/a-f-evans", content: "directory listing" },
+      { title: "Ashbyhq Jobs", url: "https://www.ziprecruiter.com/Jobs/Ashbyhq", content: "" },
+    ];
+    expect(pickCitation(mixed, "ashby").url).toBe("https://www.ziprecruiter.com/Jobs/Ashbyhq");
+  });
 });
