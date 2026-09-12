@@ -73,11 +73,11 @@ export function alertVoiceScript(incident: Incident): string {
   const { runway_before_months, runway_after_months } = incident.financial_impact;
   const runway =
     runway_before_months !== null && runway_after_months !== null && runway_after_months < runway_before_months
-      ? ` At the new rate, modeled runway is ${speakMonths(runway_after_months).replace(/^about /, "about ")}, down from ${speakMonths(runway_before_months)}.`
-      : "";
+      ? `At the new rate, modeled runway is ${speakMonths(runway_after_months)}, down from ${speakMonths(runway_before_months).replace(/ months$/, "")}.`
+      : "I've summarized the main drivers and what it means for runway.";
   return [
-    `Hi, it's Canary. I noticed your spending pattern shifted upward ${when}, and ${driver} is the largest contributor to that change.`,
-    `I've summarized the main drivers and what it means for runway.${runway}`,
+    `Hi, it's Canary. Your spending pattern shifted upward ${when}, and ${driver} is the largest contributor.`,
+    runway,
     "Reply why for the breakdown, or show me to open the full investigation.",
   ].join(" ");
 }
