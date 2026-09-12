@@ -1,25 +1,25 @@
-// Skeleton Worker — replaced by the API workstream. Keeps CI's dry-run deploy green.
-import type { HealthResponse } from "@canary/shared";
+/**
+ * Canary API Worker — Hono + D1 + Sendblue + agent tools.
+ *
+ * The SPA is served from `./public` by Workers static assets; `/api/*` and
+ * `/webhooks/*` always run the Worker first (see wrangler.jsonc).
+ */
+import { createApp } from "./app.ts";
+import type { Env } from "./env.ts";
 
-export interface Env {
-  DB: D1Database;
-  SENDBLUE_API_KEY?: string;
-  SENDBLUE_API_SECRET?: string;
-  SENDBLUE_FROM_NUMBER?: string;
-  OPENAI_API_KEY?: string;
-  TAVILY_API_KEY?: string;
-  WEBHOOK_SECRET?: string;
-  FOUNDER_PHONE?: string;
-  PUBLIC_BASE_URL?: string;
-}
+export type { Env } from "./env.ts";
+export { createApp, type AppDeps } from "./app.ts";
+
+/** Built once per isolate. Tests build their own with injected dependencies. */
+export const app = createApp();
 
 export default {
-  async fetch(request: Request, _env: Env): Promise<Response> {
-    const url = new URL(request.url);
-    if (url.pathname === "/api/health") {
-      const body: HealthResponse = { ok: true, service: "canary-api", version: "0.0.1", time: new Date().toISOString() };
-      return Response.json(body);
-    }
-    return Response.json({ error: "not found" }, { status: 404 });
+  fetch(request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response> {
+    return app.fetch(request, env, ctx);
+  },
+
+  /** Cron wiring is P1 (docs/WORKSTREAMS.md E) — no triggers are configured. */
+  async scheduled(event: ScheduledController, _env: Env, _ctx: ExecutionContext): Promise<void> {
+    console.log(JSON.stringify({ msg: "scheduled_noop", cron: event.cron, scheduled_time: new Date(event.scheduledTime).toISOString() }));
   },
 } satisfies ExportedHandler<Env>;
