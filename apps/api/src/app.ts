@@ -2,11 +2,17 @@
  * Hono app factory. Every dependency is injectable so the whole API can be
  * exercised in plain Node with `app.request(...)` — no miniflare, no workerd,
  * no secrets.
+ *
+ * The cron trigger runs outside any request, so dependency wiring lives in
+ * `buildVariables` and is shared: a scheduled delivery and a routed one see
+ * exactly the same provider, Sendblue client, calendar and clock.
  */
 import type { BankProvider, ErrorResponse, Transaction } from "@canary/shared";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import type { AppEnv, CanaryApp } from "./context.ts";
+import { runPendingAlerts, type PendingRunSummary } from "./alerts/pending.ts";
+import { calendarFor, type CalendarFeed } from "./calendar/ics.ts";
+import type { AppEnv, CanaryApp, Variables } from "./context.ts";
 import { D1Store, type SqlDatabase } from "./data/d1.ts";
 import { MockDataProvider, withD1Overlay, type DataProvider } from "./data/provider.ts";
 import type { Env } from "./env.ts";
@@ -16,6 +22,7 @@ import { registerCoreRoutes } from "./routes/core.ts";
 import { registerDataRoutes } from "./routes/data.ts";
 import { registerIncidentRoutes } from "./routes/incidents.ts";
 import { registerToolRoutes } from "./routes/tools.ts";
+import { registerViewRoutes } from "./routes/views.ts";
 import { registerWebhookRoutes } from "./routes/webhooks.ts";
 import { SendblueClient, type FetchLike } from "./sendblue/client.ts";
 import { ElevenLabsTts, type TextToSpeech } from "./voice/elevenlabs.ts";
@@ -26,6 +33,8 @@ export interface AppDeps {
   sendblue?: SendblueClient;
   /** Defaults to ElevenLabs from env; unconfigured → alerts are text-only. */
   tts?: TextToSpeech;
+  /** Defaults to the ICS feed at `CALENDAR_ICS_URL`; unset → Canary never defers an alert. */
+  calendar?: CalendarFeed;
   bank?: BankProvider;
   /** Overrides the `DB` binding — tests pass an in-memory fake. */
   db?: SqlDatabase;
@@ -48,51 +57,66 @@ function resolveBaseProvider(deps: AppDeps): DataProvider {
   return cachedMockProvider;
 }
 
+/** Everything a request (or the cron) needs, built from the bindings plus test overrides. */
+export function buildVariables(appEnv: Env, deps: AppDeps): Variables {
+  const db = deps.db ?? (appEnv.DB as SqlDatabase | undefined);
+  // The D1 overlay belongs to the app, not the provider: whatever data source
+  // is injected, incident status and enrichments still persist.
+  const base = resolveBaseProvider(deps);
+  const provider = db ? withD1Overlay(base, db) : base;
+  const now = deps.now ?? (() => new Date().toISOString());
+
+  return {
+    appEnv,
+    now,
+    provider,
+    store: db ? new D1Store(db) : null,
+    bank: deps.bank ?? sandboxBankFor(provider, deps.bankTransactions),
+    sendblue:
+      deps.sendblue ??
+      new SendblueClient({
+        apiKey: appEnv.SENDBLUE_API_KEY,
+        apiSecret: appEnv.SENDBLUE_API_SECRET,
+        fromNumber: appEnv.SENDBLUE_FROM_NUMBER,
+        ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
+      }),
+    tts:
+      deps.tts ??
+      new ElevenLabsTts({
+        apiKey: appEnv.ELEVENLABS_API_KEY,
+        voiceId: appEnv.ELEVENLABS_VOICE_ID,
+        ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
+      }),
+    calendar:
+      deps.calendar ??
+      calendarFor({
+        url: appEnv.CALENDAR_ICS_URL,
+        now,
+        ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
+      }),
+  };
+}
+
 export function createApp(deps: AppDeps = {}): CanaryApp {
   const app = new Hono<AppEnv>();
 
   app.use("/api/*", cors({ origin: "*", allowMethods: ["GET", "POST", "OPTIONS"], allowHeaders: ["content-type", "x-canary-secret"] }));
 
   app.use("*", async (c, next) => {
-    const appEnv = { ...(c.env ?? {}), ...(deps.env ?? {}) } as Env;
-    const db = deps.db ?? (appEnv.DB as SqlDatabase | undefined);
-    // The D1 overlay belongs to the app, not the provider: whatever data source
-    // is injected, incident status and enrichments still persist.
-    const base = resolveBaseProvider(deps);
-    const provider = db ? withD1Overlay(base, db) : base;
-
-    c.set("appEnv", appEnv);
-    c.set("now", deps.now ?? (() => new Date().toISOString()));
-    c.set("provider", provider);
-    c.set("store", db ? new D1Store(db) : null);
-    c.set("bank", deps.bank ?? sandboxBankFor(provider, deps.bankTransactions));
-    c.set(
-      "sendblue",
-      deps.sendblue ??
-        new SendblueClient({
-          apiKey: appEnv.SENDBLUE_API_KEY,
-          apiSecret: appEnv.SENDBLUE_API_SECRET,
-          fromNumber: appEnv.SENDBLUE_FROM_NUMBER,
-          ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
-        }),
-    );
-
-    c.set(
-      "tts",
-      deps.tts ??
-        new ElevenLabsTts({
-          apiKey: appEnv.ELEVENLABS_API_KEY,
-          voiceId: appEnv.ELEVENLABS_VOICE_ID,
-          ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
-        }),
-    );
-
+    const variables = buildVariables({ ...(c.env ?? {}), ...(deps.env ?? {}) } as Env, deps);
+    // Setting them in bulk means a dependency added to `Variables` cannot be
+    // wired into the cron and forgotten here (the cast is safe: the keys and
+    // values both come from one typed object).
+    for (const [key, value] of Object.entries(variables)) {
+      c.set(key as keyof Variables, value as never);
+    }
     await next();
   });
 
   registerCoreRoutes(app);
   registerIncidentRoutes(app);
   registerDataRoutes(app);
+  registerViewRoutes(app);
   registerAlertRoutes(app);
   registerWebhookRoutes(app);
   registerToolRoutes(app);
@@ -109,4 +133,12 @@ export function createApp(deps: AppDeps = {}): CanaryApp {
   });
 
   return app;
+}
+
+/**
+ * The cron job, wired from the same deps as the app. Kept next to `createApp` so
+ * a dependency added to one can never be forgotten by the other.
+ */
+export function createScheduled(deps: AppDeps = {}): (env: Env) => Promise<PendingRunSummary> {
+  return (env: Env) => runPendingAlerts(buildVariables({ ...env, ...(deps.env ?? {}) } as Env, deps));
 }

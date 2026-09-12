@@ -1,6 +1,7 @@
 /** Hono context typing + the small helpers every route uses. */
 import type { BankProvider, ErrorResponse } from "@canary/shared";
 import type { Context, Hono } from "hono";
+import type { CalendarFeed } from "./calendar/ics.ts";
 import type { D1Store } from "./data/d1.ts";
 import type { DataProvider } from "./data/provider.ts";
 import { publicBaseUrl, type Env } from "./env.ts";
@@ -12,6 +13,8 @@ export interface Variables {
   sendblue: SendblueClient;
   tts: TextToSpeech;
   bank: BankProvider;
+  /** Founder availability. `NO_CALENDAR` when CALENDAR_ICS_URL is unset. */
+  calendar: CalendarFeed;
   /** Null when no D1 binding is available (unit tests, `wrangler dev` without D1). */
   store: D1Store | null;
   /** Runtime bindings merged with any test overrides. */

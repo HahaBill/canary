@@ -17,6 +17,13 @@ export interface Env {
   /** ElevenLabs TTS for the iMessage voice note. Optional — alerts degrade to text only. */
   ELEVENLABS_API_KEY?: string;
   ELEVENLABS_VOICE_ID?: string;
+  /**
+   * Private iCal (`.ics`) URL for the founder's calendar. Optional — without it
+   * Canary has no availability signal and never defers an alert.
+   */
+  CALENDAR_ICS_URL?: string;
+  /** `"1"` to show real event titles in the calendar view. Anything else renders "Busy". */
+  CALENDAR_SHOW_TITLES?: string;
 }
 
 export const API_VERSION = "0.0.1";

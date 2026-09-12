@@ -4,6 +4,7 @@ import { buildMockDerived } from "@canary/shared/fixtures";
 import { describe, expect, it } from "vitest";
 import { FakeD1 } from "../test/fake-d1.ts";
 import { D1Store, type SqlDatabase } from "./d1.ts";
+import { PipelineDataProvider } from "./pipeline-provider.ts";
 import { MockDataProvider, withD1Overlay } from "./provider.ts";
 
 const NOW = "2026-09-14T12:00:00.000Z";
@@ -133,6 +134,15 @@ describe("withD1Overlay", () => {
   });
 });
 
+describe("PipelineDataProvider", () => {
+  it("fails loudly for the view methods the engine has not wired yet", async () => {
+    const provider = new PipelineDataProvider();
+    await expect(provider.getLedgerPivot("month")).rejects.toThrow("not wired");
+    await expect(provider.getLedgerCell("vendor:aws", "2026-09", "month")).rejects.toThrow("not wired");
+    await expect(provider.getCalendarEvents("2026-09-01", "2026-09-30")).rejects.toThrow("not wired");
+  });
+});
+
 describe("D1Store.logMessage", () => {
   it("writes the full row when migration 0002 is applied", async () => {
     const db = new FakeD1();
@@ -143,6 +153,7 @@ describe("D1Store.logMessage", () => {
   it("falls back to the 0001 columns when 0002 has not run", async () => {
     const db = new FakeD1({ rejectColumns: ["command", "provider_message_id"] });
     await new D1Store(db).logMessage({ direction: "outbound", phone: "+15550001111", body: "hi", created_at: NOW, command: "HELP" });
-    expect(db.rows("imessage_log")).toEqual([{ direction: "outbound", phone: "+15550001111", body: "hi", created_at: NOW }]);
+    // `id` is assigned by the table's AUTOINCREMENT, not by the statement.
+    expect(db.rows("imessage_log")).toEqual([{ id: 1, direction: "outbound", phone: "+15550001111", body: "hi", created_at: NOW }]);
   });
 });

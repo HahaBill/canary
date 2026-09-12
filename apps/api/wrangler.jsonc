@@ -33,6 +33,14 @@
     }
   ],
 
+  // Drains alerts the notification policy deferred while the founder was in a
+  // meeting (src/alerts/pending.ts). Five minutes is the resolution of "as soon
+  // as your meeting ends" — fine for a burn alert, cheap enough to be a no-op
+  // most of the time.
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+
   "observability": {
     "enabled": true
   }

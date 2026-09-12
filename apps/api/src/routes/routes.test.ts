@@ -19,7 +19,7 @@ import {
 import { SAMPLE_TRANSACTIONS } from "@canary/shared/fixtures";
 import { describe, expect, it } from "vitest";
 import { API_VERSION } from "../env.ts";
-import { createHarness, FIXED_NOW, TEST_ENV } from "../test/harness.ts";
+import { createHarness, fakeTts, FIXED_NOW, TEST_ENV } from "../test/harness.ts";
 import type { IncidentStatusResponse } from "./incidents.ts";
 
 describe("route surface", () => {
@@ -343,8 +343,7 @@ describe("POST /api/alerts/send", () => {
   });
 
   it("sends text, then uploads a CAF voice note and sends it as media (same incident, no exact figures spoken)", async () => {
-    const pcm = new Uint8Array(48_000); // 1s of silence at 24kHz S16LE
-    const tts = { configured: true, spoken: [] as string[], async synthesizePcm(text: string) { this.spoken.push(text); return { ok: true, pcm, sampleRate: 24_000, status: 200 }; } };
+    const tts = fakeTts(); // 1s of silence at 24kHz S16LE
     const h = createHarness({ tts });
     const { body } = await h.authed<SendAlertResponse>("/api/alerts/send", {});
     expect(body.sent).toBe(true);
@@ -362,16 +361,14 @@ describe("POST /api/alerts/send", () => {
   });
 
   it("skips the voice note when voice=false", async () => {
-    const tts = { configured: true, async synthesizePcm() { return { ok: true, pcm: new Uint8Array(2), sampleRate: 24_000, status: 200 }; } };
-    const h = createHarness({ tts });
+    const h = createHarness({ tts: fakeTts() });
     const { body } = await h.authed<SendAlertResponse>("/api/alerts/send", { voice: false });
     expect(body.voice).toBeUndefined();
     expect(h.calls).toHaveLength(1);
   });
 
   it("keeps the text alert delivered when TTS fails", async () => {
-    const tts = { configured: true, async synthesizePcm() { return { ok: false, sampleRate: 24_000, status: 500, error: "boom" }; } };
-    const h = createHarness({ tts });
+    const h = createHarness({ tts: fakeTts({ pcm: () => ({ ok: false, sampleRate: 24_000, status: 500, error: "boom" }) }) });
     const { status, body } = await h.authed<SendAlertResponse>("/api/alerts/send", {});
     expect(status).toBe(200);
     expect(body.sent).toBe(true);

@@ -4,7 +4,23 @@
  * fully offline and deterministic thanks to the committed demo caches.
  * What-if is `@canary/engine`'s `simulateCostChange` — never an LLM.
  */
-import type { DerivedDemoObject, Incident, IncidentStatus, ISODateTime, Transaction, VendorEnrichment, WhatIfRequest, WhatIfResult } from "@canary/shared";
+import type {
+  CalendarEvent,
+  ClassificationOverride,
+  DerivedDemoObject,
+  Incident,
+  IncidentStatus,
+  ISODate,
+  ISODateTime,
+  LedgerPivot,
+  NeedsReviewResponse,
+  PivotCellDetail,
+  PivotGranularity,
+  Transaction,
+  VendorEnrichment,
+  WhatIfRequest,
+  WhatIfResult,
+} from "@canary/shared";
 import { simulateCostChange } from "@canary/engine";
 import { loadDemoCaches, runPipeline } from "@canary/pipeline";
 import { noChangeExplanation, whatIfSpeech } from "../speech.ts";
@@ -55,5 +71,34 @@ export class PipelineDataProvider implements DataProvider {
     const derived = await this.getDerived();
     const result = simulateCostChange(derived.burn, req);
     return { ...result, speech: whatIfSpeech(result, noChangeExplanation(derived, req.entity, req.percentage)) };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Views. The engine's `pivotLedger` / `pivotCell` / `projectRecurring` /
+  // `buildCashCalendarEvents` need the full `Ledger` (transactions included),
+  // which `runPipeline` does not hand back yet. The lead wires these three at
+  // integration; failing loudly beats serving the dev mock's shapes as if they
+  // were pipeline output.
+  // ---------------------------------------------------------------------------
+
+  async getLedgerPivot(_granularity: PivotGranularity): Promise<LedgerPivot> {
+    throw new Error("not wired");
+  }
+
+  async getLedgerCell(_rowId: string, _periodKey: string, _granularity: PivotGranularity): Promise<PivotCellDetail | null> {
+    throw new Error("not wired");
+  }
+
+  async getCalendarEvents(_from: ISODate, _to: ISODate): Promise<CalendarEvent[]> {
+    throw new Error("not wired");
+  }
+
+  /** Real pipeline data: `needs_review` + `classifications` are already in the derived object. */
+  async getNeedsReview(): Promise<NeedsReviewResponse["items"]> {
+    return (await this.ready()).getNeedsReview();
+  }
+
+  async applyClassificationOverride(o: ClassificationOverride): Promise<{ needs_review_count: number }> {
+    return (await this.ready()).applyClassificationOverride(o);
   }
 }

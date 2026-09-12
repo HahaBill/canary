@@ -10,6 +10,8 @@ export const ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech";
 export const DEFAULT_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
 export const DEFAULT_MODEL_ID = "eleven_turbo_v2_5";
 export const PCM_SAMPLE_RATE = 24_000;
+/** For the browser's `<audio>`: a container it can play, unlike raw PCM or CAF. */
+export const MP3_OUTPUT_FORMAT = "mp3_44100_128";
 
 export interface TtsConfig {
   apiKey?: string;
@@ -28,9 +30,19 @@ export interface TtsResult {
   error?: string;
 }
 
+export interface TtsMp3Result {
+  ok: boolean;
+  mp3?: Uint8Array;
+  status: number;
+  error?: string;
+}
+
 export interface TextToSpeech {
   readonly configured: boolean;
+  /** Raw S16LE PCM, for the CAF the iMessage voice note needs. */
   synthesizePcm(text: string): Promise<TtsResult>;
+  /** MP3, for the web app's "Listen" button. Same script, different container. */
+  synthesizeMp3(text: string): Promise<TtsMp3Result>;
 }
 
 export class ElevenLabsTts implements TextToSpeech {
@@ -40,27 +52,49 @@ export class ElevenLabsTts implements TextToSpeech {
     return Boolean(this.config.apiKey);
   }
 
-  async synthesizePcm(text: string): Promise<TtsResult> {
-    if (!this.configured) return { ok: false, sampleRate: PCM_SAMPLE_RATE, status: 0, error: "ELEVENLABS_NOT_CONFIGURED" };
+  private async synthesize(text: string, outputFormat: string, accept: string): Promise<{ ok: boolean; bytes?: Uint8Array; status: number; error?: string }> {
     const doFetch = this.config.fetchImpl ?? ((req: Parameters<FetchLike>[0], init?: Parameters<FetchLike>[1]) => fetch(req, init));
     const voice = this.config.voiceId?.trim() || DEFAULT_VOICE_ID;
-    const url = `${this.config.url ?? ELEVENLABS_TTS_URL}/${encodeURIComponent(voice)}?output_format=pcm_${PCM_SAMPLE_RATE}`;
+    const url = `${this.config.url ?? ELEVENLABS_TTS_URL}/${encodeURIComponent(voice)}?output_format=${outputFormat}`;
     try {
       const res = await doFetch(url, {
         method: "POST",
-        headers: { "xi-api-key": this.config.apiKey!, "content-type": "application/json", accept: "application/octet-stream" },
+        headers: { "xi-api-key": this.config.apiKey!, "content-type": "application/json", accept },
         body: JSON.stringify({ text, model_id: this.config.modelId ?? DEFAULT_MODEL_ID }),
         signal: AbortSignal.timeout(this.config.timeoutMs ?? 20_000),
       });
       if (!res.ok) {
         const detail = (await res.text()).slice(0, 200);
-        return { ok: false, sampleRate: PCM_SAMPLE_RATE, status: res.status, error: detail || `HTTP ${res.status}` };
+        return { ok: false, status: res.status, error: detail || `HTTP ${res.status}` };
       }
-      const pcm = new Uint8Array(await res.arrayBuffer());
-      if (pcm.length === 0) return { ok: false, sampleRate: PCM_SAMPLE_RATE, status: res.status, error: "empty audio" };
-      return { ok: true, pcm, sampleRate: PCM_SAMPLE_RATE, status: res.status };
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      if (bytes.length === 0) return { ok: false, status: res.status, error: "empty audio" };
+      return { ok: true, bytes, status: res.status };
     } catch (err) {
-      return { ok: false, sampleRate: PCM_SAMPLE_RATE, status: 0, error: err instanceof Error ? err.message : String(err) };
+      return { ok: false, status: 0, error: err instanceof Error ? err.message : String(err) };
     }
+  }
+
+  async synthesizePcm(text: string): Promise<TtsResult> {
+    if (!this.configured) return { ok: false, sampleRate: PCM_SAMPLE_RATE, status: 0, error: "ELEVENLABS_NOT_CONFIGURED" };
+    const result = await this.synthesize(text, `pcm_${PCM_SAMPLE_RATE}`, "application/octet-stream");
+    return {
+      ok: result.ok,
+      ...(result.bytes ? { pcm: result.bytes } : {}),
+      sampleRate: PCM_SAMPLE_RATE,
+      status: result.status,
+      ...(result.error ? { error: result.error } : {}),
+    };
+  }
+
+  async synthesizeMp3(text: string): Promise<TtsMp3Result> {
+    if (!this.configured) return { ok: false, status: 0, error: "ELEVENLABS_NOT_CONFIGURED" };
+    const result = await this.synthesize(text, MP3_OUTPUT_FORMAT, "audio/mpeg");
+    return {
+      ok: result.ok,
+      ...(result.bytes ? { mp3: result.bytes } : {}),
+      status: result.status,
+      ...(result.error ? { error: result.error } : {}),
+    };
   }
 }
