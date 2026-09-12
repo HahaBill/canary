@@ -8,8 +8,9 @@
 
   // React/Vite SPA output (apps/web -> build.outDir = apps/api/public).
   // Unmatched paths fall back to index.html so client-side routes such as
-  // /incidents/:id work on hard refresh. API and webhook paths always hit
-  // the Worker first and are never served from static assets.
+  // /incidents/:id work on hard refresh. API, webhook and OAuth paths always hit
+  // the Worker first and are never served from static assets — without /oauth
+  // here, Google's redirect would land on the SPA shell instead of the callback.
   "assets": {
     "directory": "./public",
     "not_found_handling": "single-page-application",
@@ -17,7 +18,9 @@
       "/api",
       "/api/*",
       "/webhooks",
-      "/webhooks/*"
+      "/webhooks/*",
+      "/oauth",
+      "/oauth/*"
     ]
   },
 

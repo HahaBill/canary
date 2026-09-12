@@ -11,7 +11,9 @@ import type { BankProvider, ErrorResponse, Transaction } from "@canary/shared";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { runPendingAlerts, type PendingRunSummary } from "./alerts/pending.ts";
-import { calendarFor, type CalendarFeed } from "./calendar/ics.ts";
+import type { CalendarFeed } from "./calendar/ics.ts";
+import { createCalendarResolver } from "./calendar/resolve.ts";
+import { reviewEventStoreFor } from "./calendar/review-events.ts";
 import type { AppEnv, CanaryApp, Variables } from "./context.ts";
 import { D1Store, type SqlDatabase } from "./data/d1.ts";
 import { MockDataProvider, withD1Overlay, type DataProvider } from "./data/provider.ts";
@@ -21,6 +23,8 @@ import { registerAlertRoutes } from "./routes/alerts.ts";
 import { registerCoreRoutes } from "./routes/core.ts";
 import { registerDataRoutes } from "./routes/data.ts";
 import { registerIncidentRoutes } from "./routes/incidents.ts";
+import { registerOauthRoutes } from "./routes/oauth.ts";
+import { registerScheduleRoutes } from "./routes/schedule.ts";
 import { registerToolRoutes } from "./routes/tools.ts";
 import { registerViewRoutes } from "./routes/views.ts";
 import { registerWebhookRoutes } from "./routes/webhooks.ts";
@@ -33,7 +37,10 @@ export interface AppDeps {
   sendblue?: SendblueClient;
   /** Defaults to ElevenLabs from env; unconfigured → alerts are text-only. */
   tts?: TextToSpeech;
-  /** Defaults to the ICS feed at `CALENDAR_ICS_URL`; unset → Canary never defers an alert. */
+  /**
+   * Defaults to the resolver's feed (Google when connected, else the ICS feed at
+   * `CALENDAR_ICS_URL`, else none → Canary never defers an alert).
+   */
   calendar?: CalendarFeed;
   bank?: BankProvider;
   /** Overrides the `DB` binding — tests pass an in-memory fake. */
@@ -65,12 +72,18 @@ export function buildVariables(appEnv: Env, deps: AppDeps): Variables {
   const base = resolveBaseProvider(deps);
   const provider = db ? withD1Overlay(base, db) : base;
   const now = deps.now ?? (() => new Date().toISOString());
+  const fetchImpl: FetchLike = deps.fetchImpl ?? ((input, init) => fetch(input, init));
+  // Google > ICS > none. The choice needs a D1 read, so the resolver hands back a
+  // lazy feed and does it on first use (src/calendar/resolve.ts).
+  const calendarResolver = createCalendarResolver({ appEnv, db, now, fetchImpl });
 
   return {
     appEnv,
     now,
+    fetchImpl,
     provider,
     store: db ? new D1Store(db) : null,
+    reviews: reviewEventStoreFor(db),
     bank: deps.bank ?? sandboxBankFor(provider, deps.bankTransactions),
     sendblue:
       deps.sendblue ??
@@ -87,13 +100,8 @@ export function buildVariables(appEnv: Env, deps: AppDeps): Variables {
         voiceId: appEnv.ELEVENLABS_VOICE_ID,
         ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
       }),
-    calendar:
-      deps.calendar ??
-      calendarFor({
-        url: appEnv.CALENDAR_ICS_URL,
-        now,
-        ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
-      }),
+    calendarResolver,
+    calendar: deps.calendar ?? calendarResolver.feed,
   };
 }
 
@@ -120,6 +128,8 @@ export function createApp(deps: AppDeps = {}): CanaryApp {
   registerAlertRoutes(app);
   registerWebhookRoutes(app);
   registerToolRoutes(app);
+  registerOauthRoutes(app);
+  registerScheduleRoutes(app);
 
   app.notFound((c) => {
     const body: ErrorResponse = { error: "not_found", detail: `${c.req.method} ${new URL(c.req.url).pathname}` };

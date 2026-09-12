@@ -15,3 +15,10 @@ ALLOWED_PHONES=
 CALENDAR_ICS_URL=
 # 1 = show real event titles in /api/calendar. Anything else renders "Busy".
 CALENDAR_SHOW_TITLES=
+# Google OAuth web client (one account: the founder's). With both set, visit
+# /oauth/google/start?secret=$WEBHOOK_SECRET once to connect; Google then replaces
+# the iCal feed and Canary can book the incident review. See README.md.
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+# IANA zone the 09:00-18:00 review slots are read in. Default America/New_York.
+CALENDAR_TIMEZONE=
