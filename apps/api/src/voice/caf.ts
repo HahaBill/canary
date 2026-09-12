@@ -49,6 +49,47 @@ export function pcmToCaf(pcm: Uint8Array, sampleRate: number, channels = 1, bits
   return out;
 }
 
+/**
+ * Loudness-normalize S16LE PCM for an iMessage voice memo.
+ *
+ * TTS output already peaks near full scale but averages around −14 dBFS, so it
+ * sounds quiet next to phone-recorded voice notes (which are heavily
+ * compressed). We apply gain to reach `targetRmsDb` and run the result through
+ * a soft-knee limiter: samples below `knee` (fraction of full scale) pass
+ * linearly, anything above is compressed smoothly toward full scale, so peaks
+ * never hard-clip. `maxGainDb` caps amplification for near-silent input.
+ */
+export function normalizePcm16(pcm: Uint8Array, targetRmsDb = -10, maxGainDb = 12, knee = 0.8): { pcm: Uint8Array; gain: number; rmsDbBefore: number } {
+  const samples = pcm.length >> 1;
+  if (samples === 0) return { pcm, gain: 1, rmsDbBefore: -Infinity };
+  const view = new DataView(pcm.buffer, pcm.byteOffset, samples * 2);
+  let sumSq = 0;
+  for (let i = 0; i < samples; i++) {
+    const v = view.getInt16(i * 2, true);
+    sumSq += v * v;
+  }
+  const rms = Math.sqrt(sumSq / samples);
+  if (rms === 0) return { pcm, gain: 1, rmsDbBefore: -Infinity };
+  const rmsDb = 20 * Math.log10(rms / 32768);
+  const gainDb = Math.max(0, Math.min(maxGainDb, targetRmsDb - rmsDb));
+  const gain = Math.pow(10, gainDb / 20);
+  if (gain <= 1.001) return { pcm, gain: 1, rmsDbBefore: rmsDb };
+
+  const FULL = 32767;
+  const kneeAbs = knee * FULL;
+  const headroom = FULL - kneeAbs;
+  const out = new Uint8Array(samples * 2);
+  const ov = new DataView(out.buffer);
+  for (let i = 0; i < samples; i++) {
+    const x = view.getInt16(i * 2, true) * gain;
+    const a = Math.abs(x);
+    // Soft knee: linear below the knee, tanh-compressed above it, asymptotic to FULL.
+    const y = a <= kneeAbs ? a : kneeAbs + headroom * Math.tanh((a - kneeAbs) / headroom);
+    ov.setInt16(i * 2, Math.round(Math.sign(x) * Math.min(FULL, y)), true);
+  }
+  return { pcm: out, gain, rmsDbBefore: rmsDb };
+}
+
 /** Duration of S16LE PCM in seconds. */
 export function pcmDurationSeconds(pcmBytes: number, sampleRate: number, channels = 1): number {
   return pcmBytes / (sampleRate * channels * 2);

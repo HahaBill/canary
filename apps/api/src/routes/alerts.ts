@@ -10,7 +10,7 @@ import type { SendAlertResponse, SendAlertVoiceResult } from "@canary/shared";
 import { baseUrl, jsonError, readJson, type CanaryApp, type CanaryContext } from "../context.ts";
 import { primaryIncident } from "../derive.ts";
 import { renderAlert } from "../messages.ts";
-import { pcmDurationSeconds, pcmToCaf } from "../voice/caf.ts";
+import { normalizePcm16, pcmDurationSeconds, pcmToCaf } from "../voice/caf.ts";
 
 export const VOICE_NOTE_FILENAME = "CanaryAlert.caf";
 
@@ -21,8 +21,10 @@ async function sendVoiceNote(c: CanaryContext, to: string, script: string): Prom
   const synth = await tts.synthesizePcm(script);
   if (!synth.ok || !synth.pcm) return { sent: false, transcript: script, error: `tts: ${synth.error ?? synth.status}` };
 
-  const caf = pcmToCaf(synth.pcm, synth.sampleRate);
-  const seconds = Math.round(pcmDurationSeconds(synth.pcm.length, synth.sampleRate) * 10) / 10;
+  // TTS output is quiet as a voice memo — bring the peak up to just under full scale.
+  const { pcm } = normalizePcm16(synth.pcm);
+  const caf = pcmToCaf(pcm, synth.sampleRate);
+  const seconds = Math.round(pcmDurationSeconds(pcm.length, synth.sampleRate) * 10) / 10;
 
   const sendblue = c.get("sendblue");
   const upload = await sendblue.uploadFile({ bytes: caf, filename: VOICE_NOTE_FILENAME, contentType: "audio/x-caf" });
