@@ -151,7 +151,16 @@ export function registerOauthRoutes(app: CanaryApp): void {
       }),
     );
 
-    return page("Google Calendar connected", `Google Calendar connected for ${accountEmail ?? "your account"}. You can close this tab.`, 200);
+    const expected = c.get("appEnv").FOUNDER_EMAIL?.trim().toLowerCase();
+    const mismatch = Boolean(expected && accountEmail && accountEmail.toLowerCase() !== expected);
+    if (mismatch) console.warn(JSON.stringify({ msg: "google_oauth_account_mismatch", connected: accountEmail, expected }));
+    return page(
+      mismatch ? "Connected — but to a different account" : "Google Calendar connected",
+      mismatch
+        ? `Google Calendar connected for ${accountEmail}, but Canary expected ${expected}. Disconnect and reconnect with the founder account if this was a mistake.`
+        : `Google Calendar connected for ${accountEmail ?? "your account"}. You can close this tab.`,
+      200,
+    );
   });
 
   app.post("/oauth/google/disconnect", async (c) => {

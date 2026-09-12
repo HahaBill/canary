@@ -248,10 +248,10 @@ export class GoogleCalendarProvider implements CalendarFeed {
     // `/api/calendar/connection` is where the real provider is named.
     const runs = mergeBusyRanges(ranges);
     const current = runs.find((r) => r.start <= at && at < r.end);
-    if (current) return { busy: true, until: new Date(current.end).toISOString(), next_busy_start: null, source: "ics" };
+    if (current) return { busy: true, until: new Date(current.end).toISOString(), next_busy_start: null, source: "google" };
 
     const next = runs.find((r) => r.start > at && r.start <= at + LOOKAHEAD_MS);
-    return { busy: false, until: null, next_busy_start: next ? new Date(next.start).toISOString() : null, source: "ics" };
+    return { busy: false, until: null, next_busy_start: next ? new Date(next.start).toISOString() : null, source: "google" };
   }
 
   /** Busy events overlapping `[from 00:00Z, to+1d 00:00Z)`, in start order. */

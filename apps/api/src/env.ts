@@ -11,6 +11,8 @@ export interface Env {
   TAVILY_API_KEY?: string;
   WEBHOOK_SECRET?: string;
   FOUNDER_PHONE?: string;
+  /** Expected Google account for the calendar connection; a mismatch is flagged, not rejected. */
+  FOUNDER_EMAIL?: string;
   /** Optional comma-separated extra E.164 numbers Canary will reply to (demo teammates). */
   ALLOWED_PHONES?: string;
   PUBLIC_BASE_URL?: string;

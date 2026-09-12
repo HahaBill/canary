@@ -69,12 +69,12 @@ describe("isBusyAt", () => {
 
   it("reports free with no next meeting when nothing is booked", async () => {
     const { provider } = await fixture({ busy: [] });
-    expect(await provider.isBusyAt(NOW)).toEqual({ busy: false, until: null, next_busy_start: null, source: "ics" });
+    expect(await provider.isBusyAt(NOW)).toEqual({ busy: false, until: null, next_busy_start: null, source: "google" });
   });
 
   it("reports busy until the end of the block containing now", async () => {
     const { provider } = await fixture({ busy: [busy("2026-09-14T11:30:00.000Z", "2026-09-14T12:30:00.000Z")] });
-    expect(await provider.isBusyAt(NOW)).toEqual({ busy: true, until: "2026-09-14T12:30:00.000Z", next_busy_start: null, source: "ics" });
+    expect(await provider.isBusyAt(NOW)).toEqual({ busy: true, until: "2026-09-14T12:30:00.000Z", next_busy_start: null, source: "google" });
   });
 
   it("merges back-to-back meetings, so `until` is the end of the last one", async () => {
@@ -101,7 +101,7 @@ describe("isBusyAt", () => {
       busy: false,
       until: null,
       next_busy_start: "2026-09-14T15:00:00.000Z",
-      source: "ics",
+      source: "google",
     });
 
     clearGoogleCalendarCache();

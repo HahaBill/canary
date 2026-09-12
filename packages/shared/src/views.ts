@@ -136,7 +136,7 @@ export interface CashCalendar {
   to: ISODate;
   days: CalendarDay[];
   /** Whether a founder calendar feed was configured and readable. */
-  busy_source: "ics" | "none";
+  busy_source: "google" | "ics" | "none";
 }
 
 /** Recurring charge detected from the ledger (input to the calendar projection). */
@@ -162,7 +162,7 @@ export interface AvailabilityResponse {
   until: ISODateTime | null;
   /** Start of the next busy block within the lookahead, when free. */
   next_busy_start: ISODateTime | null;
-  source: "ics" | "none";
+  source: "google" | "ics" | "none";
   checked_at: ISODateTime;
 }
 

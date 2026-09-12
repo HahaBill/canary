@@ -12,7 +12,7 @@ import type { ISODate, ISODateTime } from "@canary/shared";
 import type { FetchLike } from "../sendblue/client.ts";
 import { expand, parseEvents, type Occurrence } from "./parse.ts";
 
-export type BusySource = "ics" | "none";
+export type BusySource = "google" | "ics" | "none";
 
 /** One occurrence of a calendar event, flattened to instants. */
 export interface CalendarFeedEvent {
