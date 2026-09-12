@@ -7,6 +7,11 @@ import {
   API_ROUTES,
   type AlertHistoryItem,
   type AlertHistoryResponse,
+  type AvailabilityResponse,
+  type CalendarResponse,
+  type CashCalendar,
+  type ClassificationOverrideRequest,
+  type ClassificationOverrideResponse,
   type DemoResponse,
   type ErrorResponse,
   type Incident,
@@ -14,6 +19,13 @@ import {
   type IncidentStatus,
   type IncidentStatusRequest,
   type IncidentsResponse,
+  type ISODate,
+  type LedgerCellResponse,
+  type LedgerResponse,
+  type LedgerPivot,
+  type NeedsReviewResponse,
+  type PivotCellDetail,
+  type PivotGranularity,
   type SimulateRequest,
   type SimulateResponse,
   type WhatIfRequest,
@@ -54,6 +66,16 @@ function routePath(route: string, params: Record<string, string> = {}): string {
     if (value === undefined) throw new Error(`Missing route param "${key}" for ${route}`);
     return encodeURIComponent(value);
   });
+}
+
+/** Appends only the params that are set, so defaults stay the server's business. */
+function withQuery(path: string, params: Record<string, string | undefined>): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) query.set(key, value);
+  }
+  const qs = query.toString();
+  return qs ? `${path}?${qs}` : path;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -156,4 +178,55 @@ export async function getIncidentVoice(id: string, signal?: AbortSignal): Promis
     );
   }
   return response.blob();
+}
+
+// ---------------------------------------------------------------------------
+// Views (ledger sheet, cash calendar, needs review)
+// ---------------------------------------------------------------------------
+
+export function getLedger(granularity: PivotGranularity, signal?: AbortSignal): Promise<LedgerPivot> {
+  const path = withQuery(routePath(API_ROUTES.ledger), { granularity });
+  return request<LedgerResponse>(path, signal ? { signal } : undefined).then((r) => r.pivot);
+}
+
+export function getLedgerCell(
+  rowId: string,
+  periodKey: string,
+  granularity: PivotGranularity,
+  signal?: AbortSignal,
+): Promise<PivotCellDetail> {
+  const path = withQuery(routePath(API_ROUTES.ledgerCell), {
+    row_id: rowId,
+    period_key: periodKey,
+    granularity,
+  });
+  return request<LedgerCellResponse>(path, signal ? { signal } : undefined).then((r) => r.detail);
+}
+
+export function getCalendar(from: ISODate, to: ISODate, signal?: AbortSignal): Promise<CashCalendar> {
+  const path = withQuery(routePath(API_ROUTES.calendar), { from, to });
+  return request<CalendarResponse>(path, signal ? { signal } : undefined).then((r) => r.calendar);
+}
+
+export function getAvailability(signal?: AbortSignal): Promise<AvailabilityResponse> {
+  return request<AvailabilityResponse>(routePath(API_ROUTES.availability), signal ? { signal } : undefined);
+}
+
+export function getNeedsReview(signal?: AbortSignal): Promise<NeedsReviewResponse> {
+  return request<NeedsReviewResponse>(routePath(API_ROUTES.needsReview), signal ? { signal } : undefined);
+}
+
+/**
+ * Writes are guarded by the shared operator secret (the same one the Sendblue
+ * webhook checks), so the header is required rather than optional.
+ */
+export function postClassificationOverride(
+  body: ClassificationOverrideRequest,
+  secret: string,
+): Promise<ClassificationOverrideResponse> {
+  return request<ClassificationOverrideResponse>(routePath(API_ROUTES.classificationOverride), {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "x-canary-secret": secret },
+  });
 }

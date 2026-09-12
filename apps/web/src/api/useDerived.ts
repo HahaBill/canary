@@ -12,15 +12,49 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type {
   AlertHistoryItem,
+  AvailabilityResponse,
+  CashCalendar,
+  ClassificationOverrideRequest,
+  ClassificationOverrideResponse,
   DemoResponse,
   Incident,
   IncidentDetailResponse,
   IncidentStatus,
+  ISODate,
+  LedgerPivot,
+  NeedsReviewResponse,
+  PivotCellDetail,
+  PivotGranularity,
   SimulateResponse,
   WhatIfRequest,
 } from "@canary/shared";
-import { ApiError, getAlertHistory, getDemo, getIncident, setIncidentStatus, simulate } from "./client.ts";
-import { mockAlertHistory, mockDemo, mockIncidentDetail, mockSetIncidentStatus, mockSimulate } from "./mock.ts";
+import {
+  ApiError,
+  getAlertHistory,
+  getAvailability,
+  getCalendar,
+  getDemo,
+  getIncident,
+  getLedger,
+  getLedgerCell,
+  getNeedsReview,
+  postClassificationOverride,
+  setIncidentStatus,
+  simulate,
+} from "./client.ts";
+import {
+  mockAlertHistory,
+  mockAvailability,
+  mockCalendar,
+  mockClassificationOverride,
+  mockDemo,
+  mockIncidentDetail,
+  mockLedger,
+  mockLedgerCell,
+  mockNeedsReview,
+  mockSetIncidentStatus,
+  mockSimulate,
+} from "./mock.ts";
 
 export type DataSource = "live" | "mock-forced" | "mock-fallback";
 
@@ -53,6 +87,8 @@ let activeSource: DataSource | null = null;
 /** De-dupes concurrent/StrictMode-doubled loads of the same resource. */
 let demoRequest: Promise<Loaded<DemoResponse>> | null = null;
 const incidentRequests = new Map<string, Promise<Loaded<IncidentDetailResponse | null>>>();
+/** One entry per resource key (granularity, date range, cell coordinates, …). */
+const viewRequests = new Map<string, Promise<Loaded<unknown>>>();
 
 /** Bumped on every cache clear so all mounted hooks re-run, not just the caller. */
 let cacheVersion = 0;
@@ -68,6 +104,7 @@ export function clearApiCache(): void {
   activeSource = null;
   demoRequest = null;
   incidentRequests.clear();
+  viewRequests.clear();
   cacheVersion += 1;
   for (const listener of cacheListeners) listener();
 }
@@ -204,6 +241,95 @@ export function useIncidentDetail(id: string): AsyncResource<IncidentDetailRespo
     }
     return pending;
   });
+}
+
+// ---------------------------------------------------------------------------
+// Views (ledger sheet, cash calendar, needs review)
+// ---------------------------------------------------------------------------
+
+/**
+ * Same three-way resolution as the reads above, for routes whose only
+ * difference is the fetcher and the fixture builder.
+ */
+async function loadView<T>(fetchLive: () => Promise<T>, buildMock: () => T): Promise<Loaded<T>> {
+  if (usingFixtures()) {
+    activeSource = mockSource();
+    return { data: buildMock(), source: activeSource };
+  }
+  try {
+    const data = await fetchLive();
+    activeSource = "live";
+    return { data, source: "live" };
+  } catch (err) {
+    if (fallbackAllowed() && err instanceof ApiError && err.isUnreachable) {
+      activeSource = "mock-fallback";
+      return { data: buildMock(), source: "mock-fallback" };
+    }
+    throw err;
+  }
+}
+
+/** De-dupes concurrent loads of the same view and feeds `useAsyncResource`. */
+function useView<T>(key: string, fetchLive: () => Promise<T>, buildMock: () => T): AsyncResource<T> {
+  return useAsyncResource(key, () => {
+    let pending = viewRequests.get(key) as Promise<Loaded<T>> | undefined;
+    if (!pending) {
+      pending = loadView(fetchLive, buildMock).catch((err: unknown) => {
+        viewRequests.delete(key);
+        throw err;
+      });
+      viewRequests.set(key, pending as Promise<Loaded<unknown>>);
+    }
+    return pending;
+  });
+}
+
+/** The ledger pivot at one granularity. */
+export function useLedger(granularity: PivotGranularity): AsyncResource<LedgerPivot> {
+  return useView(
+    `ledger:${granularity}`,
+    () => getLedger(granularity),
+    () => mockLedger(granularity),
+  );
+}
+
+/** Transactions behind one vendor × period cell. Mount only while the sheet is open. */
+export function useLedgerCell(
+  rowId: string,
+  periodKey: string,
+  granularity: PivotGranularity,
+): AsyncResource<PivotCellDetail> {
+  return useView(
+    `ledger-cell:${granularity}:${rowId}:${periodKey}`,
+    () => getLedgerCell(rowId, periodKey, granularity),
+    () => mockLedgerCell(rowId, periodKey, granularity),
+  );
+}
+
+/** Cash calendar for an inclusive date range (one visible month). */
+export function useCalendar(from: ISODate, to: ISODate): AsyncResource<CashCalendar> {
+  return useView(
+    `calendar:${from}:${to}`,
+    () => getCalendar(from, to),
+    () => mockCalendar(from, to),
+  );
+}
+
+export function useAvailability(): AsyncResource<AvailabilityResponse> {
+  return useView("availability", getAvailability, mockAvailability);
+}
+
+export function useNeedsReview(): AsyncResource<NeedsReviewResponse> {
+  return useView("needs-review", getNeedsReview, mockNeedsReview);
+}
+
+/** Routed through the same source resolution as reads. */
+export async function submitClassificationOverride(
+  req: ClassificationOverrideRequest,
+  secret: string,
+): Promise<ClassificationOverrideResponse> {
+  if (usingFixtures()) return mockClassificationOverride(req);
+  return postClassificationOverride(req, secret);
 }
 
 /**

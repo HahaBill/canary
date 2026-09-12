@@ -1,4 +1,5 @@
 import type { NeedsReviewItem } from "@canary/shared";
+import { Link } from "react-router-dom";
 import {
   Dialog,
   DialogBody,
@@ -58,6 +59,14 @@ export function NeedsReviewDialog({
               ))}
             </ul>
           )}
+
+          <Link
+            to="/needs-review"
+            onClick={() => onOpenChange(false)}
+            className="mt-4 inline-block text-sm font-medium text-neutral-900 underline-offset-4 hover:underline"
+          >
+            Review and assign categories →
+          </Link>
         </DialogBody>
       </DialogContent>
     </Dialog>

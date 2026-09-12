@@ -16,6 +16,7 @@ import {
   type Cents,
   type ISODate,
   type ISODateTime,
+  type PivotSection,
 } from "@canary/shared";
 
 export { formatMonths, formatSignedUsd, formatUsd, formatUsdCompact, formatUsdWhole };
@@ -42,6 +43,19 @@ export function formatWeeklyLevel(cents: Cents): string {
 /** Unsigned monthly level (a rate, not a delta). */
 export function formatMonthlyLevel(cents: Cents): string {
   return `${formatUsdWhole(cents)}/mo`;
+}
+
+/**
+ * One ledger cell. The pivot's sign conventions differ per section (contract
+ * `PivotCell`): spend rows are positive magnitudes, revenue and financing are
+ * signed, positive net burn means burning, and cash is a balance.
+ */
+export function formatPivotAmount(section: PivotSection, cents: Cents): string {
+  if (section === "CASH_END") return formatUsdCompact(cents);
+  if (section === "REVENUE" || section === "FINANCING_AND_TRANSFERS") return formatSignedUsd(cents);
+  // Spend and net burn arrive as magnitudes; a negative net burn is a net
+  // inflow, which only reads correctly with its sign.
+  return cents < 0 ? formatSignedUsd(cents) : formatUsdWhole(cents);
 }
 
 // ---------------------------------------------------------------------------
@@ -71,6 +85,47 @@ export function formatDateMedium(date: ISODate): string {
 export function formatTimestampMedium(ts: ISODateTime): string {
   const day = ts.slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(day) ? formatDateMedium(day) : ts;
+}
+
+const monthShortFmt = new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+const monthLongFmt = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+
+/** `Jun 2026` — ledger column headers. Takes a `YYYY-MM` key. */
+export function formatMonthShort(month: string): string {
+  return monthShortFmt.format(parseISODate(`${month}-01`));
+}
+
+/** `June 2026` — calendar page title. Takes a `YYYY-MM` key. */
+export function formatMonthLong(month: string): string {
+  return monthLongFmt.format(parseISODate(`${month}-01`));
+}
+
+/** Mon-first weekday headers for the month grid. */
+export const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+/** `13` — the day number in a calendar cell. */
+export function formatDayOfMonth(date: ISODate): string {
+  return String(parseISODate(date).getUTCDate());
+}
+
+/**
+ * `3:30 PM`, read straight off the timestamp's own wall clock. Same choice as
+ * `formatTimestampMedium`: the string is authoritative, so a founder in
+ * another timezone never sees a meeting slide by five hours.
+ */
+export function formatTimeOfDay(ts: ISODateTime): string {
+  const m = /T(\d{2}):(\d{2})/.exec(ts);
+  if (!m) return ts;
+  const hour24 = Number(m[1]);
+  const minute = m[2]!;
+  const suffix = hour24 < 12 ? "AM" : "PM";
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  return `${hour12}:${minute} ${suffix}`;
+}
+
+/** `9:00 AM – 9:30 AM` */
+export function formatTimeRange(start: ISODateTime, end?: ISODateTime): string {
+  return end ? `${formatTimeOfDay(start)} – ${formatTimeOfDay(end)}` : formatTimeOfDay(start);
 }
 
 // ---------------------------------------------------------------------------
@@ -124,8 +179,19 @@ export function entityDisplayName(entity: string): string {
 }
 
 /** `CLOUD_INFRASTRUCTURE` → `Cloud Infrastructure`. */
+const CATEGORY_LABELS: Partial<Record<Category, string>> = {
+  SAAS_SOFTWARE: "SaaS software",
+  CLOUD_INFRASTRUCTURE: "Cloud infrastructure",
+  TAXES_FEES: "Taxes & fees",
+  NEEDS_REVIEW: "Needs Review",
+  CUSTOMER_REVENUE: "Customer revenue",
+  PROFESSIONAL_SERVICES: "Professional services",
+  INTERNAL_TRANSFER: "Internal transfer",
+  CARD_SETTLEMENT: "Card settlement",
+};
+
 export function categoryLabel(category: Category | null | undefined): string | null {
-  return category ? titleCase(category) : null;
+  return category ? (CATEGORY_LABELS[category] ?? titleCase(category)) : null;
 }
 
 /** `MIN_MONTHLY_DELTA` → `Min monthly delta`. */

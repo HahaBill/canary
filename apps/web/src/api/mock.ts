@@ -12,18 +12,35 @@ import {
   formatSignedUsd,
   formatUsdWhole,
   type AlertHistoryItem,
+  type AvailabilityResponse,
+  type CashCalendar,
+  type ClassificationOverride,
+  type ClassificationOverrideRequest,
+  type ClassificationOverrideResponse,
   type DemoResponse,
   type DerivedDemoObject,
   type EvidenceItem,
   type Incident,
   type IncidentDetailResponse,
   type IncidentStatus,
+  type ISODate,
   type ISODateTime,
+  type LedgerPivot,
+  type NeedsReviewResponse,
+  type PivotCellDetail,
+  type PivotGranularity,
   type SimulateResponse,
   type VendorEnrichment,
   type WhatIfRequest,
 } from "@canary/shared";
 import { buildMockDerived, mockWhatIf } from "@canary/shared/fixtures";
+import {
+  buildMockAvailability,
+  buildMockCalendar,
+  buildMockCellDetail,
+  buildMockNeedsReview,
+  buildMockPivot,
+} from "./mock-views.ts";
 
 /**
  * One mutable snapshot per session so status changes made in the UI stick.
@@ -36,9 +53,13 @@ function derived(): DerivedDemoObject {
   return snapshot;
 }
 
+/** Overrides submitted in this session, newest last. */
+let mockOverrides: ClassificationOverride[] = [];
+
 /** Test helper: drop the session snapshot so the next read is pristine. */
 export function resetMockSnapshot(): void {
   snapshot = null;
+  mockOverrides = [];
 }
 
 export function mockDemo(): DemoResponse {
@@ -88,6 +109,70 @@ export function mockSetIncidentStatus(
   incident.status = status;
   incident.last_updated = now;
   return incident;
+}
+
+// ---------------------------------------------------------------------------
+// Views — the Worker does not serve these routes yet, so the mock carries them
+// ---------------------------------------------------------------------------
+
+export function mockLedger(granularity: PivotGranularity): LedgerPivot {
+  return buildMockPivot(derived(), granularity);
+}
+
+export function mockLedgerCell(
+  rowId: string,
+  periodKey: string,
+  granularity: PivotGranularity,
+): PivotCellDetail {
+  return buildMockCellDetail(derived(), rowId, periodKey, granularity);
+}
+
+export function mockCalendar(from: ISODate, to: ISODate): CashCalendar {
+  return buildMockCalendar(derived(), from, to);
+}
+
+export function mockAvailability(): AvailabilityResponse {
+  return buildMockAvailability(derived());
+}
+
+export function mockNeedsReview(): NeedsReviewResponse {
+  return buildMockNeedsReview(derived(), mockOverrides);
+}
+
+/**
+ * Mirrors `POST /api/classifications/override`: the reviewed rows leave the
+ * queue and the counts the dashboard/sidebar read drop with them.
+ */
+export function mockClassificationOverride(
+  req: ClassificationOverrideRequest,
+  now: ISODateTime = derived().provenance.generated_at,
+): ClassificationOverrideResponse {
+  const d = derived();
+  const target = d.needs_review.items.find((i) => i.transaction_id === req.transaction_id);
+  if (!target) throw new Error(`No transaction awaiting review with id "${req.transaction_id}"`);
+
+  const applyToMerchant = req.apply_to_merchant !== false;
+  const cleared = applyToMerchant
+    ? d.needs_review.items.filter((i) => i.merchant_normalized === target.merchant_normalized)
+    : [target];
+
+  d.needs_review.items = d.needs_review.items.filter((i) => !cleared.includes(i));
+  d.needs_review.count -= cleared.length;
+  // `outflow_cents` is a positive magnitude; item amounts are signed.
+  for (const item of cleared) d.needs_review.outflow_cents -= Math.abs(item.amount_cents);
+  d.reconciliation.needs_review_count = d.needs_review.count;
+  d.reconciliation.needs_review_outflow_cents = d.needs_review.outflow_cents;
+
+  const override: ClassificationOverride = {
+    transaction_id: req.transaction_id,
+    merchant_normalized: target.merchant_normalized,
+    category: req.category,
+    apply_to_merchant: applyToMerchant,
+    ...(req.note ? { note: req.note } : {}),
+    created_at: now,
+  };
+  mockOverrides = [...mockOverrides, override];
+  return { override, needs_review_count: d.needs_review.count };
 }
 
 /**
