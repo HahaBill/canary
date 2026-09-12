@@ -16,7 +16,7 @@ Everything in the P0 build order (`docs/BUILD.md`) is implemented, integrated, t
 | Cloudflare D1 | database `canary` (binding `DB`), migrations `0001`, `0002` applied |
 | CI | `.github/workflows/deploy.yml`: PR → test; push to `main` → test, build, D1 migrate, deploy |
 
-Worker secrets already set (so anyone deploying `main` gets a working system): `SENDBLUE_API_KEY`, `SENDBLUE_API_SECRET`, `SENDBLUE_FROM_NUMBER`, `OPENAI_API_KEY`, `TAVILY_API_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `WEBHOOK_SECRET`, `FOUNDER_PHONE`, `PUBLIC_BASE_URL`. Optional: `ALLOWED_PHONES` (comma-separated extra numbers Canary will reply to).
+Worker secrets already set (plus optional `CALENDAR_ICS_URL` — Google Calendar "Secret address in iCal format" — and `CALENDAR_SHOW_TITLES`) (so anyone deploying `main` gets a working system): `SENDBLUE_API_KEY`, `SENDBLUE_API_SECRET`, `SENDBLUE_FROM_NUMBER`, `OPENAI_API_KEY`, `TAVILY_API_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `WEBHOOK_SECRET`, `FOUNDER_PHONE`, `PUBLIC_BASE_URL`. Optional: `ALLOWED_PHONES` (comma-separated extra numbers Canary will reply to).
 
 For local dev copy `apps/api/.dev.vars.example` → `apps/api/.dev.vars` and fill it (ask the team for values; never commit it).
 
@@ -56,9 +56,15 @@ Demo numbers (derived, printed by `npm run verify`): cash $2,012,880.19 · net b
 
 Sendblue dashboard config: Inbound Messages webhook = `https://canary.bill-nguyentonhoang.workers.dev/webhooks/sendblue`, Global Secret = `WEBHOOK_SECRET`.
 
+## 3b. Web app surfaces (added 2026-09-12 evening)
+
+Collapsible sidebar (one toggle, persisted; bottom tab bar on phones): **Home** (dashboard + sparkline + Conversation strip from the iMessage log), **Incidents** (list), **Ledger** (`/ledger` — hierarchical pivot Revenue / Variable / Fixed / One-offs / Net burn / Financing / Cash, Weekly·Monthly toggle + run-rate column, post-change tint, cell drill-down, CSV), **Calendar** (`/calendar` — posted transactions, projected recurring charges from observed cadence, Canary markers, founder busy blocks), **Needs Review** (`/needs-review` — assign a category; writes need the operator secret in `x-canary-secret`, stored in the browser). All figures come from `@canary/engine` view functions (`pivotLedger`, `pivotCell`, `projectRecurring`, `buildCashCalendarEvents`) served by `apps/api`; the pivot's weekly Variable-spend row equals the CUSUM series to the cent (asserted in tests).
+
+**Notification policy** (`docs/AGENT_BEHAVIOR.md` §1, enforced in `apps/api/src/alerts/policy.ts`): `/api/alerts/send` only sends for OPEN, material, not-yet-notified incidents; if the founder is in a meeting (private iCal feed via `CALENDAR_ICS_URL`, optional `CALENDAR_SHOW_TITLES=1`) the alert is queued in D1 `pending_alerts` and delivered by the 5-minute cron once free. `force: true` bypasses for the demo. `GET /api/availability` shows the current state; `POST /api/alerts/deliver-pending` (secret) runs the job on demand.
+
 ## 4. API surface (`packages/shared/src/api.ts` is the contract)
 
-`GET /api/health`, `GET /api/health-summary` (with speech strings), `GET /api/demo`, `GET /api/incidents`, `GET /api/incidents/:id` (evidence assembled in taxonomy order), `GET /api/incidents/:id/evidence`, `POST /api/incidents/:id/status`, `POST /api/simulate {entity, percentage}`, `GET /api/vendors/:entity/enrichment`, `GET /api/bank/accounts`, `GET /api/bank/transactions`, `POST /api/alerts/send` (secret), `POST /webhooks/sendblue` (secret), and agent tools `POST /api/tools/{get_health_summary,get_incident,simulate_cost_change,create_app_link}` for an ElevenLabs/voice agent. Deep links are only ever built by `buildAppPath` + `PUBLIC_BASE_URL`.
+Views: `GET /api/ledger?granularity=week|month`, `GET /api/ledger/cell?row_id&period_key&granularity`, `GET /api/calendar?from&to`, `GET /api/availability`, `GET /api/alerts/history?limit`, `GET /api/alerts/pending`, `GET /api/needs-review`, `POST /api/classifications/override` (secret), `GET /api/incidents/:id/voice` (mp3). Core: `GET /api/health`, `GET /api/health-summary` (with speech strings), `GET /api/demo`, `GET /api/incidents`, `GET /api/incidents/:id` (evidence assembled in taxonomy order), `GET /api/incidents/:id/evidence`, `POST /api/incidents/:id/status`, `POST /api/simulate {entity, percentage}`, `GET /api/vendors/:entity/enrichment`, `GET /api/bank/accounts`, `GET /api/bank/transactions`, `POST /api/alerts/send` (secret), `POST /webhooks/sendblue` (secret), and agent tools `POST /api/tools/{get_health_summary,get_incident,simulate_cost_change,create_app_link}` for an ElevenLabs/voice agent. Deep links are only ever built by `buildAppPath` + `PUBLIC_BASE_URL`.
 
 ## 5. Testing & verification
 
