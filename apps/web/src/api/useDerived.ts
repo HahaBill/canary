@@ -11,6 +11,7 @@
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type {
+  AlertHistoryItem,
   DemoResponse,
   Incident,
   IncidentDetailResponse,
@@ -18,8 +19,8 @@ import type {
   SimulateResponse,
   WhatIfRequest,
 } from "@canary/shared";
-import { ApiError, getDemo, getIncident, setIncidentStatus, simulate } from "./client.ts";
-import { mockDemo, mockIncidentDetail, mockSetIncidentStatus, mockSimulate } from "./mock.ts";
+import { ApiError, getAlertHistory, getDemo, getIncident, setIncidentStatus, simulate } from "./client.ts";
+import { mockAlertHistory, mockDemo, mockIncidentDetail, mockSetIncidentStatus, mockSimulate } from "./mock.ts";
 
 export type DataSource = "live" | "mock-forced" | "mock-fallback";
 
@@ -253,4 +254,31 @@ export function useSimulate(
   }, [key, debounceMs]);
 
   return state;
+}
+
+async function loadAlertHistory(limit: number): Promise<Loaded<AlertHistoryItem[]>> {
+  if (usingFixtures()) {
+    activeSource = mockSource();
+    return { data: mockAlertHistory(limit), source: activeSource };
+  }
+  try {
+    const data = await getAlertHistory(limit);
+    activeSource = "live";
+    return { data, source: "live" };
+  } catch (err) {
+    if (fallbackAllowed() && err instanceof ApiError && err.isUnreachable) {
+      activeSource = "mock-fallback";
+      return { data: mockAlertHistory(limit), source: "mock-fallback" };
+    }
+    throw err;
+  }
+}
+
+/**
+ * The iMessage conversation. Optional chrome: the route is not implemented on
+ * every deployment, so callers render nothing on error rather than an error
+ * state. Not cached alongside the derived object — it changes independently.
+ */
+export function useAlertHistory(limit = 8): AsyncResource<AlertHistoryItem[]> {
+  return useAsyncResource(`alerts:${limit}`, () => loadAlertHistory(limit));
 }

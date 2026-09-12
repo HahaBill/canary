@@ -6,6 +6,7 @@ import { ContributorBars } from "@/components/ContributorBars.tsx";
 import { CusumChart } from "@/components/CusumChart.tsx";
 import { EvidenceList } from "@/components/EvidenceList.tsx";
 import { ImpactPanel } from "@/components/ImpactPanel.tsx";
+import { ListenButton } from "@/components/ListenButton.tsx";
 import { SeverityBadge, StatusBadge } from "@/components/SeverityBadge.tsx";
 import { ErrorState, PanelSkeleton } from "@/components/States.tsx";
 import { VariableSpendChart } from "@/components/VariableSpendChart.tsx";
@@ -110,11 +111,14 @@ export function IncidentPage() {
             : ""}
           {incident.alarm_date ? `Detected ${formatDateMedium(incident.alarm_date)}.` : ""}
         </p>
-        {shownStatus === "OPEN" ? (
-          <Button variant="outline" size="sm" onClick={acknowledge} disabled={statusPending}>
-            {statusPending ? "Saving…" : "Acknowledge"}
-          </Button>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          {shownStatus === "OPEN" ? (
+            <Button variant="outline" size="sm" onClick={acknowledge} disabled={statusPending}>
+              {statusPending ? "Saving…" : "Acknowledge"}
+            </Button>
+          ) : null}
+          <ListenButton incidentId={incident.id} />
+        </div>
       </header>
 
       <Tabs value={tab} onValueChange={selectTab}>

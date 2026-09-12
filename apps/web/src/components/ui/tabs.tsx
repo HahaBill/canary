@@ -26,7 +26,9 @@ export const TabsTrigger = forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "inline-flex flex-1 items-center justify-center whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-600 transition-colors hover:text-neutral-900 data-[state=active]:bg-white data-[state=active]:text-neutral-900 data-[state=active]:shadow-sm sm:flex-none",
+      // See ui/button.tsx: `pointer-coarse:min-h-11` is a touch-only 44 px tap
+      // target, so the desktop tab strip keeps its density.
+      "inline-flex flex-1 items-center justify-center whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-600 transition-colors hover:text-neutral-900 data-[state=active]:bg-white data-[state=active]:text-neutral-900 data-[state=active]:shadow-sm pointer-coarse:min-h-11 sm:flex-none",
       className,
     )}
     {...props}
