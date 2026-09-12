@@ -1,0 +1,39 @@
+// Canary Worker configuration.
+// Deployed by .github/workflows/deploy.yml on every push to main.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "canary",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-12",
+
+  // React/Vite SPA output (apps/web -> build.outDir = apps/api/public).
+  // Unmatched paths fall back to index.html so client-side routes such as
+  // /incidents/:id work on hard refresh. API and webhook paths always hit
+  // the Worker first and are never served from static assets.
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api",
+      "/api/*",
+      "/webhooks",
+      "/webhooks/*"
+    ]
+  },
+
+  // Required by the CI step `wrangler d1 migrations apply canary --remote`.
+  // Create the database once with `npx wrangler d1 create canary` and paste
+  // the returned database_id here. Migrations live in apps/api/migrations.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "canary",
+      "database_id": "5a47e32e-19b4-46fe-a33b-99965152154e",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "observability": {
+    "enabled": true
+  }
+}

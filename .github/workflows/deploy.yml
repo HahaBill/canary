@@ -1,0 +1,93 @@
+name: Test and Deploy
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# PR updates cancel stale runs for the same branch.
+# Main runs are serialized so production deploys never overlap.
+# Note: GitHub keeps only one *pending* run per group. If several main
+# pushes arrive while one run is in progress, an older pending run may be
+# replaced by the newest one. That is fine for Canary: the latest main
+# already contains the earlier commits.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      # Root install: repository uses npm workspaces (apps/*).
+      - run: npm ci
+
+      - run: npm run typecheck --workspaces --if-present
+      - run: npm test --workspaces --if-present
+
+      # Build the SPA exactly as production expects it.
+      # Vite build.outDir -> apps/api/public (served as Worker static assets).
+      - run: npm run build -w apps/web
+
+      # Verify that the Worker + static assets actually bundle.
+      # No credentials required; nothing is uploaded.
+      - run: npx wrangler deploy --cwd apps/api --dry-run
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # The Cloudflare credentials live only in this GitHub Environment.
+    # In GitHub: Settings -> Environments -> production
+    #   Deployment branches: Selected branches -> main
+    #   Secret:   CLOUDFLARE_API_TOKEN
+    #   Variable: CLOUDFLARE_ACCOUNT_ID
+    # Environment secrets are only released once the environment's
+    # protection rules pass, so the branch rule must actually be configured.
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Production SPA output becomes Worker static assets.
+      - run: npm run build -w apps/web
+
+      # Migrations run BEFORE the new Worker goes live, so the currently
+      # deployed Worker briefly runs against the new schema. Migrations must
+      # therefore be additive / forward-compatible (see docs/BUILD.md).
+      - name: Apply D1 migrations
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/api
+          command: d1 migrations apply canary --remote
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/api
+          command: deploy

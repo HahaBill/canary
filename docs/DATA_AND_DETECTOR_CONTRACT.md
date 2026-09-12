@@ -67,12 +67,14 @@ generateDemoCompany({
 
 ---
 
-# 3. Rho Balance Anchoring
+# 3. Sandbox Bank Balance Anchoring
+
+The live Rho API is not used. The fictional **Canary Sandbox Bank** (behind `BankProvider`) reports the closing balance for the fictional company **Perch Analytics, Inc.** That balance is a configured anchor in `packages/shared/src/company.ts`.
 
 Process:
 
 ```text
-Fetch Rho sandbox balance
+Read sandbox bank closing balance (company profile)
         ↓
 Set generator closingBalance
         ↓
@@ -81,10 +83,10 @@ Generate history backward
 Verify:
 synthetic opening balance
 + synthetic net flows
-= Rho closing balance
+= sandbox bank closing balance
 ```
 
-The dashboard cash value should therefore be the Rho closing balance, not a separately invented number.
+The dashboard cash value should therefore be the sandbox bank closing balance, not a separately invented number. The UI must label it as sandbox-sourced and the company as fictional.
 
 ---
 
@@ -394,7 +396,7 @@ The numbers themselves come from this object.
 
 Before demo:
 
-- [ ] closing balance matches Rho balance exactly/tolerance
+- [ ] closing balance matches sandbox bank balance exactly (integer cents)
 - [ ] internal transfer net spend = 0
 - [ ] card settlement not double counted
 - [ ] financing excluded from operating burn

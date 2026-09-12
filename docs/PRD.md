@@ -2,10 +2,25 @@
 
 **Project:** Canary  
 **Hackathon:** LOCK IN Hack 2026 at Rho  
-**Primary sponsor integrations:** Rho, Tavily  
+**Primary sponsor integration:** Tavily  
 **Secondary sponsor integration:** ElevenLabs  
 **Supporting technology:** OpenAI, Cloudflare, Sendblue  
 **Nice-to-have:** Notion
+
+> **Data source decision (2026-09-12):** The live Rho API is **not** used in this build. Per hackathon guidance, Canary runs against a **fictional company** and a **fictional bank sandbox** ("Canary Sandbox Bank"). The sandbox is implemented behind a `BankProvider` interface so a real bank API (Rho or otherwise) can be swapped in later without touching the engine, detectors, or UI. Everywhere this document previously said "Rho balance" or "Rho data", read "sandbox bank balance / sandbox bank data".
+
+## Fictional company
+
+```text
+Company:      Perch Analytics, Inc.
+Stage:        Seed, B2B analytics SaaS, cloud-heavy
+Team:         14 people
+Raised:       ~$2.4M
+Bank:         Canary Sandbox Bank (fictional)
+Accounts:     Operating checking, savings/reserve, corporate card
+```
+
+All company, vendor-payment, and balance data are synthetic and generated deterministically. The only exception is the **real, indexed vendor name** used for the Tavily corroboration fixture (see §7 and §11).
 
 ---
 
@@ -58,7 +73,7 @@ Instead, Canary:
 Early-stage startup founder who:
 
 - has meaningful company cash;
-- uses Rho;
+- banks with a modern business bank (modeled here by the fictional Canary Sandbox Bank);
 - has recurring SaaS/cloud/vendor spending;
 - may have employee card spend;
 - does not yet have a dedicated CFO;
@@ -128,7 +143,7 @@ Do not notify separately about burn drift, AWS acceleration, and infrastructure 
 # 5. Core Product Loop
 
 ```text
-Rho
+Canary Sandbox Bank (BankProvider)
  │
  ▼
 Raw accounts + transactions
@@ -186,12 +201,15 @@ The generator should produce **16–20 weeks** of realistic startup financial hi
 
 **Important:** all demo numbers shown in React, iMessage, voice, and the demo script must be **derived from generator output**. Do not hand-type financial figures in documentation or UI.
 
-If Rho sandbox history is insufficient, synthetic history should be generated **backward from the actual Rho sandbox closing balance**, so the synthetic ledger closes on the live Rho balance.
+The sandbox bank exposes a **closing balance** for the fictional company (a fixed, configured anchor in the company profile). Synthetic history is generated **backward from that sandbox closing balance**, so the synthetic ledger closes exactly on the balance the bank reports.
 
-The demo must clearly distinguish:
+The `BankProvider` interface (accounts, balances, transactions) is the seam where a real bank API would plug in. The engine, detectors, and UI never know which provider is behind it.
 
-- Rho-sourced current data;
-- synthetic historical fixtures.
+The demo must clearly label:
+
+- sandbox-bank-sourced current balance/accounts;
+- synthetic historical fixtures;
+- that the company is fictional.
 
 ---
 
@@ -266,7 +284,7 @@ Unknown category still contributes to total cash and burn.
 
 # 9. Statement Reconciliation — P1
 
-If Rho statement data is usable:
+If the sandbox bank exposes statement data (opening/closing per period):
 
 ```text
 opening balance
@@ -692,7 +710,7 @@ Stack:
 - Tailwind;
 - shadcn/ui;
 - Recharts;
-- Cloudflare Workers.
+- Cloudflare Workers (the SPA is built to `apps/api/public` and served as Worker static assets).
 
 ### P0 routes
 
@@ -852,7 +870,7 @@ Cloudflare
 │   ├── evidence
 │   └── job state
 ├── Cron
-│   ├── Rho sync
+│   ├── bank sync (sandbox BankProvider)
 │   └── detector run
 └── R2
     └── optional media
@@ -867,12 +885,12 @@ Do not depend on Cloudflare Queues.
 This is the **actual P0**.
 
 1. **Public skeleton Worker**
-   - verify Rho API;
+   - serve the sandbox `BankProvider` (fictional company balance/accounts/transactions);
    - verify Tavily API;
    - verify Sendblue outbound + inbound webhook;
    - create ElevenLabs agent/tool endpoint if possible.
 
-2. **Synthetic generator anchored to Rho closing balance**
+2. **Synthetic generator anchored to the sandbox bank closing balance**
    - 16–20 weeks;
    - deterministic seed;
    - planted sustained burn shift;
@@ -931,7 +949,8 @@ That is the complete P0.
 - recurring-charge drift detector;
 - natural-language iMessage routing;
 - dated Scout research;
-- Rho card/cardholder analysis;
+- real bank API integration (Rho) behind `BankProvider`;
+- card/cardholder analysis;
 - richer Needs Review interactions;
 - voice-controlled React navigation.
 

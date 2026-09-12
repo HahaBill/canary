@@ -1,0 +1,26 @@
+{
+  "name": "@canary/api",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "migrate:local": "wrangler d1 migrations apply canary --local",
+    "migrate:remote": "wrangler d1 migrations apply canary --remote"
+  },
+  "dependencies": {
+    "@canary/shared": "*",
+    "@canary/generator": "*",
+    "@canary/engine": "*",
+    "@canary/detectors": "*",
+    "@canary/classification": "*",
+    "@canary/pipeline": "*",
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250101.0"
+  }
+}

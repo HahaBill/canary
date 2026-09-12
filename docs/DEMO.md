@@ -202,9 +202,13 @@ The core demo must never depend on voice.
 
 # Judge Q&A Cheat Sheet
 
-## “Where does Rho appear?”
+## “Where does the bank data come from?”
 
-> “Rho is the financial ground truth. We read the current sandbox state and anchor the synthetic historical ledger so it closes on the Rho balance.”
+> “Per hackathon guidance we run on a fictional company, Perch Analytics, banking with a fictional sandbox bank. The sandbox sits behind a `BankProvider` interface, so a real bank API like Rho drops in without touching the engine, detectors, or UI. We read the sandbox's current balance and anchor the synthetic historical ledger so it closes exactly on that balance.”
+
+## “Is any of this real money?”
+
+> “No. The company, accounts, and transactions are synthetic and deterministic. The only real-world data is the Tavily vendor research, which uses a real indexed vendor name.”
 
 ## “Why synthetic history?”
 
