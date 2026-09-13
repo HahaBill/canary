@@ -342,9 +342,12 @@ export interface CreateAppLinkResponse {
   path: string;
 }
 
+/** Dashboard lives at `/home` so `/` can be the intro without catching SHOW ME / dashboard links. */
+export const APP_HOME_PATH = "/home";
+
 /** Deterministic path builder. The only place URLs are formed. */
 export function buildAppPath(req: CreateAppLinkRequest): string {
-  if (req.destination === "dashboard") return "/";
+  if (req.destination === "dashboard") return APP_HOME_PATH;
   if (!req.id) throw new Error("incident link requires id");
   const base = `/incidents/${encodeURIComponent(req.id)}`;
   return req.tab && req.tab !== "overview" ? `${base}?tab=${req.tab}` : base;

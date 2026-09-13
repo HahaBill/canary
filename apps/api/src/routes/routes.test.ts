@@ -432,7 +432,7 @@ describe("agent tools", () => {
   it("create_app_link builds absolute URLs for every tab", async () => {
     const h = createHarness();
     const dashboard = await h.post<{ url: string; path: string }>("/api/tools/create_app_link", { destination: "dashboard" });
-    expect(dashboard.body).toEqual({ url: `${TEST_ENV.PUBLIC_BASE_URL}/`, path: "/" });
+    expect(dashboard.body).toEqual({ url: `${TEST_ENV.PUBLIC_BASE_URL}/home`, path: "/home" });
 
     const overview = await h.post<{ url: string; path: string }>("/api/tools/create_app_link", { destination: "incident", id: "inc_1" });
     expect(overview.body.path).toBe("/incidents/inc_1");

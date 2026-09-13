@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import type { CreateAppLinkRequest, IncidentStatus } from "@canary/shared";
+import { APP_HOME_PATH, type CreateAppLinkRequest, type IncidentStatus } from "@canary/shared";
 import { clearApiCache, updateIncidentStatus, useIncidentDetail } from "@/api/useDerived.ts";
 import { ContributorBars } from "@/components/ContributorBars.tsx";
 import { CusumChart } from "@/components/CusumChart.tsx";
@@ -94,7 +94,7 @@ export function IncidentPage() {
     <div className="space-y-6">
       <div>
         <Link
-          to="/"
+          to={APP_HOME_PATH}
           className="text-sm text-neutral-500 underline-offset-4 hover:text-neutral-900 hover:underline"
         >
           ← Dashboard

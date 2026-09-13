@@ -7,7 +7,7 @@ const BASE = "https://canary.test";
 
 describe("createAppLink", () => {
   it("builds the dashboard link", () => {
-    expect(createAppLink({ destination: "dashboard" }, BASE)).toEqual({ url: `${BASE}/`, path: "/" });
+    expect(createAppLink({ destination: "dashboard" }, BASE)).toEqual({ url: `${BASE}/home`, path: "/home" });
   });
 
   it("builds incident links, with and without a tab", () => {
@@ -25,7 +25,7 @@ describe("createAppLink", () => {
 
   it("normalises a base URL with a trailing slash", () => {
     expect(createAppLink({ destination: "incident", id: "inc_1" }, `${BASE}/`).url).toBe(`${BASE}/incidents/inc_1`);
-    expect(createAppLink({ destination: "dashboard" }, `${BASE}///`).url).toBe(`${BASE}/`);
+    expect(createAppLink({ destination: "dashboard" }, `${BASE}///`).url).toBe(`${BASE}/home`);
   });
 
   it("escapes ids", () => {

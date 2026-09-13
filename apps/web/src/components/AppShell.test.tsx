@@ -28,6 +28,7 @@ describe("AppShell", () => {
     for (const label of ["Home", "Incidents", "Ledger", "Needs Review", "Scout", "Ask Canary"]) {
       expect(within(sidebar).getByRole("link", { name: new RegExp(label) })).toBeInTheDocument();
     }
+    expect(within(sidebar).getByRole("link", { name: /Home/ })).toHaveAttribute("href", "/home");
     expect(within(sidebar).queryByRole("link", { name: /Calendar/ })).not.toBeInTheDocument();
     expect(within(sidebar).getByRole("link", { name: /Ledger/ })).toHaveAttribute("aria-current", "page");
   });
@@ -41,7 +42,7 @@ describe("AppShell", () => {
   });
 
   it("links Ask Canary to the voice page", async () => {
-    renderApp("/");
+    renderApp("/home");
 
     const sidebar = await screen.findByRole("complementary", { name: "Main navigation" });
     expect(within(sidebar).getByRole("link", { name: /Ask Canary/ })).toHaveAttribute("href", "/ask");
@@ -50,7 +51,7 @@ describe("AppShell", () => {
 
   it("keeps the live clock and does not name the fictional company", async () => {
     const derived = buildMockDerived();
-    renderApp("/");
+    renderApp("/home");
 
     const clock = await screen.findByRole("region", { name: "Live clock" });
     expect(clock).toHaveTextContent("Live");
@@ -60,7 +61,7 @@ describe("AppShell", () => {
   });
 
   it("collapses the sidebar and remembers it across mounts", async () => {
-    renderApp("/");
+    renderApp("/home");
 
     const collapse = await screen.findByRole("button", { name: "Collapse sidebar" });
     expect(screen.getByRole("complementary", { name: "Main navigation" })).toHaveAttribute(
@@ -79,7 +80,7 @@ describe("AppShell", () => {
 
     cleanup();
     clearApiCache();
-    renderApp("/");
+    renderApp("/home");
 
     expect(await screen.findByRole("button", { name: "Expand sidebar" })).toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "Main navigation" })).toHaveAttribute(
@@ -90,7 +91,7 @@ describe("AppShell", () => {
 
   it("shows the Needs Review queue size on its nav entry", async () => {
     const derived = buildMockDerived();
-    renderApp("/");
+    renderApp("/home");
 
     const sidebar = await screen.findByRole("complementary", { name: "Main navigation" });
     const link = within(sidebar).getByRole("link", { name: /Needs Review/ });
@@ -99,7 +100,7 @@ describe("AppShell", () => {
 
   it("swaps the sidebar for a bottom tab bar on a narrow viewport", async () => {
     setViewport(375);
-    renderApp("/");
+    renderApp("/home");
 
     const tabBar = await screen.findByRole("navigation", { name: "Main navigation" });
     expect(screen.queryByRole("complementary", { name: "Main navigation" })).not.toBeInTheDocument();

@@ -45,3 +45,6 @@ class MemoryStorage implements Storage {
 if (typeof window !== "undefined" && !window.localStorage) {
   Object.defineProperty(window, "localStorage", { value: new MemoryStorage(), configurable: true });
 }
+if (typeof window !== "undefined" && !window.sessionStorage) {
+  Object.defineProperty(window, "sessionStorage", { value: new MemoryStorage(), configurable: true });
+}

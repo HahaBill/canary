@@ -185,7 +185,7 @@ describe("helpMessage / dashboardMessage", () => {
     for (const command of IMESSAGE_COMMANDS) expect(text).toContain(command);
   });
 
-  it("links to the dashboard root", () => {
-    expect(dashboardMessage(BASE)).toContain(`${BASE}/`);
+  it("links to the dashboard, not the intro", () => {
+    expect(dashboardMessage(BASE)).toContain(`${BASE}/home`);
   });
 });

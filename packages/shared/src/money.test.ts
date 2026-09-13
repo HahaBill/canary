@@ -40,7 +40,7 @@ describe("money", () => {
   });
 
   it("app paths", () => {
-    expect(buildAppPath({ destination: "dashboard" })).toBe("/");
+    expect(buildAppPath({ destination: "dashboard" })).toBe("/home");
     expect(buildAppPath({ destination: "incident", id: "inc_1" })).toBe("/incidents/inc_1");
     expect(buildAppPath({ destination: "incident", id: "inc_1", tab: "evidence" })).toBe("/incidents/inc_1?tab=evidence");
   });

@@ -19,6 +19,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
+import { APP_HOME_PATH } from "@canary/shared";
 import { useDerived } from "@/api/useDerived.ts";
 import { AskCanaryOrb } from "@/components/AskCanaryOrb.tsx";
 import { MockBanner } from "@/components/MockBanner.tsx";
@@ -39,7 +40,7 @@ interface NavEntry {
 // Calendar stays at `/calendar` (and its API) but is omitted from chrome so it
 // is not on the walkthrough. Hide-only — do not rip the route out.
 const NAV: readonly NavEntry[] = [
-  { to: "/", label: "Home", icon: Home },
+  { to: APP_HOME_PATH, label: "Home", icon: Home },
   { to: "/incidents", label: "Incidents", icon: TriangleAlert },
   { to: "/ledger", label: "Ledger", icon: Table2 },
   { to: "/needs-review", label: "Needs Review", icon: Inbox, badge: true },
@@ -214,7 +215,7 @@ function SidebarLink({
     <NavLink
       to={entry.to}
       // `end` keeps Home from matching every route.
-      end={entry.to === "/"}
+      end={entry.to === APP_HOME_PATH}
       className={({ isActive }) =>
         cn(
           "relative flex h-10 items-center rounded-lg text-sm font-medium transition-colors",
@@ -312,7 +313,7 @@ function MobileTabBar({ reviewCount }: { reviewCount: number | null }) {
             <li key={entry.to} className="flex-1">
               <NavLink
                 to={entry.to}
-                end={entry.to === "/"}
+                end={entry.to === APP_HOME_PATH}
                 className={({ isActive }) =>
                   cn(
                     // 44px minimum tap target, plus room for the home-bar inset.

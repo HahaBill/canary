@@ -12,7 +12,7 @@ import { formatDateMedium, formatPivotAmount, formatWeekLabel, formatWeeklyLevel
 
 function renderHome() {
   return render(
-    <MemoryRouter initialEntries={["/"]}>
+    <MemoryRouter initialEntries={["/home"]}>
       <App />
     </MemoryRouter>,
   );

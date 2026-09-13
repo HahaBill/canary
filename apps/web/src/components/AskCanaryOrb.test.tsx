@@ -21,7 +21,7 @@ describe("AskCanaryOrb", () => {
   });
 
   it("does not render the custom Ask a question bird launcher", async () => {
-    renderApp("/");
+    renderApp("/home");
     await screen.findByRole("status", { name: "Ask Canary" });
     expect(screen.queryByRole("button", { name: "Ask Canary a question" })).not.toBeInTheDocument();
     expect(screen.queryByText("Ask a question")).not.toBeInTheDocument();
