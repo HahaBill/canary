@@ -178,14 +178,21 @@ export function mapAccountType(rhoType: string): BankAccount["type"] {
   return "checking";
 }
 
-export function mapAccount(account: RhoAccount): BankAccount {
+/**
+ * `asOf` is passed in rather than read from the clock. Production code here
+ * never calls `Date.now()` (AGENTS.md rule 4, and `apps/api/src/context.ts`):
+ * the engine folds these dates into `reconciliation.as_of`, so a wall-clock
+ * stamp would make the reconciliation report claim a different day from the
+ * one the route actually asked the bank about.
+ */
+export function mapAccount(account: RhoAccount, asOf: ISODate): BankAccount {
   return {
     id: account.id,
     name: account.account_name,
     type: mapAccountType(account.account_type),
     currency: "USD",
     balance_cents: account.balance.amount as Cents,
-    as_of: new Date().toISOString().slice(0, 10),
+    as_of: asOf,
   };
 }
 
@@ -394,7 +401,7 @@ export class RhoBankClient {
     transactions.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id < b.id ? -1 : 1));
 
     return {
-      accounts: rhoAccounts.map(mapAccount),
+      accounts: rhoAccounts.map((account) => mapAccount(account, asOf)),
       transactions,
       skipped,
       unmapped: [...unmapped].sort(),

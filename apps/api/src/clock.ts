@@ -17,7 +17,7 @@
  * top of each cycle keeps the picture recent: the clock always starts at the end
  * of history and never runs past the horizon, whenever anyone opens the page.
  */
-import { DEMO, addDays } from "@canary/shared";
+import { DEMO, addDays, historyStart } from "@canary/shared";
 import type { ISODate } from "@canary/shared";
 
 /** One simulated day per real minute: slow enough to read, fast enough to see. */
@@ -84,7 +84,10 @@ export function parseMinutesPerDay(raw: string | null | undefined, fallback = DE
 /** `YYYY-MM-DD`, inside the generated span. Anything else is ignored. */
 export function parseAsOfOverride(raw: string | null | undefined): ISODate | null {
   if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
-  const start = addDays(DEMO.END_DATE, -DEMO.WEEKS * 7);
-  if (raw < start || raw > horizonEnd()) return null;
+  // `historyStart` is the generator's own first day: it snaps back to the Monday
+  // of the earliest week, which is not the same as subtracting WEEKS*7 from a
+  // Sunday end date. Re-deriving the arithmetic here was one day too generous
+  // and accepted a date before any transaction exists.
+  if (raw < historyStart(DEMO.END_DATE, DEMO.WEEKS) || raw > horizonEnd()) return null;
   return raw;
 }

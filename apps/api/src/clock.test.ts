@@ -3,7 +3,7 @@
  * dashboard, so its only job is to be boring: pure, bounded, and never able to
  * point at a day the generator did not produce.
  */
-import { DEMO, addDays } from "@canary/shared";
+import { DEMO, addDays, historyStart } from "@canary/shared";
 import { describe, expect, it } from "vitest";
 import { CYCLE_MINUTES, DEFAULT_MINUTES_PER_DAY, demoAsOf, horizonEnd, parseAsOfOverride, parseMinutesPerDay } from "./clock.ts";
 
@@ -68,5 +68,16 @@ describe("operator overrides", () => {
     for (const raw of ["", "yesterday", "2026-9-1", "2026-09-13T00:00:00Z", null]) {
       expect(parseAsOfOverride(raw)).toBeNull();
     }
+  });
+
+  it("bounds the past at the generator's real first day, not at WEEKS * 7", () => {
+    // `historyStart` snaps back to the Monday of the earliest week, so on a
+    // Sunday end date it is 363 days before, not 364. Re-deriving that
+    // arithmetic by hand accepted one day on which no transaction exists —
+    // which would hand the pipeline an `asOf` outside its own data.
+    const start = historyStart(DEMO.END_DATE, DEMO.WEEKS);
+
+    expect(parseAsOfOverride(start)).toBe(start);
+    expect(parseAsOfOverride(addDays(start, -1))).toBeNull();
   });
 });

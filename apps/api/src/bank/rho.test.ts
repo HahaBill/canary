@@ -122,16 +122,29 @@ describe("vendor identity", () => {
 describe("accounts", () => {
   it("maps credit to card and everything else to a cash account", () => {
     const byType = new Map(ACCOUNTS.map((a) => [a.account_type, a]));
-    expect(mapAccount(byType.get("credit")!).type).toBe("card");
-    expect(mapAccount(byType.get("savings")!).type).toBe("savings");
-    expect(mapAccount(byType.get("checking")!).type).toBe("checking");
+    expect(mapAccount(byType.get("credit")!, ASOF).type).toBe("card");
+    expect(mapAccount(byType.get("savings")!, ASOF).type).toBe("savings");
+    expect(mapAccount(byType.get("checking")!, ASOF).type).toBe("checking");
   });
 
   it("carries balances through as integer cents", () => {
-    for (const account of ACCOUNTS.map(mapAccount)) {
+    for (const account of ACCOUNTS.map((a) => mapAccount(a, ASOF))) {
       expect(Number.isInteger(account.balance_cents)).toBe(true);
       expect(account.currency).toBe("USD");
     }
+  });
+
+  it("dates accounts by the as-of it was asked for, never by the wall clock", async () => {
+    // The engine folds these into `reconciliation.as_of`. A `new Date()` here
+    // would make the reconciliation report claim today rather than the day the
+    // route actually asked about — and would break determinism (AGENTS.md #4):
+    // two runs of the same query would disagree.
+    const past = "2025-05-05";
+    expect(mapAccount(ACCOUNTS[0]!, past).as_of).toBe(past);
+
+    const { fetchImpl } = stubFetch();
+    const ledger = await new RhoBankClient({ fetchImpl }).getLedger(past);
+    expect(ledger.accounts.every((a) => a.as_of === past)).toBe(true);
   });
 });
 
