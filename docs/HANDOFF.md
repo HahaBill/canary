@@ -84,6 +84,10 @@ Views: `GET /api/ledger?granularity=week|month`, `GET /api/ledger/cell?row_id&pe
 
 ## 6b. Logic layer (Alfredo)
 
+**Review entry point: `docs/ALFREDO-WORKLOG.md`** — all sixteen commits in
+order, every packages/shared touch listed, the places Bill's code was edited,
+open decisions, and the production dry run. Everything below is detailed there.
+
 `docs/AGENT_BEHAVIOR.md` — the speech contract binding iMessage, the incident
 copy and any voice agent: when Canary may interrupt, the OBSERVED → DETECTED →
 EVIDENCE → ESTIMATE → SUGGESTION order, where numbers may come from, what it
