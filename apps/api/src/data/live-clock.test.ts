@@ -7,7 +7,7 @@
  * stay correct while they do.
  */
 import { describe, expect, it } from "vitest";
-import { demoAsOf, DEFAULT_MINUTES_PER_DAY } from "../clock.ts";
+import { CYCLE_MINUTES, demoAsOf, DEFAULT_MINUTES_PER_DAY } from "../clock.ts";
 import { PipelineDataProvider } from "./pipeline-provider.ts";
 
 const at = (minutes: number) => new Date(minutes * 60_000);
@@ -22,7 +22,11 @@ function movingClock() {
 describe("the dashboard as the clock advances", () => {
   it("moves the account forward and keeps cash reconciled at every step", async () => {
     const { provider, set } = movingClock();
-    const minutes = [0, DEFAULT_MINUTES_PER_DAY * 3, DEFAULT_MINUTES_PER_DAY * 20, DEFAULT_MINUTES_PER_DAY * 60];
+    // Inside ONE cycle: the clock returns to the end of history at the top of
+    // each, so a range that wraps would not be moving forward at all.
+    const step = Math.max(1, Math.floor(CYCLE_MINUTES / 4));
+    const minutes = [0, step, step * 2, step * 3].map((m) => m * DEFAULT_MINUTES_PER_DAY);
+    expect(minutes[minutes.length - 1]!).toBeLessThan(CYCLE_MINUTES);
 
     const snapshots = [];
     for (const minute of minutes) {
@@ -37,9 +41,13 @@ describe("the dashboard as the clock advances", () => {
       // Time moves forward, and so does the ledger.
       expect(after.provenance.end_date > before.provenance.end_date).toBe(true);
       expect(after.weeks.length).toBeGreaterThanOrEqual(before.weeks.length);
-      // The company is burning, so cash falls as days post.
-      expect(after.cash_cents).toBeLessThan(before.cash_cents);
     }
+
+    // Cash trends DOWN across the window, but not necessarily on every step: a
+    // revenue payout lands weekly, so an individual day can end richer than it
+    // started. Asserting a fall per step would be asserting that customers never
+    // pay, which is a worse bug than the one it would catch.
+    expect(snapshots[snapshots.length - 1]!.cash_cents).toBeLessThan(snapshots[0]!.cash_cents);
 
     // The whole point: none of that movement is allowed to break the books.
     for (const snapshot of snapshots) {
@@ -53,7 +61,7 @@ describe("the dashboard as the clock advances", () => {
   it("keeps finding the planted shift as the future posts", async () => {
     const { provider, set } = movingClock();
 
-    for (const minute of [0, DEFAULT_MINUTES_PER_DAY * 30]) {
+    for (const minute of [0, Math.floor(CYCLE_MINUTES / 2) * DEFAULT_MINUTES_PER_DAY]) {
       set(minute);
       const derived = await provider.getDerived();
       const shift = derived.incidents.find((i) => i.type === "BURN_RATE_SHIFT");
