@@ -1,37 +1,27 @@
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AvailabilityResponse, CalendarConnectionResponse, CashCalendar } from "@canary/shared";
 import { buildMockDerived } from "@canary/shared/fixtures";
 import { resetMockSnapshot } from "@/api/mock.ts";
 import { clearApiCache } from "@/api/useDerived.ts";
 import { formatDateMedium, WEEKDAY_LABELS } from "@/lib/format.ts";
 import { installApiStub, renderApp, setViewport, type RecordedRequest } from "@/test-utils.tsx";
 
-const derived = buildMockDerived();
+const START_URL = "https://canary.bill-nguyentonhoang.workers.dev/oauth/google/start?secret=<WEBHOOK_SECRET>";
 
-/**
- * Pages the calendar to whichever month holds `date` and returns its day button.
- * The demo span is a year, so where a planted event sits is a property of the
- * fixture; a test may not assume it is two clicks back from today.
- */
-async function stepBackTo(date: string) {
-  const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-  const target = date.slice(0, 7);
-
-  for (let hops = 0; hops < 24; hops++) {
-    const day = screen.queryByRole("button", { name: new RegExp(`^${date}`) });
-    if (day) return day;
-
-    const heading = screen.getByRole("heading", { name: /^[A-Z][a-z]+ \d{4}$/ });
-    const [monthName, year] = heading.textContent!.split(" ");
-    const current = `${year}-${String(MONTHS.indexOf(monthName!) + 1).padStart(2, "0")}`;
-
-    fireEvent.click(screen.getByRole("button", { name: current > target ? "Previous month" : "Next month" }));
-    await screen.findByRole("heading", { name: /^[A-Z][a-z]+ \d{4}$/ });
-  }
-  throw new Error(`calendar never reached ${date}`);
+function noneConnection(overrides: Partial<CalendarConnectionResponse> = {}): CalendarConnectionResponse {
+  return {
+    provider: "none",
+    google_oauth_configured: true,
+    expected_account: "bill.nguyentonhoang@gmail.com",
+    oauth_start_url: START_URL,
+    ...overrides,
+  };
 }
-/** The demo clock is the end of history, so "today" is 2026-09-13. */
-const today = derived.provenance.end_date;
+
+const derived = buildMockDerived();
+/** Same clock the availability endpoint uses in fixtures. */
+const today = derived.provenance.generated_at.slice(0, 10);
 
 describe("CalendarPage", () => {
   let requests: RecordedRequest[];
@@ -49,13 +39,12 @@ describe("CalendarPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("opens on the month containing the end of history and asks for exactly that range", async () => {
+  it("opens on the month Canary is checking and asks for exactly that range", async () => {
     renderApp("/calendar");
 
-    // The grid renders once the calendar range resolves.
-    await screen.findByRole("button", { name: /^2026-09-01/ });
+    await screen.findByRole("button", { name: new RegExp(`^${today.slice(0, 8)}01`) });
+    expect(screen.getByRole("heading", { name: "When Canary can text" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "September 2026" })).toBeInTheDocument();
-    expect(screen.getByText(`as of ${formatDateMedium(today)}`)).toBeInTheDocument();
 
     const request = requests.find((r) => r.path === "/api/calendar");
     expect(request?.params.get("from")).toBe("2026-09-01");
@@ -69,45 +58,28 @@ describe("CalendarPage", () => {
     for (const label of WEEKDAY_LABELS) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
-    // 2026-09-01 is a Tuesday, so the grid starts on Aug 31 and runs 5 weeks.
     const dayCells = screen.getAllByRole("button", { name: /^2026-\d{2}-\d{2}, / });
     expect(dayCells).toHaveLength(35);
     expect(dayCells[0]).toHaveAccessibleName(/^2026-08-31/);
   });
 
-  it("shows posted, expected and busy chips, and the availability pill", async () => {
+  it("shows busy blocks and the can-text pill, never ledger amounts", async () => {
     renderApp("/calendar");
     await screen.findByRole("button", { name: /^2026-09-01/ });
 
-    // Posted: the last week of history. Expected: projections past its end.
-    const posted = screen.getByRole("button", { name: /^2026-09-07/ });
-    expect(within(posted).getByText("AWS")).toBeInTheDocument();
+    const busy = screen.getByRole("button", { name: /^2026-09-02, in a meeting/ });
+    expect(within(busy).getByText("Busy")).toBeInTheDocument();
 
-    const projected = screen.getByRole("button", { name: /^2026-09-14/ });
-    expect(within(projected).getAllByText("expected").length).toBeGreaterThan(0);
+    const free = screen.getByRole("button", { name: /^2026-09-03, Canary can text/ });
+    expect(within(free).queryByText("AWS")).not.toBeInTheDocument();
 
-    const busyOnly = screen.getByRole("button", { name: /^2026-09-02/ });
-    expect(within(busyOnly).getByText("Busy")).toBeInTheDocument();
-
-    expect(screen.getByText("Founder free")).toBeInTheDocument();
+    expect(screen.getAllByText("Canary can text").length).toBeGreaterThan(0);
+    expect(screen.getByText(/private calendar feed/)).toBeInTheDocument();
+    expect(screen.queryByText(/posted/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/expected/i)).not.toBeInTheDocument();
   });
 
-  it("shows Canary markers in the month the detector fired, never behind +n more", async () => {
-    renderApp("/calendar");
-    await screen.findByRole("button", { name: /^2026-09-01/ });
-
-    // Dates come from the incidents, not from literals: the demo span is a year
-    // and the planted events sit a fixed number of weeks before its end.
-    const oneOffDate = derived.one_off_incident!.alarm_date!;
-    const oneOffDay = await stepBackTo(oneOffDate);
-    expect(within(oneOffDay).getByText(derived.one_off_incident!.title)).toBeInTheDocument();
-
-    const changePoint = derived.primary_incident!.estimated_change_point!;
-    const changePointDay = await stepBackTo(changePoint);
-    expect(within(changePointDay).getByText(/Change point/)).toBeInTheDocument();
-  });
-
-  it("returns to the demo clock with Today", async () => {
+  it("returns to today with Today", async () => {
     renderApp("/calendar");
     await screen.findByRole("button", { name: /^2026-09-01/ });
 
@@ -119,19 +91,97 @@ describe("CalendarPage", () => {
     expect(await screen.findByRole("heading", { name: "September 2026" })).toBeInTheDocument();
   });
 
-  it("opens a day panel grouped by kind with links out", async () => {
+  it("opens a day panel that explains whether Canary will wait", async () => {
     renderApp("/calendar");
     await screen.findByRole("button", { name: /^2026-09-01/ });
 
-    fireEvent.click(screen.getByRole("button", { name: /^2026-09-07/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^2026-09-02, in a meeting/ }));
 
     const panel = await screen.findByRole("dialog");
-    expect(within(panel).getByText(formatDateMedium("2026-09-07"))).toBeInTheDocument();
-    expect(within(panel).getByText("Posted")).toBeInTheDocument();
-    expect(within(panel).getByText("Calendar")).toBeInTheDocument();
-    expect(within(panel).getAllByRole("link", { name: "View in ledger" })[0]).toHaveAttribute(
-      "href",
-      "/ledger?focus=vendor:aws",
-    );
+    expect(within(panel).getByText(formatDateMedium("2026-09-02"))).toBeInTheDocument();
+    expect(within(panel).getByText(/hold iMessage alerts/)).toBeInTheDocument();
+    expect(within(panel).queryByText("Posted")).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("link", { name: "View in ledger" })).not.toBeInTheDocument();
+  });
+
+  it("explains when Google is not connected and names the operator start URL", async () => {
+    installApiStub({
+      calendarConnection: noneConnection(),
+      availability: {
+        busy: false,
+        until: null,
+        next_busy_start: null,
+        source: "none",
+        checked_at: derived.provenance.generated_at,
+      },
+    });
+    renderApp("/calendar");
+    expect(await screen.findByText(/No Google Calendar connected/)).toBeInTheDocument();
+    expect(screen.getByText(START_URL)).toBeInTheDocument();
+    expect(screen.getByText("bill.nguyentonhoang@gmail.com")).toBeInTheDocument();
+    expect(screen.getByText(/Testing-mode refresh tokens expire after 7 days/)).toBeInTheDocument();
+    expect(screen.queryByText("test-webhook-secret")).not.toBeInTheDocument();
+    expect(screen.getByText("No calendar — texts immediately")).toBeInTheDocument();
+  });
+
+  it("tells the operator to set GOOGLE_* when the Worker cannot start OAuth", async () => {
+    installApiStub({
+      calendarConnection: noneConnection({
+        google_oauth_configured: false,
+        expected_account: undefined,
+      }),
+    });
+    renderApp("/calendar");
+    expect(await screen.findByText(/missing/)).toBeInTheDocument();
+    expect(screen.getByText("GOOGLE_CLIENT_ID")).toBeInTheDocument();
+    expect(screen.getByText("GOOGLE_CLIENT_SECRET")).toBeInTheDocument();
+    expect(screen.getByText(START_URL)).toBeInTheDocument();
+  });
+
+  it("flags a connected account that does not match FOUNDER_EMAIL", async () => {
+    installApiStub({
+      calendarConnection: {
+        provider: "google",
+        account_email: "other@example.com",
+        expected_account: "bill.nguyentonhoang@gmail.com",
+        google_oauth_configured: true,
+        oauth_start_url: START_URL,
+        connected_at: "2026-09-10T09:00:00.000Z",
+      },
+    });
+    renderApp("/calendar");
+    expect(await screen.findByText(/other@example.com/)).toBeInTheDocument();
+    expect(screen.getByText(/flagged, not rejected/)).toBeInTheDocument();
+    expect(screen.getByText(/bill\.nguyentonhoang@gmail\.com/)).toBeInTheDocument();
+  });
+
+  it("does not say unconnected when Google is linked but unread", async () => {
+    const empty: CashCalendar = { from: "2026-09-01", to: "2026-09-30", days: [], busy_source: "none" };
+    const unread: AvailabilityResponse = {
+      busy: false,
+      until: null,
+      next_busy_start: null,
+      source: "none",
+      checked_at: derived.provenance.generated_at,
+    };
+    installApiStub({
+      calendarConnection: {
+        provider: "google",
+        account_email: "bill.nguyentonhoang@gmail.com",
+        expected_account: "bill.nguyentonhoang@gmail.com",
+        google_oauth_configured: true,
+        oauth_start_url: START_URL,
+        connected_at: "2026-09-10T09:00:00.000Z",
+      },
+      availability: unread,
+      calendar: empty,
+    });
+    renderApp("/calendar");
+    expect(await screen.findByText(/Reading/)).toBeInTheDocument();
+    expect(screen.getByText("Calendar unread — texts immediately")).toBeInTheDocument();
+    expect(screen.queryByText(/No Google Calendar connected/)).not.toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole("button", { name: /^2026-09-02/ }));
+    expect(await screen.findByText(/Could not read the founder calendar just now/)).toBeInTheDocument();
   });
 });

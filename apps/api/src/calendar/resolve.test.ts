@@ -37,6 +37,23 @@ describe("google > ics > none", () => {
     const resolution = await resolver(env({ CALENDAR_ICS_URL: ICS_URL }), new FakeD1()).resolve();
     expect(resolution.provider).toBe("ics");
     expect(resolution.google).toBeNull();
+    expect(resolution.connection).toMatchObject({
+      provider: "ics",
+      google_oauth_configured: true,
+      oauth_start_url: "https://canary.test/oauth/google/start?secret=<WEBHOOK_SECRET>",
+    });
+  });
+
+  it("surfaces FOUNDER_EMAIL as expected_account on every connection body", async () => {
+    const resolution = await resolver(
+      env({ FOUNDER_EMAIL: "bill.nguyentonhoang@gmail.com", GOOGLE_CLIENT_ID: undefined, GOOGLE_CLIENT_SECRET: undefined }),
+    ).resolve();
+    expect(resolution.connection).toEqual({
+      provider: "none",
+      google_oauth_configured: false,
+      expected_account: "bill.nguyentonhoang@gmail.com",
+      oauth_start_url: "https://canary.test/oauth/google/start?secret=<WEBHOOK_SECRET>",
+    });
   });
 
   it("resolves to none with neither, and reports free so an alert is never blocked", async () => {

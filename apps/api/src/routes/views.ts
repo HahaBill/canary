@@ -1,5 +1,5 @@
 /**
- * The ledger sheet, the cash calendar, founder availability and Needs Review.
+ * The ledger sheet, founder availability calendar and Needs Review.
  *
  * Read routes are public (PRD §31). `POST /api/classifications/override` mutates
  * stored state, so it carries the same shared secret as `/api/alerts/send`.
@@ -77,16 +77,15 @@ export function registerViewRoutes(app: CanaryApp): void {
   });
 
   app.get("/api/calendar", async (c) => {
-    const provider = c.get("provider");
     const requestedFrom = c.req.query("from")?.trim() ?? "";
     const requestedTo = c.req.query("to")?.trim() ?? "";
     for (const [name, value] of [["from", requestedFrom], ["to", requestedTo]] as const) {
       if (value && !ISO_DATE.test(value)) return jsonError(c, 400, "invalid_date", `\`${name}\` must be YYYY-MM-DD.`);
     }
 
-    // Default to the month history ends in — the month the demo talks about.
-    const derived = await provider.getDerived();
-    const fallback = monthRange(derived.provenance.end_date);
+    // Default to the month the notification clock is in — this page is about
+    // when Canary may text, not the ledger's last posted week.
+    const fallback = monthRange(c.get("now")().slice(0, 10));
     const from = requestedFrom || fallback.from;
     const to = requestedTo || fallback.to;
     if (daysBetween(from, to) < 0) return jsonError(c, 400, "invalid_range", "`from` must not be after `to`.");
@@ -95,10 +94,9 @@ export function registerViewRoutes(app: CanaryApp): void {
     }
 
     // Reviews Canary booked live in D1 (the event itself is on the founder's
-    // Google Calendar), so they are merged here as `canary` markers rather than
-    // arriving with the busy blocks.
-    const [events, feed, reviews] = await Promise.all([
-      provider.getCalendarEvents(from, to),
+    // Google Calendar). Ledger actuals / projections stay off this surface —
+    // this calendar is only "may Canary text right now".
+    const [feed, reviews] = await Promise.all([
       c.get("calendar").fetchEvents(from, to),
       c.get("reviews")?.list() ?? Promise.resolve([]),
     ]);
@@ -106,7 +104,7 @@ export function registerViewRoutes(app: CanaryApp): void {
       calendar: buildCashCalendar({
         from,
         to,
-        events: [...events, ...reviewCalendarEvents(reviews, from, to)],
+        events: reviewCalendarEvents(reviews, from, to),
         busy: feed.events,
         busySource: feed.source,
         showTitles: c.get("appEnv").CALENDAR_SHOW_TITLES === "1",

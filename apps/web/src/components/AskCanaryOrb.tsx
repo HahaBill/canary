@@ -1,20 +1,15 @@
 /**
- * Always-on "Ask a question" launcher in the bottom-right. The ElevenLabs
- * talk UI starts from this button when the Worker has minted a signed URL;
- * otherwise the button still opens a short explainer so the control is never
- * invisible.
+ * Bottom-right Ask Canary dock. When the Worker has minted a signed URL the
+ * ElevenLabs ConvAI widget mounts immediately so “Start a call” is reachable
+ * without a second launcher. The browser never sees ELEVENLABS_API_KEY.
+ * Without an agent, a short explainer stays in the same corner.
  */
 import { useEffect, useState } from "react";
-import { Bird } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createAskCanaryClientTools, ensureConvaiScript, loadAskCanary } from "@/lib/ask-canary.ts";
 
 const TICKET_REFRESH_MS = 10 * 60 * 1000;
 const WIDGET_ID = "ask-canary-widget";
-
-interface ConvaiHost extends HTMLElement {
-  startConversation?: () => void;
-}
 
 interface ConvaiCallDetail {
   config: { clientTools?: ReturnType<typeof createAskCanaryClientTools> };
@@ -22,8 +17,7 @@ interface ConvaiCallDetail {
 
 export function AskCanaryOrb() {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const [talking, setTalking] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,6 +29,8 @@ export function AskCanaryOrb() {
         setSignedUrl(body.configured ? body.signed_url : null);
       } catch {
         if (!cancelled) setSignedUrl(null);
+      } finally {
+        if (!cancelled) setReady(true);
       }
     }
 
@@ -51,8 +47,8 @@ export function AskCanaryOrb() {
   }, [signedUrl]);
 
   useEffect(() => {
-    if (!talking || !signedUrl) return;
-    const host = document.getElementById(WIDGET_ID) as ConvaiHost | null;
+    if (!signedUrl) return;
+    const host = document.getElementById(WIDGET_ID);
     if (!host) return;
 
     const onCall = (event: Event) => {
@@ -60,72 +56,43 @@ export function AskCanaryOrb() {
       if (detail?.config) detail.config.clientTools = createAskCanaryClientTools();
     };
     host.addEventListener("elevenlabs-convai:call", onCall);
-
-    const start = () => host.startConversation?.();
-    start();
-    const retry = window.setTimeout(start, 400);
     return () => {
       host.removeEventListener("elevenlabs-convai:call", onCall);
-      window.clearTimeout(retry);
     };
-  }, [talking, signedUrl]);
+  }, [signedUrl]);
 
-  function onAsk() {
-    if (signedUrl) {
-      setPanelOpen(false);
-      setTalking(true);
-      return;
-    }
-    setPanelOpen((open) => !open);
-  }
+  if (!ready) return null;
 
   return (
-    <div className="ask-canary-dock">
-      {panelOpen && !signedUrl ? (
-        <div className="ask-canary-panel" role="dialog" aria-label="Ask Canary">
-          <p className="text-sm font-semibold text-neutral-900">Ask Canary a question</p>
-          <p className="mt-1 text-sm leading-relaxed text-neutral-600">
-            Try “What if AWS were 20% lower?” Voice starts from this button once an ElevenLabs
-            agent is connected.
-          </p>
-          <Link
-            to="/ask"
-            className="mt-3 inline-flex text-sm font-medium text-neutral-900 underline-offset-2 hover:underline"
-            onClick={() => setPanelOpen(false)}
-          >
-            How Ask Canary works
-          </Link>
-        </div>
-      ) : null}
-
-      {talking && signedUrl ? (
+    <div className="ask-canary-dock" data-ready={signedUrl ? "voice" : "explain"}>
+      {signedUrl ? (
         <elevenlabs-convai
           id={WIDGET_ID}
           signed-url={signedUrl}
           variant="compact"
           action-text="Ask Canary"
-          start-call-text="Start talking"
+          start-call-text="Start a call"
           end-call-text="End conversation"
           listening-text="Listening…"
           speaking-text="Canary speaking"
           avatar-orb-color-1="#f5c518"
           avatar-orb-color-2="#fff4b8"
         />
-      ) : null}
-
-      <button
-        type="button"
-        className="ask-canary-launch"
-        aria-label="Ask Canary a question"
-        aria-expanded={panelOpen || talking}
-        data-ready={signedUrl ? "voice" : "explain"}
-        onClick={onAsk}
-      >
-        <span className="ask-canary-launch-label">Ask a question</span>
-        <span className="ask-canary-launch-orb" aria-hidden="true">
-          <Bird className="h-7 w-7" />
-        </span>
-      </button>
+      ) : (
+        <div className="ask-canary-panel" role="status" aria-label="Ask Canary">
+          <p className="text-sm font-semibold text-neutral-900">Ask Canary</p>
+          <p className="mt-1 text-sm leading-relaxed text-neutral-600">
+            Voice starts from this corner once an ElevenLabs agent is connected. Until then, try
+            “What if AWS were 20% lower?” on the incident what-if tab.
+          </p>
+          <Link
+            to="/ask"
+            className="mt-3 inline-flex text-sm font-medium text-neutral-900 underline-offset-2 hover:underline"
+          >
+            How Ask Canary works
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

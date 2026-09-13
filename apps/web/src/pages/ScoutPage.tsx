@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import type { ScoutPage, ScoutVendorCard } from "@canary/shared";
+import { SCOUT, type ScoutPage, type ScoutVendorCard } from "@canary/shared";
 import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { refreshScoutSources, useScout } from "@/api/useDerived.ts";
 import { KIND_META } from "@/components/EvidenceList.tsx";
@@ -41,25 +41,39 @@ export function ScoutPage() {
   }
   if (!shown) return null;
 
+  const neverSearched = shown.never_searched;
+  const status = scoutStatus({
+    refreshing,
+    vendorCount: shown.vendors.length,
+    neverSearched,
+    didRefresh: page !== null,
+    tavilyCalls: shown.tavily_calls,
+    refreshError: refreshError ?? shown.refresh_error ?? null,
+  });
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" aria-busy={refreshing}>
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-neutral-900 sm:text-2xl">Scout</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-semibold tracking-tight text-neutral-900 sm:text-2xl">Scout</h1>
+            <Badge variant="accent">Tavily</Badge>
+          </div>
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-neutral-500">
-            Dated changes at vendors you already pay. Not a comparison, and not a recommendation.
+            Dated pricing, plan, and credit announcements at vendors you already pay. Canary
+            reports what Tavily found. It does not rank vendors or recommend a change.
             Sources without a published date are omitted.
           </p>
         </div>
-        <Button type="button" variant="outline" onClick={() => void refresh()} disabled={refreshing}>
+        <Button type="button" variant="accent" size="lg" onClick={() => void refresh()} disabled={refreshing}>
           {refreshing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-4 w-4" aria-hidden="true" />}
-          Refresh sources
+          {refreshing ? "Asking Tavily…" : "Refresh with Tavily"}
         </Button>
       </header>
 
-      {shown.refresh_error || refreshError ? (
-        <p role="status" className="text-sm text-neutral-500">
-          {refreshError ?? "Could not reach Tavily — showing the last retrieved sources."}
+      {status ? (
+        <p role="status" className="rounded-2xl border border-canary-200 bg-canary-50 px-4 py-3 text-sm leading-relaxed text-neutral-800">
+          {status}
         </p>
       ) : null}
 
@@ -70,7 +84,13 @@ export function ScoutPage() {
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {shown.vendors.map((card) => (
-            <VendorCard key={card.entity} card={card} incidentId={shown.whatif_incident_id} lookbackDays={shown.lookback_days} />
+            <VendorCard
+              key={card.entity}
+              card={card}
+              incidentId={shown.whatif_incident_id}
+              lookbackDays={shown.lookback_days}
+              researching={refreshing}
+            />
           ))}
         </div>
       )}
@@ -78,14 +98,46 @@ export function ScoutPage() {
   );
 }
 
+function scoutStatus(input: {
+  refreshing: boolean;
+  vendorCount: number;
+  neverSearched: boolean;
+  didRefresh: boolean;
+  tavilyCalls: number;
+  refreshError: string | null;
+}): string | null {
+  if (input.refreshing) {
+    return `Asking Tavily now — one dated news search per vendor, capped at ${SCOUT.MAX_TAVILY_CALLS_PER_RUN} calls. This can take a few seconds.`;
+  }
+  if (input.refreshError === "TAVILY_NOT_CONFIGURED") {
+    return "Tavily is not configured on this Worker, so Refresh cannot search.";
+  }
+  if (input.refreshError) {
+    return "Could not reach Tavily — showing the last retrieved sources.";
+  }
+  if (input.didRefresh && input.tavilyCalls > 0) {
+    const n = input.tavilyCalls;
+    return `Tavily searched ${n} vendor${n === 1 ? "" : "s"} just now. Dated sources are listed below; nothing dated is a complete answer.`;
+  }
+  if (input.didRefresh && input.tavilyCalls === 0 && !input.neverSearched) {
+    return `Still inside the ${SCOUT.TTL_HOURS}-hour window. Showing the last Tavily retrieval — Refresh will search again after that.`;
+  }
+  if (input.neverSearched && input.vendorCount > 0) {
+    return "Tavily has not been asked yet. Refresh runs one dated news search per vendor for pricing, plan, credit, and announcement sources.";
+  }
+  return null;
+}
+
 function VendorCard({
   card,
   incidentId,
   lookbackDays,
+  researching,
 }: {
   card: ScoutVendorCard;
   incidentId: string | null;
   lookbackDays: number;
+  researching: boolean;
 }) {
   const observed = KIND_META.OBSERVED;
   const evidence = KIND_META.EVIDENCE;
@@ -110,8 +162,22 @@ function VendorCard({
           <Badge variant={evidence.variant}>{evidence.blurb}</Badge>
         </div>
 
-        {card.empty_window ? (
-          <p className="text-sm text-neutral-600">Nothing dated in the last {lookbackDays} days.</p>
+        <p className="text-xs leading-relaxed text-neutral-500">
+          <span className="font-medium text-neutral-700">Tavily query. </span>
+          <span className="break-words font-mono text-[11px] text-neutral-600">{card.query}</span>
+        </p>
+
+        {researching && !card.searched ? (
+          <p className="flex items-center gap-2 text-sm text-neutral-600">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            Asking Tavily for dated sources.
+          </p>
+        ) : !card.searched ? (
+          <p className="text-sm text-neutral-600">Not yet searched.</p>
+        ) : card.empty_window ? (
+          <p className="text-sm text-neutral-600">
+            Tavily searched. Nothing dated in the last {lookbackDays} days.
+          </p>
         ) : (
           <ul className="space-y-3">
             {card.findings.map((finding) => (
@@ -129,7 +195,7 @@ function VendorCard({
                   </a>
                   <span>published {formatDateMedium(finding.published_at)}</span>
                   {finding.retrieved_at ? <span>retrieved {formatTimestampMedium(finding.retrieved_at)}</span> : null}
-                  {finding.cached ? <Badge variant="quiet">previously retrieved</Badge> : null}
+                  {finding.cached ? <Badge variant="quiet">previously retrieved</Badge> : <Badge variant="accent">just retrieved</Badge>}
                 </div>
               </li>
             ))}

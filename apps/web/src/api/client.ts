@@ -9,6 +9,7 @@ import {
   type AlertHistoryResponse,
   type AskCanaryResponse,
   type AvailabilityResponse,
+  type CalendarConnectionResponse,
   type CalendarResponse,
   type CashCalendar,
   type ClassificationOverrideRequest,
@@ -221,6 +222,13 @@ export function getCalendar(from: ISODate, to: ISODate, signal?: AbortSignal): P
 
 export function getAvailability(signal?: AbortSignal): Promise<AvailabilityResponse> {
   return request<AvailabilityResponse>(routePath(API_ROUTES.availability), signal ? { signal } : undefined);
+}
+
+export function getCalendarConnection(signal?: AbortSignal): Promise<CalendarConnectionResponse> {
+  return request<CalendarConnectionResponse>(
+    routePath(API_ROUTES.calendarConnection),
+    signal ? { signal } : undefined,
+  );
 }
 
 export function getNeedsReview(signal?: AbortSignal): Promise<NeedsReviewResponse> {

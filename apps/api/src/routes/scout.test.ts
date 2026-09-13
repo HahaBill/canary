@@ -31,13 +31,16 @@ describe("GET /api/scout", () => {
     expect(body.vendors.map((v) => v.display_name)).toEqual(expected.map(displayName));
     expect(body.vendors.every((v) => v.display_name !== v.entity || v.entity === displayName(v.entity))).toBe(true);
     expect(body.cached).toBe(true);
+    expect(body.never_searched).toBe(true);
     expect(body.tavily_calls).toBe(0);
     expect(body.lookback_days).toBe(SCOUT.LOOKBACK_DAYS);
     expect(body.whatif_incident_id).toBe(h.derived.primary_incident!.id);
 
     for (const card of body.vendors) {
       expect(card.trailing_weekly_cents).toBe(h.derived.burn.weekly_variable_by_entity[card.entity]);
-      expect(card.empty_window).toBe(true);
+      expect(card.searched).toBe(false);
+      expect(card.empty_window).toBe(false);
+      expect(card.query).toMatch(/pricing change/);
       expect(card.evidence).toEqual([]);
     }
   });
@@ -96,10 +99,16 @@ describe("POST /api/scout/refresh", () => {
     expect(tavily.every((c) => !JSON.stringify(c.body).match(/cheaper|alternative|switch|cancel/i))).toBe(true);
 
     const aws = body.vendors.find((v) => v.entity === "aws");
+    expect(body.never_searched).toBe(false);
+    expect(aws?.searched).toBe(true);
     expect(aws?.empty_window).toBe(false);
+    expect(aws?.cached).toBe(false);
+    expect(aws?.findings[0]?.cached).toBe(false);
     expect(aws?.findings[0]?.published_at).toBe("2026-08-01");
     expect(aws?.evidence[0]?.kind).toBe("EVIDENCE");
+    expect(aws?.query).toMatch(/^AWS /);
     expect(body.tavily_calls).toBe(tavily.length);
+    expect(body.vendors.every((v) => v.searched)).toBe(true);
 
     const rows = db.rows("vendor_enrichments");
     const ashby = rows.find((row) => row["merchant_normalized"] === "ashby");
@@ -125,6 +134,8 @@ describe("POST /api/scout/refresh", () => {
     const callsAfterRefresh = h.calls.length;
     const cached = await h.json<ScoutResponse>("/api/scout");
     expect(cached.status).toBe(200);
+    expect(cached.body.never_searched).toBe(false);
+    expect(cached.body.vendors.find((v) => v.entity === "aws")?.searched).toBe(true);
     expect(cached.body.vendors.find((v) => v.entity === "aws")?.empty_window).toBe(false);
     expect(h.calls.length).toBe(callsAfterRefresh);
   });
@@ -208,7 +219,7 @@ describe("POST /api/scout/refresh", () => {
       },
     });
     const { body } = await h.post<ScoutResponse>("/api/scout/refresh");
-    expect(body.vendors.every((v) => v.empty_window && v.findings.length === 0)).toBe(true);
+    expect(body.vendors.every((v) => v.searched && v.empty_window && v.findings.length === 0)).toBe(true);
   });
 });
 

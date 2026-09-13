@@ -1,9 +1,8 @@
 /**
- * Merges the engine's cash events (actual / expected / canary) with the founder's
- * busy blocks into the day-by-day `CashCalendar` the SPA renders.
- *
- * The only thing this adds to the numbers is addition: `net_actual_cents` and
- * `net_expected_cents` are sums of amounts the provider already produced.
+ * Day-by-day calendar the SPA renders. The `/api/calendar` route now only
+ * passes founder busy blocks plus reviews Canary booked — cash actuals and
+ * projections stay on the ledger. `net_*_cents` still sum whatever events
+ * happen to carry amounts (reviews do not).
  */
 import { addDays, compareISODate, daysBetween, type CalendarDay, type CalendarEvent, type CashCalendar, type ISODate } from "@canary/shared";
 import type { BusySource, CalendarFeedEvent } from "./ics.ts";

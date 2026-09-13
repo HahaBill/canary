@@ -202,7 +202,7 @@ describe("fetchEvents", () => {
   it("maps timed events to instants", async () => {
     const { provider } = await fixture({ events: [TIMED] });
     const { events, source } = await provider.fetchEvents("2026-09-14", "2026-09-14");
-    expect(source).toBe("ics");
+    expect(source).toBe("google");
     expect(events).toEqual([
       { uid: "standup", start: "2026-09-14T15:30:00.000Z", end: "2026-09-14T16:00:00.000Z", summary: "Busy", allDay: false },
     ]);

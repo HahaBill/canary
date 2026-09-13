@@ -11,6 +11,15 @@ import type { CalendarConnectionResponse, DisconnectResponse } from "./oauth.ts"
 
 const SECRET = TEST_ENV.WEBHOOK_SECRET;
 const REDIRECT_URI = "https://canary.test/oauth/google/callback";
+const OAUTH_START_URL = "https://canary.test/oauth/google/start?secret=<WEBHOOK_SECRET>";
+
+function connectionMeta(configured = true, expected?: string) {
+  return {
+    google_oauth_configured: configured,
+    oauth_start_url: OAUTH_START_URL,
+    ...(expected ? { expected_account: expected } : {}),
+  };
+}
 
 function harness(options: { script?: GoogleScript; db?: FakeD1; env?: Record<string, string | undefined> } = {}) {
   return createHarness({
@@ -43,6 +52,7 @@ describe("GET /oauth/google/start", () => {
       prompt: "consent",
       include_granted_scopes: "true",
     });
+    expect(url.searchParams.has("login_hint")).toBe(false);
 
     const scopes = url.searchParams.get("scope")!.split(" ");
     expect(scopes).toEqual([
@@ -77,6 +87,13 @@ describe("GET /oauth/google/start", () => {
     const res = await h.app.request(`/oauth/google/start?secret=${SECRET}`);
     expect(res.status).toBe(503);
     expect(await res.text()).toContain("GOOGLE_CLIENT_ID");
+  });
+
+  it("passes FOUNDER_EMAIL to Google as login_hint so the founder account is pre-selected", async () => {
+    const h = harness({ env: { FOUNDER_EMAIL: "  bill.nguyentonhoang@gmail.com  " } });
+    const res = await h.app.request(`/oauth/google/start?secret=${SECRET}`);
+    const url = new URL(res.headers.get("location")!);
+    expect(url.searchParams.get("login_hint")).toBe("bill.nguyentonhoang@gmail.com");
   });
 });
 
@@ -134,6 +151,43 @@ describe("GET /oauth/google/callback", () => {
     const res = await h.app.request(`/oauth/google/callback?code=abc&state=${await validState()}`);
     expect(res.status).toBe(200);
     expect(await res.text()).toContain("connected for your account");
+  });
+
+  it("flags a FOUNDER_EMAIL mismatch but still stores the connection", async () => {
+    const db = new FakeD1();
+    const h = harness({
+      db,
+      script: { accountEmail: "other@example.com" },
+      env: { FOUNDER_EMAIL: "bill.nguyentonhoang@gmail.com" },
+    });
+    const res = await h.app.request(`/oauth/google/callback?code=abc&state=${await validState()}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Connected — but to a different account");
+    expect(html).toContain("other@example.com");
+    expect(html).toContain("bill.nguyentonhoang@gmail.com");
+    const row = db.rows("google_oauth")[0]!;
+    expect(row.account_email).toBe("other@example.com");
+    expect(row.revoked_at).toBeNull();
+  });
+
+  it("does not flag when the connected account matches FOUNDER_EMAIL (case-insensitive)", async () => {
+    const h = harness({
+      script: { accountEmail: "Bill.NguyenTonHoang@gmail.com" },
+      env: { FOUNDER_EMAIL: "  bill.nguyentonhoang@gmail.com  " },
+    });
+    const res = await h.app.request(`/oauth/google/callback?code=abc&state=${await validState()}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Google Calendar connected for Bill.NguyenTonHoang@gmail.com");
+    expect(html).not.toContain("different account");
+  });
+
+  it("skips the mismatch check when FOUNDER_EMAIL is unset", async () => {
+    const h = harness({ script: { accountEmail: "other@example.com" } });
+    const res = await h.app.request(`/oauth/google/callback?code=abc&state=${await validState()}`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Google Calendar connected for other@example.com");
   });
 
   it("rejects a forged state and never exchanges the code", async () => {
@@ -270,6 +324,7 @@ describe("GET /api/calendar/connection", () => {
       account_email: "founder@perch.test",
       connected_at: "2026-09-10T09:00:00.000Z",
       scopes: GOOGLE_SCOPE_PARAM.split(" "),
+      ...connectionMeta(),
     });
     expect(JSON.stringify(body)).not.toContain("refresh");
     expect(JSON.stringify(body)).not.toContain("test-access-token");
@@ -277,12 +332,28 @@ describe("GET /api/calendar/connection", () => {
 
   it("reports ics when only the iCal feed is configured", async () => {
     const h = harness({ env: { CALENDAR_ICS_URL: "https://calendar.google.com/calendar/ical/x/private-abc/basic.ics" } });
-    expect((await h.json<CalendarConnectionResponse>("/api/calendar/connection")).body).toEqual({ provider: "ics" });
+    expect((await h.json<CalendarConnectionResponse>("/api/calendar/connection")).body).toEqual({
+      provider: "ics",
+      ...connectionMeta(),
+    });
   });
 
   it("reports none when nothing is configured", async () => {
     const h = harness({ env: { GOOGLE_CLIENT_ID: undefined, GOOGLE_CLIENT_SECRET: undefined } });
-    expect((await h.json<CalendarConnectionResponse>("/api/calendar/connection")).body).toEqual({ provider: "none" });
+    expect((await h.json<CalendarConnectionResponse>("/api/calendar/connection")).body).toEqual({
+      provider: "none",
+      ...connectionMeta(false),
+    });
+  });
+
+  it("names the expected founder account from FOUNDER_EMAIL without exposing secrets", async () => {
+    const h = harness({ env: { FOUNDER_EMAIL: "bill.nguyentonhoang@gmail.com" } });
+    const { body } = await h.json<CalendarConnectionResponse>("/api/calendar/connection");
+    expect(body).toEqual({
+      provider: "none",
+      ...connectionMeta(true, "bill.nguyentonhoang@gmail.com"),
+    });
+    expect(JSON.stringify(body)).not.toContain(SECRET);
   });
 
   it("falls back and asks for a reconnect after Google revoked the token", async () => {
@@ -295,6 +366,7 @@ describe("GET /api/calendar/connection", () => {
       provider: "ics",
       account_email: "founder@perch.test",
       revoked_at: "2026-09-13T09:00:00.000Z",
+      ...connectionMeta(),
     });
   });
 
@@ -302,13 +374,19 @@ describe("GET /api/calendar/connection", () => {
     const db = new FakeD1();
     await connectGoogle(db);
     const h = harness({ db, env: { WEBHOOK_SECRET: "rotated-secret", CALENDAR_ICS_URL: "https://example.test/f.ics" } });
-    expect((await h.json<CalendarConnectionResponse>("/api/calendar/connection")).body).toEqual({ provider: "ics" });
+    expect((await h.json<CalendarConnectionResponse>("/api/calendar/connection")).body).toEqual({
+      provider: "ics",
+      ...connectionMeta(),
+    });
   });
 
   it("falls back rather than failing when migration 0005 has not been applied", async () => {
     const db = new FakeD1({ rejectTables: ["google_oauth"] });
     const h = harness({ db });
-    expect((await h.json<CalendarConnectionResponse>("/api/calendar/connection")).body).toEqual({ provider: "none" });
+    expect((await h.json<CalendarConnectionResponse>("/api/calendar/connection")).body).toEqual({
+      provider: "none",
+      ...connectionMeta(),
+    });
   });
 });
 
@@ -317,7 +395,10 @@ describe("the connect flow, as the operator runs it", () => {
     const db = new FakeD1();
     const h = harness({ db, script: { accountEmail: "founder@perch.test" } });
 
-    expect((await h.json<CalendarConnectionResponse>("/api/calendar/connection")).body).toEqual({ provider: "none" });
+    expect((await h.json<CalendarConnectionResponse>("/api/calendar/connection")).body).toEqual({
+      provider: "none",
+      ...connectionMeta(),
+    });
 
     const start = await h.app.request(`/oauth/google/start?secret=${SECRET}`);
     const state = new URL(start.headers.get("location")!).searchParams.get("state")!;
@@ -326,9 +407,13 @@ describe("the connect flow, as the operator runs it", () => {
     expect((await h.json<CalendarConnectionResponse>("/api/calendar/connection")).body).toMatchObject({
       provider: "google",
       account_email: "founder@perch.test",
+      ...connectionMeta(),
     });
 
     await h.authed("/oauth/google/disconnect");
-    expect((await h.json<CalendarConnectionResponse>("/api/calendar/connection")).body).toEqual({ provider: "none" });
+    expect((await h.json<CalendarConnectionResponse>("/api/calendar/connection")).body).toEqual({
+      provider: "none",
+      ...connectionMeta(),
+    });
   });
 });

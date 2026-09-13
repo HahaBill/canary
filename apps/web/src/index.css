@@ -82,7 +82,7 @@
   }
 }
 
-/* Ask Canary launcher — always visible, above the mobile tab bar (z-30). */
+/* Ask Canary dock — widget or unconfigured note, above the mobile tab bar (z-30). */
 .ask-canary-dock {
   position: fixed;
   right: 1.25rem;
@@ -108,58 +108,4 @@
   background: #fff;
   padding: 1rem 1.1rem;
   box-shadow: 0 12px 40px rgb(0 0 0 / 0.14);
-}
-
-.ask-canary-launch {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-}
-
-.ask-canary-launch-label {
-  border: 1px solid rgb(245 197 24 / 0.5);
-  border-radius: 9999px;
-  background: #fff;
-  padding: 0.65rem 0.95rem;
-  color: var(--color-neutral-900);
-  font-size: 0.875rem;
-  font-weight: 600;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
-}
-
-.ask-canary-launch-orb {
-  display: flex;
-  width: 3.75rem;
-  height: 3.75rem;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9999px;
-  background: radial-gradient(circle at 32% 28%, #fff6c8, #f5c518 58%, #c68808);
-  color: var(--color-neutral-900);
-  box-shadow:
-    0 10px 28px rgb(245 197 24 / 0.45),
-    0 0 0 6px rgb(245 197 24 / 0.2);
-  animation: ask-canary-pulse 2.4s ease-in-out infinite;
-}
-
-.ask-canary-launch:hover .ask-canary-launch-orb {
-  transform: scale(1.05);
-}
-
-@keyframes ask-canary-pulse {
-  0%,
-  100% {
-    box-shadow:
-      0 10px 28px rgb(245 197 24 / 0.45),
-      0 0 0 6px rgb(245 197 24 / 0.2);
-  }
-  50% {
-    box-shadow:
-      0 12px 32px rgb(245 197 24 / 0.55),
-      0 0 0 11px rgb(245 197 24 / 0.08);
-  }
 }

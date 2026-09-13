@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { formatMonths, formatUsdCompact, formatUsdWhole } from "@canary/shared";
@@ -6,6 +6,8 @@ import { buildMockDerived } from "@canary/shared/fixtures";
 import App from "@/App.tsx";
 import { clearApiCache } from "@/api/useDerived.ts";
 import { resetMockSnapshot } from "@/api/mock.ts";
+import { formatNetBurn } from "@/components/WeeklyCashPanel.tsx";
+import { formatWeekLabel, formatWeeklyLevel } from "@/lib/format.ts";
 
 describe("Dashboard", () => {
   beforeEach(() => {
@@ -37,6 +39,29 @@ describe("Dashboard", () => {
     const runway = screen.getByRole("region", { name: "Runway" });
     expect(runway).toHaveTextContent(formatMonths(derived.burn.runway_months));
     expect(runway).toHaveTextContent("at current burn");
+
+    const inflow = screen.getByRole("region", { name: "Operating inflow" });
+    expect(inflow).toHaveTextContent(formatWeeklyLevel(derived.burn.weekly_operating_inflow_cents));
+  });
+
+  it("renders weekly outflow, inflow and net burn from the derived weeks", async () => {
+    const derived = buildMockDerived();
+    const last = derived.weeks[derived.weeks.length - 1]!;
+
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    const panel = await screen.findByRole("region", { name: "Weekly operating cash" });
+    expect(panel).toHaveTextContent(`${derived.weeks.length} weeks`);
+
+    const table = within(panel).getByRole("table");
+    const lastRow = within(table).getByRole("row", { name: new RegExp(formatWeekLabel(last.week_start)) });
+    expect(lastRow).toHaveTextContent(formatUsdWhole(last.total_operating_outflow_cents));
+    expect(lastRow).toHaveTextContent(formatUsdWhole(last.operating_inflow_cents));
+    expect(lastRow).toHaveTextContent(formatNetBurn(last.net_burn_cents));
   });
 
   it("shows the primary incident with a link to its page", async () => {

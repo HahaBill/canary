@@ -13,6 +13,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type {
   AlertHistoryItem,
   AvailabilityResponse,
+  CalendarConnectionResponse,
   CashCalendar,
   ClassificationOverrideRequest,
   ClassificationOverrideResponse,
@@ -34,6 +35,7 @@ import {
   getAlertHistory,
   getAvailability,
   getCalendar,
+  getCalendarConnection,
   getDemo,
   getIncident,
   getLedger,
@@ -49,6 +51,7 @@ import {
   mockAlertHistory,
   mockAvailability,
   mockCalendar,
+  mockCalendarConnection,
   mockClassificationOverride,
   mockDemo,
   mockIncidentDetail,
@@ -362,13 +365,17 @@ export function useLedgerCell(
   );
 }
 
-/** Cash calendar for an inclusive date range (one visible month). */
+/** Founder free/busy for an inclusive date range (one visible month). */
 export function useCalendar(from: ISODate, to: ISODate): AsyncResource<CashCalendar> {
   return useView(
     `calendar:${from}:${to}`,
     () => getCalendar(from, to),
     () => mockCalendar(from, to),
   );
+}
+
+export function useCalendarConnection(): AsyncResource<CalendarConnectionResponse> {
+  return useView("calendar-connection", getCalendarConnection, mockCalendarConnection);
 }
 
 export function useAvailability(): AsyncResource<AvailabilityResponse> {

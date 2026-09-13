@@ -21,12 +21,11 @@ import { signState, verifyState } from "../calendar/google/crypto.ts";
 import { buildAuthUrl, exchangeCode, fetchAccountEmail, GOOGLE_SCOPE_PARAM, googleRedirectUri, revokeToken } from "../calendar/google/oauth.ts";
 import { clearGoogleCalendarCache } from "../calendar/google/provider.ts";
 import { clearGoogleTokenCache } from "../calendar/google/tokens.ts";
-import type { CalendarConnectionInfo } from "../calendar/resolve.ts";
+import type { CalendarConnectionResponse } from "@canary/shared";
 import { baseUrl, jsonError, type CanaryApp, type CanaryContext } from "../context.ts";
 import { constantTimeEqual, requestAuthorized } from "../security.ts";
 
-/** Public shape of `GET /api/calendar/connection`. Belongs in `packages/shared/src/api.ts` — see the report. */
-export type CalendarConnectionResponse = CalendarConnectionInfo;
+export type { CalendarConnectionResponse };
 
 export interface DisconnectResponse {
   ok: true;
@@ -79,8 +78,17 @@ export function registerOauthRoutes(app: CanaryApp): void {
     }
 
     const state = await signState(config.secret, new Date(c.get("now")()).getTime());
+    const loginHint = c.get("appEnv").FOUNDER_EMAIL?.trim();
     console.log(JSON.stringify({ msg: "google_oauth_start", redirect_uri: config.redirectUri, scopes: GOOGLE_SCOPE_PARAM.split(" ") }));
-    return c.redirect(buildAuthUrl({ clientId: config.clientId, redirectUri: config.redirectUri, state }), 302);
+    return c.redirect(
+      buildAuthUrl({
+        clientId: config.clientId,
+        redirectUri: config.redirectUri,
+        state,
+        ...(loginHint ? { loginHint } : {}),
+      }),
+      302,
+    );
   });
 
   app.get("/oauth/google/callback", async (c) => {

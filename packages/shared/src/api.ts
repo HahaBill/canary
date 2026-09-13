@@ -29,6 +29,7 @@ import type {
   Incident,
   IncidentStatus,
   ISODate,
+  ISODateTime,
   ReconciliationReport,
   Transaction,
   VendorEnrichment,
@@ -68,6 +69,8 @@ export const API_ROUTES = {
   /** Natural-language filter for the ledger sheet. Returns a spec, never new amounts. */
   ledgerQuery: "POST /api/ledger/query",
   calendar: "GET /api/calendar",
+  /** Which founder calendar Canary is reading (Google / iCal / none). No secrets. */
+  calendarConnection: "GET /api/calendar/connection",
   availability: "GET /api/availability",
   alertHistory: "GET /api/alerts/history",
   alertsPending: "GET /api/alerts/pending",
@@ -222,11 +225,38 @@ export interface LedgerFilterQueryResponse {
 }
 
 export interface CalendarQuery {
-  /** Inclusive, `YYYY-MM-DD`. Defaults to the month containing history_end. */
+  /** Inclusive, `YYYY-MM-DD`. Defaults to the month containing `now`. */
   from?: ISODate;
   to?: ISODate;
 }
 export type CalendarResponse = { calendar: CashCalendar };
+
+/** Public status of the founder calendar Canary uses to defer alerts. */
+export interface CalendarConnectionResponse {
+  provider: "google" | "ics" | "none";
+  account_email?: string;
+  connected_at?: ISODateTime;
+  scopes?: string[];
+  /** Set when Google rejected the refresh token — reconnect. */
+  revoked_at?: ISODateTime;
+  /**
+   * True when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set. The
+   * operator can then open `oauth_start_url`. False means those Worker secrets
+   * are still missing — visiting start will 503.
+   */
+  google_oauth_configured: boolean;
+  /**
+   * `FOUNDER_EMAIL` when set. Expected Google account; a mismatch is flagged,
+   * not rejected. Never a secret — it is the account Canary should read.
+   */
+  expected_account?: string;
+  /**
+   * Worker-absolute start URL with a `WEBHOOK_SECRET` placeholder. The real
+   * secret is never returned; the operator pastes it from Worker secrets or
+   * `.dev.vars`.
+   */
+  oauth_start_url: string;
+}
 
 export type { AvailabilityResponse };
 export type AlertHistoryResponse = { items: AlertHistoryItem[] };

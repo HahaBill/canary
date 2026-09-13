@@ -16,6 +16,7 @@ import {
   type AlertHistoryItem,
   type AskCanaryResponse,
   type AvailabilityResponse,
+  type CalendarConnectionResponse,
   type CashCalendar,
   type ClassificationOverride,
   type ClassificationOverrideRequest,
@@ -42,6 +43,7 @@ import { entityDisplayName } from "@/lib/format.ts";
 import {
   buildMockAvailability,
   buildMockCalendar,
+  buildMockCalendarConnection,
   buildMockCellDetail,
   buildMockNeedsReview,
   buildMockPivot,
@@ -140,11 +142,15 @@ export function mockAvailability(): AvailabilityResponse {
   return buildMockAvailability(derived());
 }
 
+export function mockCalendarConnection(): CalendarConnectionResponse {
+  return buildMockCalendarConnection();
+}
+
 export function mockNeedsReview(): NeedsReviewResponse {
   return buildMockNeedsReview(derived(), mockOverrides);
 }
 
-/** Offline Scout page: selected vendors, empty dated windows. No invented sources. */
+/** Offline Scout page: selected vendors, not yet searched. No invented sources. */
 export function mockScout(): ScoutPage {
   const d = derived();
   return assembleScoutPage({

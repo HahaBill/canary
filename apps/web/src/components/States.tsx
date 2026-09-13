@@ -22,8 +22,8 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
 
 export function StatRowSkeleton() {
   return (
-    <div className="grid gap-4 sm:grid-cols-3">
-      {[0, 1, 2].map((i) => (
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {[0, 1, 2, 3].map((i) => (
         <Skeleton key={i} className="h-32 rounded-2xl" />
       ))}
     </div>

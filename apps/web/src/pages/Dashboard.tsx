@@ -5,7 +5,15 @@ import { IncidentCard } from "@/components/IncidentCard.tsx";
 import { SignalCard } from "@/components/SignalCard.tsx";
 import { StatCard } from "@/components/StatCard.tsx";
 import { ErrorState, PanelSkeleton, StatRowSkeleton } from "@/components/States.tsx";
-import { burnWindowCaption, formatDateMedium, formatMonths, formatUsdCompact, formatUsdWhole } from "@/lib/format.ts";
+import { WeeklyCashPanel } from "@/components/WeeklyCashPanel.tsx";
+import {
+  burnWindowCaption,
+  formatDateMedium,
+  formatMonths,
+  formatUsdCompact,
+  formatUsdWhole,
+  formatWeeklyLevel,
+} from "@/lib/format.ts";
 
 export function Dashboard() {
   const { data, loading, error, reload } = useDerived();
@@ -20,6 +28,7 @@ export function Dashboard() {
     return (
       <div className="space-y-6">
         <StatRowSkeleton />
+        <PanelSkeleton className="h-80" />
         <PanelSkeleton className="h-52" />
         <PanelSkeleton className="h-28" />
       </div>
@@ -35,11 +44,12 @@ export function Dashboard() {
           {company.name}
         </h1>
         <p className="mt-1 text-sm text-neutral-500">
-          {company.stage} · {company.headcount} people · history through {formatDateMedium(provenance.end_date)}
+          {company.stage} · {company.headcount} people · {data.weeks.length} weeks through{" "}
+          {formatDateMedium(provenance.end_date)}
         </p>
       </header>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Cash"
           value={formatUsdCompact(data.cash_cents)}
@@ -53,12 +63,20 @@ export function Dashboard() {
           info="Average weekly operating outflow minus operating inflow across the window, normalized to a month. Transfers, card settlements and financing are excluded."
         />
         <StatCard
+          label="Operating inflow"
+          value={formatWeeklyLevel(burn.weekly_operating_inflow_cents)}
+          caption={`weekly · ${burnWindowCaption(burn)}`}
+          info="Average weekly operating inflow across the same window as current burn. Customer revenue; not a flipped net-burn figure."
+        />
+        <StatCard
           label="Runway"
           value={formatMonths(burn.runway_months)}
           caption="at current burn"
           info="Available operating cash divided by monthly net burn."
         />
       </div>
+
+      <WeeklyCashPanel weeks={data.weeks} />
 
       {data.primary_incident || data.one_off_incident ? (
         <div className="grid gap-4 lg:grid-cols-3">

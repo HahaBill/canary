@@ -8,6 +8,7 @@
 import { searchScoutVendor, type FetchLike as ClassificationFetch } from "@canary/classification/core";
 import {
   SCOUT,
+  markScoutFindingsCached,
   mergeScoutCaches,
   scoutCacheFresh,
   selectScoutVendors,
@@ -46,11 +47,12 @@ export async function refreshScoutPage(input: {
   const overlay: ScoutCacheFile = { kind: "scout", lookback_days: SCOUT.LOOKBACK_DAYS, retrieved_at: input.now, vendors: {} };
   let calls = 0;
   let refreshError: string | undefined;
+  const freshEntities: string[] = [];
 
   for (const entity of entities) {
     const existing = cache.vendors[entity];
     if (existing && scoutCacheFresh(existing.retrieved_at, input.now)) {
-      overlay.vendors[entity] = existing;
+      overlay.vendors[entity] = markScoutFindingsCached(existing);
       continue;
     }
     if (calls >= SCOUT.MAX_TAVILY_CALLS_PER_RUN) {
@@ -68,6 +70,7 @@ export async function refreshScoutPage(input: {
       calls += 1;
       overlay.vendors[entity] = brief;
       overlay.retrieved_at = input.now;
+      freshEntities.push(entity);
       if (input.store) {
         try {
           await input.store.saveScoutBrief(brief, displayName(entity));
@@ -85,5 +88,6 @@ export async function refreshScoutPage(input: {
     now: input.now,
     tavilyCalls: calls,
     refreshError,
+    freshEntities,
   });
 }

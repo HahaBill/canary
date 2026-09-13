@@ -13,6 +13,7 @@ import {
   scoutCacheFresh,
   scoutEnrichmentKey,
   scoutFindingToEvidence,
+  scoutResearchQuery,
   selectScoutVendors,
   type ScoutCacheFile,
   type ScoutFinding,
@@ -167,8 +168,17 @@ describe("scout enrichment keys", () => {
   });
 });
 
+describe("scoutResearchQuery", () => {
+  it("asks Tavily for dated vendor changes, not a comparison", () => {
+    expect(scoutResearchQuery("AWS")).toBe(
+      "AWS pricing change OR new plan OR startup credit OR discount program OR announcement",
+    );
+    expect(scoutResearchQuery("AWS")).not.toMatch(/cheaper|alternative|switch|cancel|downgrade|you could save/i);
+  });
+});
+
 describe("assembleScoutPage", () => {
-  it("reads spend from the ledger and labels a missing cache as an empty window", () => {
+  it("reads spend from the ledger and labels a missing cache as not yet searched", () => {
     const page = assembleScoutPage({
       weeklyVariableByEntity: { aws: 680_000, snacks: 1_000 },
       windowStart: "2026-06-29",
@@ -184,12 +194,64 @@ describe("assembleScoutPage", () => {
       entity: "aws",
       display_name: "AWS",
       trailing_weekly_cents: 680_000,
-      empty_window: true,
+      searched: false,
+      empty_window: false,
       cached: true,
+      query: scoutResearchQuery("AWS"),
     });
+    expect(page.never_searched).toBe(true);
     expect(page.vendors[0]!.display_name).not.toBe("aws");
     expect(page.tavily_calls).toBe(0);
     expect(page.whatif_incident_id).toBe("inc_1");
+  });
+
+  it("labels a searched cache with no dated hits as an empty window", () => {
+    const page = assembleScoutPage({
+      weeklyVariableByEntity: { aws: 680_000 },
+      windowStart: "2026-06-29",
+      windowEnd: "2026-09-13",
+      whatifIncidentId: null,
+      cache: {
+        kind: "scout",
+        lookback_days: 90,
+        retrieved_at: NOW,
+        vendors: { aws: { entity: "aws", findings: [], empty_window: true, retrieved_at: NOW } },
+      },
+      now: NOW,
+      displayName: () => "AWS",
+    });
+
+    expect(page.never_searched).toBe(false);
+    expect(page.vendors[0]).toMatchObject({
+      searched: true,
+      empty_window: true,
+      findings: [],
+    });
+  });
+
+  it("keeps live Refresh findings unmarked as previously retrieved", () => {
+    const live = finding({ cached: false });
+    const page = assembleScoutPage({
+      weeklyVariableByEntity: { aws: 680_000 },
+      windowStart: "2026-06-29",
+      windowEnd: "2026-09-13",
+      whatifIncidentId: null,
+      cache: {
+        kind: "scout",
+        lookback_days: 90,
+        retrieved_at: NOW,
+        vendors: { aws: { entity: "aws", findings: [live], empty_window: false, retrieved_at: NOW } },
+      },
+      now: NOW,
+      displayName: () => "AWS",
+      tavilyCalls: 1,
+      freshEntities: ["aws"],
+    });
+
+    expect(page.cached).toBe(false);
+    expect(page.vendors[0]!.cached).toBe(false);
+    expect(page.vendors[0]!.findings[0]!.cached).toBe(false);
+    expect(page.vendors[0]!.evidence[0]!.cached).toBe(false);
   });
 
   it("projects findings as taxonomy EVIDENCE without inventing amounts", () => {

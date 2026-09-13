@@ -24,7 +24,7 @@ export function LedgerPage() {
   const [selected, setSelected] = useState<CellCoordinates | null>(null);
   const [filter, setFilter] = useState<{ spec: LedgerFilterSpec; view: LedgerPivot } | null>(null);
   const { data: pivot, loading, error, reload } = useLedger(granularity);
-  // Deep link from the cash calendar: `/ledger?focus=vendor:aws`.
+  // Deep link: `/ledger?focus=vendor:aws`.
   const [searchParams] = useSearchParams();
   const focusRowId = searchParams.get("focus") ?? undefined;
   const sheet = pivot && filter?.view && filter.view.granularity === pivot.granularity ? filter.view : pivot;

@@ -243,9 +243,6 @@ export class GoogleCalendarProvider implements CalendarFeed {
     const ranges = await this.busyBetween(new Date(windowStart).toISOString(), new Date(windowStart + LOOKAHEAD_MS).toISOString());
     if (ranges === null) return { busy: false, until: null, next_busy_start: null, source: "none" };
 
-    // `source` says `ics` because `AvailabilityResponse.source` in packages/shared
-    // does not admit `google` yet (reported as a contract gap).
-    // `/api/calendar/connection` is where the real provider is named.
     const runs = mergeBusyRanges(ranges);
     const current = runs.find((r) => r.start <= at && at < r.end);
     if (current) return { busy: true, until: new Date(current.end).toISOString(), next_busy_start: null, source: "google" };
@@ -260,7 +257,7 @@ export class GoogleCalendarProvider implements CalendarFeed {
     const now = this.nowMs();
     const cached = eventsCache.get(key);
     if (cached && now - cached.fetchedAt < (cached.value === null ? CALENDAR_ERROR_TTL_MS : CALENDAR_CACHE_TTL_MS)) {
-      return { events: cached.value ?? [], source: cached.value === null ? "none" : "ics" };
+      return { events: cached.value ?? [], source: cached.value === null ? "none" : "google" };
     }
 
     const timeMin = new Date(`${from}T00:00:00.000Z`);
@@ -287,7 +284,7 @@ export class GoogleCalendarProvider implements CalendarFeed {
     }
 
     eventsCache.set(key, { value: events, fetchedAt: now });
-    return { events: events ?? [], source: events === null ? "none" : "ics" };
+    return { events: events ?? [], source: events === null ? "none" : "google" };
   }
 
   private mapEvents(items: GoogleEvent[]): CalendarFeedEvent[] {

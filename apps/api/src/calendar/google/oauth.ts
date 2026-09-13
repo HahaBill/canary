@@ -37,6 +37,12 @@ export interface AuthUrlInput {
   clientId: string;
   redirectUri: string;
   state: string;
+  /**
+   * Google `login_hint` — pre-selects this account on the consent screen.
+   * Taken from `FOUNDER_EMAIL` when set. Does not restrict who can consent;
+   * a different account is still flagged, not rejected, on the callback.
+   */
+  loginHint?: string;
 }
 
 /**
@@ -44,7 +50,7 @@ export interface AuthUrlInput {
  * refresh token; without both, a re-consent returns only an access token and the
  * connection silently expires in an hour.
  */
-export function buildAuthUrl({ clientId, redirectUri, state }: AuthUrlInput): string {
+export function buildAuthUrl({ clientId, redirectUri, state, loginHint }: AuthUrlInput): string {
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -55,6 +61,8 @@ export function buildAuthUrl({ clientId, redirectUri, state }: AuthUrlInput): st
     include_granted_scopes: "true",
     state,
   });
+  const hint = loginHint?.trim();
+  if (hint) params.set("login_hint", hint);
   return `${GOOGLE_AUTH_URL}?${params.toString()}`;
 }
 

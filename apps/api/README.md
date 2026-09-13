@@ -42,7 +42,7 @@ must never be why a material incident goes unsaid.
 What Google adds is write access: `POST /api/incidents/:id/schedule-review` (operator secret) books
 15 minutes with `nextFreeSlot` — the first free quarter-hour in 09:00–18:00 `CALENDAR_TIMEZONE`
 (default `America/New_York`), at least 30 minutes out, searching three business days — and records a
-`canary` marker in `review_events` so the cash calendar shows it. It answers 503 with an ICS feed,
+`canary` marker in `review_events` so the availability calendar shows the booking. It answers 503 with an ICS feed,
 because an iCal feed is read-only. `src/calendar/schedule-command.ts` is the same action as an
 iMessage reply.
 
@@ -65,9 +65,23 @@ One account only — the founder's. There is no per-user auth in Canary.
 
 ### Connecting
 
-Visit `…/oauth/google/start?secret=$WEBHOOK_SECRET` in a browser, consent, and the callback stores
-the connection and shows "Google Calendar connected for <email>". `POST /oauth/google/disconnect`
-(`x-canary-secret`) deletes the row and revokes at Google.
+Visit the Worker origin in a browser (not the Vite port), paste `WEBHOOK_SECRET`, and consent.
+`start` sends Google a `login_hint` from `FOUNDER_EMAIL` when that env is set — it pre-selects
+the account; it does not reject a different one.
+
+```text
+https://canary.bill-nguyentonhoang.workers.dev/oauth/google/start?secret=<WEBHOOK_SECRET>
+http://localhost:8787/oauth/google/start?secret=<WEBHOOK_SECRET>
+```
+
+The callback stores the connection and shows "Google Calendar connected for <email>".
+`POST /oauth/google/disconnect` (`x-canary-secret`) deletes the row and revokes at Google.
+
+`FOUNDER_EMAIL` (`.dev.vars` / Worker env; example `bill.nguyentonhoang@gmail.com`) is the expected
+Google account. Connecting a different account is **flagged, not rejected** — the callback warns,
+and that account's primary calendar is still what free/busy and review booking use. Leave it empty
+to skip the check. Do not hard-code the address in source; set the env var (and add the same
+account as a Test user on the OAuth consent screen).
 
 `start` is the **only** route that accepts the shared secret in the query string: the operator
 reaches it by typing a URL, and a browser cannot be made to send `x-canary-secret`. It is compared in

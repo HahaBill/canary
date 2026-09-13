@@ -51,6 +51,14 @@ export interface ScoutVendorCard {
   findings: ScoutFinding[];
   /** Findings projected as taxonomy EVIDENCE items (same shape the incident page uses). */
   evidence: EvidenceItem[];
+  /**
+   * True only after Tavily has been asked for this vendor. A cache miss is
+   * "not yet searched", not an empty dated window.
+   */
+  searched: boolean;
+  /** Exact Tavily query. Deterministic from the display name — never invented per result. */
+  query: string;
+  /** Searched, and nothing dated survived the lookback filter. A valid result. */
   empty_window: boolean;
   retrieved_at: ISODateTime;
   cached: boolean;
@@ -61,11 +69,21 @@ export interface ScoutPage {
   lookback_days: number;
   retrieved_at: ISODateTime;
   cached: boolean;
+  /** True when selected vendors exist and none of them have been sent to Tavily. */
+  never_searched: boolean;
   whatif_incident_id: string | null;
   /** Live Tavily calls made while assembling this page (0 on GET). */
   tavily_calls: number;
   /** Present when Refresh could not call Tavily; the page still renders from cache. */
   refresh_error?: string;
+}
+
+/**
+ * The Tavily news query for a vendor we already pay. Pricing / plan / credits /
+ * announcements only — never a cheaper-alternative prompt (AGENT_BEHAVIOR §4).
+ */
+export function scoutResearchQuery(displayName: string): string {
+  return `${displayName} pricing change OR new plan OR startup credit OR discount program OR announcement`;
 }
 
 /**
@@ -294,36 +312,49 @@ export function assembleScoutPage(input: {
   displayName: (entity: string) => string;
   tavilyCalls?: number;
   refreshError?: string;
+  /** Entity keys Tavily was asked about on this request. Findings stay uncached. */
+  freshEntities?: readonly string[];
 }): ScoutPage {
+  const fresh = new Set(input.freshEntities ?? []);
   const entities = selectScoutVendors(input.weeklyVariableByEntity);
   const vendors: ScoutVendorCard[] = entities.map((entity) => {
     const hit = input.cache.vendors[entity];
-    const brief = hit ? markScoutFindingsCached(hit) : {
+    const searched = Boolean(hit);
+    const justFetched = fresh.has(entity);
+    const brief = hit ?? {
       entity,
       findings: [] as ScoutFinding[],
-      empty_window: true,
+      empty_window: false,
       retrieved_at: input.cache.retrieved_at,
     };
-    const findings = brief.findings.map((finding) => ({ ...finding, cached: true }));
+    const findings = brief.findings.map((finding) => ({ ...finding, cached: !justFetched }));
+    const display = input.displayName(entity);
     return {
       entity,
-      display_name: input.displayName(entity),
+      display_name: display,
       trailing_weekly_cents: input.weeklyVariableByEntity[entity] ?? 0,
       window_start: input.windowStart,
       window_end: input.windowEnd,
       findings,
       evidence: findings.map(scoutFindingToEvidence),
-      empty_window: brief.empty_window || findings.length === 0,
+      searched,
+      query: scoutResearchQuery(display),
+      empty_window: searched && (brief.empty_window || findings.length === 0),
       retrieved_at: brief.retrieved_at,
-      cached: true,
+      cached: !justFetched,
     };
   });
 
+  const searchedVendors = vendors.filter((card) => card.searched);
   const page: ScoutPage = {
     vendors,
     lookback_days: SCOUT.LOOKBACK_DAYS,
-    retrieved_at: input.cache.retrieved_at,
+    retrieved_at: searchedVendors.reduce(
+      (latest, card) => (card.retrieved_at > latest ? card.retrieved_at : latest),
+      searchedVendors[0]?.retrieved_at ?? input.cache.retrieved_at,
+    ),
     cached: (input.tavilyCalls ?? 0) === 0,
+    never_searched: vendors.length > 0 && searchedVendors.length === 0,
     whatif_incident_id: input.whatifIncidentId,
     tavily_calls: input.tavilyCalls ?? 0,
   };

@@ -12,6 +12,12 @@ export const CHART = {
   axis: "#737373",
   /** rose-400 — alarm threshold. */
   threshold: "#fb7185",
+  /** neutral-600 — operating outflow (expenses). */
+  outflow: "#525252",
+  outflowWash: "#f5f5f5",
+  /** emerald-600 — operating inflow (revenue). */
+  inflow: "#059669",
+  inflowWash: "#d1fae5",
 } as const;
 
 export const TOOLTIP_STYLE = {

@@ -1,9 +1,8 @@
 /**
  * Offline stand-ins for the view routes (`/api/ledger`, `/api/calendar`,
- * `/api/availability`, `/api/needs-review`) — none of which the Worker serves
- * yet. Every figure is a reduction over the weekly buckets in
- * `DerivedDemoObject`, anchored on its bank closing balance; nothing here
- * invents a money number.
+ * `/api/availability`, `/api/needs-review`). Ledger figures are reductions over
+ * the weekly buckets in `DerivedDemoObject`; the calendar is founder free/busy
+ * only. Nothing here invents a money number.
  *
  * These are pure builders. `api/mock.ts` owns the session snapshot and the
  * override state so there is still exactly one mutable mock store.
@@ -12,6 +11,7 @@ import {
   addDays,
   isoWeekday,
   type AvailabilityResponse,
+  type CalendarConnectionResponse,
   type CalendarDay,
   type CalendarEvent,
   type CashCalendar,
@@ -360,7 +360,7 @@ export function buildMockCellDetail(
 }
 
 // ---------------------------------------------------------------------------
-// Cash calendar
+// Founder availability calendar
 // ---------------------------------------------------------------------------
 
 /** 9:00–9:30 standup on Mon/Wed/Fri — calendar metadata, not a cash figure. */
@@ -368,111 +368,10 @@ const BUSY_WEEKDAYS = new Set([0, 2, 4]);
 const BUSY_START = "T09:00:00.000Z";
 const BUSY_END = "T09:30:00.000Z";
 
-export function buildMockCalendar(d: DerivedDemoObject, from: ISODate, to: ISODate): CashCalendar {
-  const inRange = (date: ISODate) => date >= from && date <= to;
+export function buildMockCalendar(_d: DerivedDemoObject, from: ISODate, to: ISODate): CashCalendar {
   const events: CalendarEvent[] = [];
 
-  // Actuals: one event per (entity, week) plus the week's fixed spend and revenue.
-  for (const bucket of d.weeks) {
-    if (!inRange(bucket.week_start)) continue;
-    for (const [entity, amount] of Object.entries(bucket.variable_by_entity)) {
-      if (!amount) continue;
-      events.push({
-        id: `mock_actual_${entity}_${bucket.week_start}`,
-        kind: "actual",
-        date: bucket.week_start,
-        title: entity,
-        amount_cents: -amount,
-        entity,
-        category: MOCK_ENTITY_CATEGORY[entity] ?? "NEEDS_REVIEW",
-      });
-    }
-    if (bucket.fixed_spend_cents) {
-      events.push({
-        id: `mock_actual_fixed_${bucket.week_start}`,
-        kind: "actual",
-        date: bucket.week_start,
-        title: "Payroll & rent",
-        amount_cents: -bucket.fixed_spend_cents,
-        category: "PAYROLL",
-      });
-    }
-    if (bucket.operating_inflow_cents) {
-      events.push({
-        id: `mock_actual_revenue_${bucket.week_start}`,
-        kind: "actual",
-        date: bucket.week_start,
-        title: "Customer revenue",
-        amount_cents: bucket.operating_inflow_cents,
-        category: "CUSTOMER_REVENUE",
-      });
-    }
-  }
-
-  // Expected: the weekly cadence projected past the end of history, at the
-  // vendor's most recent observed level.
-  const lastBucket = d.weeks[d.weeks.length - 1];
-  if (lastBucket) {
-    for (const [entity, amount] of Object.entries(lastBucket.variable_by_entity)) {
-      if (!amount) continue;
-      const observations = d.weeks.filter((b) => (b.variable_by_entity[entity] ?? 0) !== 0).length;
-      for (let week = 1; week <= 6; week++) {
-        const date = addDays(lastBucket.week_start, week * 7);
-        if (!inRange(date) || date <= d.provenance.end_date) continue;
-        events.push({
-          id: `mock_expected_${entity}_${date}`,
-          kind: "expected",
-          date,
-          title: entity,
-          amount_cents: -amount,
-          entity,
-          category: MOCK_ENTITY_CATEGORY[entity] ?? "NEEDS_REVIEW",
-          cadence: "weekly",
-          confidence_n: observations,
-        });
-      }
-    }
-  }
-
-  // Canary markers.
-  const primary = d.primary_incident;
-  if (primary?.estimated_change_point && inRange(primary.estimated_change_point)) {
-    events.push({
-      id: `mock_canary_change_${primary.id}`,
-      kind: "canary",
-      date: primary.estimated_change_point,
-      title: "Change point — variable spend shifted",
-      incident_id: primary.id,
-      incident_type: primary.type,
-    });
-  }
-  if (primary?.alarm_date && inRange(primary.alarm_date)) {
-    events.push({
-      id: `mock_canary_alarm_${primary.id}`,
-      kind: "canary",
-      date: primary.alarm_date,
-      title: "Alarm — CUSUM crossed its threshold",
-      incident_id: primary.id,
-      incident_type: primary.type,
-    });
-  }
-  const oneOff = d.one_off_incident;
-  if (oneOff?.alarm_date && inRange(oneOff.alarm_date)) {
-    events.push({
-      id: `mock_canary_oneoff_${oneOff.id}`,
-      kind: "canary",
-      date: oneOff.alarm_date,
-      title: oneOff.title,
-      amount_cents: oneOff.financial_impact.one_off_amount_cents
-        ? -oneOff.financial_impact.one_off_amount_cents
-        : undefined,
-      entity: oneOff.entity,
-      incident_id: oneOff.id,
-      incident_type: oneOff.type,
-    });
-  }
-
-  // Busy blocks.
+  // Offline stand-in for the founder's calendar: Mon/Wed/Fri standup.
   for (let date = from; date <= to; date = addDays(date, 1)) {
     if (!BUSY_WEEKDAYS.has(isoWeekday(date))) continue;
     events.push({
@@ -504,6 +403,14 @@ export function buildMockCalendar(d: DerivedDemoObject, from: ISODate, to: ISODa
   }
 
   return { from, to, days, busy_source: "ics" };
+}
+
+export function buildMockCalendarConnection(): CalendarConnectionResponse {
+  return {
+    provider: "ics",
+    google_oauth_configured: false,
+    oauth_start_url: "https://canary.test/oauth/google/start?secret=<WEBHOOK_SECRET>",
+  };
 }
 
 export function buildMockAvailability(d: DerivedDemoObject): AvailabilityResponse {

@@ -8,6 +8,7 @@
 import {
   SCOUT,
   addDays,
+  scoutResearchQuery,
   type ISODate,
   type ISODateTime,
   type ScoutFinding,
@@ -23,7 +24,7 @@ const FORBIDDEN_QUERY = /\b(cheaper|alternative|vs\.?|versus|compare|switch|canc
 
 export function buildScoutQuery(input: TavilyVendorInput): string {
   const display = (input.display_name ?? "").trim() || prettyVendorName(input.merchant_normalized);
-  const query = `${display} pricing change OR new plan OR startup credit OR discount program OR announcement`;
+  const query = scoutResearchQuery(display);
   if (FORBIDDEN_QUERY.test(query)) {
     throw new Error("scout query contained forbidden comparison language");
   }

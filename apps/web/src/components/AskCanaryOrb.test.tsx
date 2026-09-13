@@ -1,5 +1,5 @@
 import { AGENT_TOOL_NAMES } from "@canary/shared";
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetMockSnapshot } from "@/api/mock.ts";
 import { clearApiCache } from "@/api/useDerived.ts";
@@ -20,35 +20,35 @@ describe("AskCanaryOrb", () => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps a labeled Ask a question control on every page", async () => {
+  it("does not render the custom Ask a question bird launcher", async () => {
     renderApp("/");
-    expect(await screen.findByRole("button", { name: "Ask Canary a question" })).toBeInTheDocument();
-    expect(screen.getByText("Ask a question")).toBeInTheDocument();
+    await screen.findByRole("status", { name: "Ask Canary" });
+    expect(screen.queryByRole("button", { name: "Ask Canary a question" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Ask a question")).not.toBeInTheDocument();
     expect(document.querySelector("elevenlabs-convai")).not.toBeInTheDocument();
   });
 
   it("explains how to ask when voice is not connected", async () => {
     renderApp("/ledger");
-    fireEvent.click(await screen.findByRole("button", { name: "Ask Canary a question" }));
-    expect(screen.getByRole("dialog", { name: "Ask Canary" })).toBeInTheDocument();
-    expect(screen.getByText(/What if AWS were 20% lower/)).toBeInTheDocument();
+    const panel = await screen.findByRole("status", { name: "Ask Canary" });
+    expect(panel).toHaveTextContent(/What if AWS were 20% lower/);
+    expect(screen.getByRole("link", { name: "How Ask Canary works" })).toHaveAttribute("href", "/ask");
     expect(document.querySelector("elevenlabs-convai")).not.toBeInTheDocument();
   });
 
-  it("starts the ElevenLabs widget from the same button once a ticket exists", async () => {
+  it("auto-mounts the ElevenLabs widget once a ticket exists", async () => {
     installApiStub({ askCanary: { configured: true, signed_url: TICKET } });
     renderApp("/ledger");
 
-    const launch = await screen.findByRole("button", { name: "Ask Canary a question" });
-    await waitFor(() => {
-      expect(launch).toHaveAttribute("data-ready", "voice");
-    });
-    fireEvent.click(launch);
     await waitFor(() => {
       expect(document.querySelector("elevenlabs-convai")).toHaveAttribute("signed-url", TICKET);
     });
+    expect(document.querySelector(".ask-canary-dock")).toHaveAttribute("data-ready", "voice");
     expect(document.querySelector("elevenlabs-convai")).toHaveAttribute("variant", "compact");
-    expect(screen.queryByRole("dialog", { name: "Ask Canary" })).not.toBeInTheDocument();
+    expect(document.querySelector("elevenlabs-convai")).toHaveAttribute("start-call-text", "Start a call");
+    expect(screen.queryByRole("button", { name: "Ask Canary a question" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Ask a question")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Ask Canary" })).not.toBeInTheDocument();
 
     const config: { clientTools?: Record<string, unknown> } = {};
     document.querySelector("elevenlabs-convai")!.dispatchEvent(

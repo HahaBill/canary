@@ -7,6 +7,10 @@ OPENAI_MODEL=
 TAVILY_API_KEY=
 WEBHOOK_SECRET=
 FOUNDER_PHONE=
+# Expected Google account for the founder calendar. A mismatch is flagged on
+# the OAuth callback page, not rejected — the connected account is still used
+# for free/busy. Empty = skip the check.
+FOUNDER_EMAIL=bill.nguyentonhoang@gmail.com
 PUBLIC_BASE_URL=http://localhost:8787
 ELEVENLABS_API_KEY=
 ELEVENLABS_VOICE_ID=
@@ -20,8 +24,10 @@ CALENDAR_ICS_URL=
 # 1 = show real event titles in /api/calendar. Anything else renders "Busy".
 CALENDAR_SHOW_TITLES=
 # Google OAuth web client (one account: the founder's). With both set, visit
-# /oauth/google/start?secret=$WEBHOOK_SECRET once to connect; Google then replaces
-# the iCal feed and Canary can book the incident review. See README.md.
+# https://canary.bill-nguyentonhoang.workers.dev/oauth/google/start?secret=<WEBHOOK_SECRET>
+# (locally http://localhost:8787/oauth/google/start?secret=<WEBHOOK_SECRET>)
+# once to connect; Google then replaces the iCal feed and Canary can book the
+# incident review. See README.md. Testing-mode refresh tokens expire after 7 days.
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 # IANA zone the 09:00-18:00 review slots are read in. Default America/New_York.

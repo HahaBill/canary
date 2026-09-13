@@ -13,6 +13,9 @@ import {
   describeLedgerFilter,
   parseLedgerQuery,
   type AskCanaryResponse,
+  type AvailabilityResponse,
+  type CalendarConnectionResponse,
+  type CashCalendar,
   type PivotGranularity,
   type ScoutPage,
 } from "@canary/shared";
@@ -20,6 +23,7 @@ import App from "@/App.tsx";
 import {
   mockAvailability,
   mockCalendar,
+  mockCalendarConnection,
   mockClassificationOverride,
   mockDemo,
   mockIncidentDetail,
@@ -65,7 +69,16 @@ function headerRecord(init?: RequestInit): Record<string, string> {
  * the session snapshot, so overrides stick). Returns the recorded requests.
  */
 export function installApiStub(
-  options: { scout?: ScoutPage; askCanary?: AskCanaryResponse; askCanaryStatus?: number } = {},
+  options: {
+    scout?: ScoutPage;
+    scoutRefresh?: ScoutPage;
+    refreshDelayMs?: number;
+    askCanary?: AskCanaryResponse;
+    askCanaryStatus?: number;
+    calendarConnection?: CalendarConnectionResponse;
+    availability?: AvailabilityResponse;
+    calendar?: CashCalendar;
+  } = {},
 ): { requests: RecordedRequest[] } {
   const requests: RecordedRequest[] = [];
 
@@ -106,20 +119,30 @@ export function installApiStub(
       );
       return Promise.resolve(jsonResponse({ detail }));
     }
+    if (url.pathname === "/api/calendar/connection") {
+      return Promise.resolve(jsonResponse(options.calendarConnection ?? mockCalendarConnection()));
+    }
     if (url.pathname === "/api/calendar") {
-      const calendar = mockCalendar(
-        url.searchParams.get("from") ?? "",
-        url.searchParams.get("to") ?? "",
-      );
+      const calendar =
+        options.calendar ??
+        mockCalendar(url.searchParams.get("from") ?? "", url.searchParams.get("to") ?? "");
       return Promise.resolve(jsonResponse({ calendar }));
     }
-    if (url.pathname === "/api/availability") return Promise.resolve(jsonResponse(mockAvailability()));
+    if (url.pathname === "/api/availability") {
+      return Promise.resolve(jsonResponse(options.availability ?? mockAvailability()));
+    }
     if (url.pathname === "/api/needs-review") return Promise.resolve(jsonResponse(mockNeedsReview()));
     if (url.pathname === "/api/scout") {
       return Promise.resolve(jsonResponse(options.scout ?? mockScout()));
     }
     if (url.pathname === "/api/scout/refresh") {
-      return Promise.resolve(jsonResponse(options.scout ?? mockScout()));
+      const refreshBody = options.scoutRefresh ?? options.scout ?? mockScout();
+      if (options.refreshDelayMs) {
+        return new Promise((resolve) => {
+          setTimeout(() => resolve(jsonResponse(refreshBody)), options.refreshDelayMs);
+        });
+      }
+      return Promise.resolve(jsonResponse(refreshBody));
     }
     if (url.pathname === "/api/ask-canary") {
       if (options.askCanaryStatus && options.askCanaryStatus >= 400) {

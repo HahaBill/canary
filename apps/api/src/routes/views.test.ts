@@ -175,7 +175,7 @@ describe("GET /api/ledger/cell", () => {
 });
 
 describe("GET /api/calendar", () => {
-  it("defaults to the month history ends in and covers every day of it", async () => {
+  it("defaults to the month of now and covers every day of it", async () => {
     const h = createHarness();
     const { status, body } = await h.json<CalendarResponse>("/api/calendar");
     expect(status).toBe(200);
@@ -186,26 +186,13 @@ describe("GET /api/calendar", () => {
     expect(body.calendar.busy_source).toBe("ics");
   });
 
-  it("nets actual and expected amounts per day", async () => {
+  it("does not put ledger transactions or detector markers on the calendar", async () => {
     const h = createHarness();
-    const { calendar } = (await h.json<CalendarResponse>("/api/calendar")).body;
-    const actualDay = calendar.days.find((d) => d.events.some((e) => e.kind === "actual"))!;
-    expect(actualDay.date).toBe("2026-09-07");
-    expect(actualDay.net_actual_cents).toBe(-Object.values(h.derived.weeks[h.derived.weeks.length - 1]!.variable_by_entity).reduce((a, b) => a + b, 0));
-
-    const expectedDay = calendar.days.find((d) => d.events.some((e) => e.kind === "expected"))!;
-    expect(expectedDay.net_expected_cents).toBeLessThan(0);
-    expect(expectedDay.events.filter((e) => e.kind === "expected").every((e) => e.cadence === "weekly" && (e.confidence_n ?? 0) > 0)).toBe(true);
-  });
-
-  it("marks the change point and the alarm as canary events", async () => {
-    const h = createHarness();
-    const { calendar } = (await h.json<CalendarResponse>("/api/calendar?from=2026-07-01&to=2026-08-10")).body;
-    const canary = calendar.days.flatMap((d) => d.events).filter((e) => e.kind === "canary");
-    expect(canary.map((e) => e.date)).toContain(h.derived.primary_incident!.estimated_change_point);
-    expect(canary.every((e) => e.incident_id && e.incident_type)).toBe(true);
-    // A canary marker is a marker, not money.
-    expect(canary.every((e) => e.amount_cents === undefined)).toBe(true);
+    const { calendar } = (await h.json<CalendarResponse>("/api/calendar?from=2026-07-01&to=2026-09-30")).body;
+    const kinds = new Set(calendar.days.flatMap((d) => d.events).map((e) => e.kind));
+    expect(kinds.has("actual")).toBe(false);
+    expect(kinds.has("expected")).toBe(false);
+    expect(calendar.days.every((d) => d.net_actual_cents === 0 && d.net_expected_cents === 0)).toBe(true);
   });
 
   it("merges busy blocks in without leaking the meeting title", async () => {
@@ -215,8 +202,7 @@ describe("GET /api/calendar", () => {
     const busy = calendar.days.find((d) => d.date === "2026-09-08")!.events.filter((e) => e.kind === "busy");
     expect(busy).toHaveLength(1);
     expect(busy[0]).toMatchObject({ title: "Busy", start: MEETING.start, end: MEETING.end });
-    // Busy blocks never touch the money.
-    expect(calendar.days.every((d) => d.net_actual_cents === d.events.filter((e) => e.kind === "actual").reduce((s, e) => s + (e.amount_cents ?? 0), 0))).toBe(true);
+    expect(calendar.days.every((d) => d.net_actual_cents === 0)).toBe(true);
     expect(h.calendar.requested).toEqual([{ from: "2026-09-01", to: "2026-09-30" }]);
   });
 

@@ -11,25 +11,18 @@
  * and every method then delegates. Nothing changes for a route that only wanted
  * `isBusyAt`.
  */
-import type { ISODate, ISODateTime } from "@canary/shared";
+import type { CalendarConnectionResponse, ISODate, ISODateTime } from "@canary/shared";
 import type { SqlDatabase } from "../data/d1.ts";
-import type { Env } from "../env.ts";
+import { publicBaseUrl, type Env } from "../env.ts";
 import type { FetchLike } from "../sendblue/client.ts";
 import { GoogleCalendarProvider } from "./google/provider.ts";
 import { GoogleOauthStore } from "./google/store.ts";
 import { calendarFor, NO_CALENDAR, type BusyStatus, type CalendarFeed, type CalendarFeedResult } from "./ics.ts";
 
-export type CalendarProviderName = "google" | "ics" | "none";
+export type CalendarProviderName = CalendarConnectionResponse["provider"];
 
 /** Exactly the `/api/calendar/connection` body: no tokens, no feed URL, no secrets. */
-export interface CalendarConnectionInfo {
-  provider: CalendarProviderName;
-  account_email?: string;
-  connected_at?: ISODateTime;
-  scopes?: string[];
-  /** Set when Google rejected the refresh token — the operator has to reconnect. */
-  revoked_at?: ISODateTime;
-}
+export type CalendarConnectionInfo = CalendarConnectionResponse;
 
 export interface CalendarResolution {
   provider: CalendarProviderName;
@@ -75,6 +68,22 @@ export function googleConfigured(appEnv: Env, db?: SqlDatabase): boolean {
   return googleOauthStoreFor(appEnv, db) !== null;
 }
 
+/**
+ * Operator-facing fields that do not depend on whether a row exists. The start
+ * URL always uses a `WEBHOOK_SECRET` placeholder — never the real secret.
+ */
+export function connectionPublicFields(appEnv: Env): Pick<
+  CalendarConnectionResponse,
+  "google_oauth_configured" | "expected_account" | "oauth_start_url"
+> {
+  const expected = appEnv.FOUNDER_EMAIL?.trim();
+  return {
+    google_oauth_configured: Boolean(appEnv.GOOGLE_CLIENT_ID?.trim() && appEnv.GOOGLE_CLIENT_SECRET?.trim()),
+    oauth_start_url: `${publicBaseUrl(appEnv).replace(/\/+$/, "")}/oauth/google/start?secret=<WEBHOOK_SECRET>`,
+    ...(expected ? { expected_account: expected } : {}),
+  };
+}
+
 function icsResolution(config: CalendarResolverConfig): CalendarResolution {
   const feed = calendarFor({
     url: config.appEnv.CALENDAR_ICS_URL,
@@ -82,7 +91,7 @@ function icsResolution(config: CalendarResolverConfig): CalendarResolution {
     ...(config.fetchImpl ? { fetchImpl: config.fetchImpl } : {}),
   });
   const provider: CalendarProviderName = feed === NO_CALENDAR ? "none" : "ics";
-  return { provider, feed, google: null, connection: { provider } };
+  return { provider, feed, google: null, connection: { provider, ...connectionPublicFields(config.appEnv) } };
 }
 
 class LazyFounderCalendar implements CalendarFeed {
@@ -124,6 +133,7 @@ class LazyFounderCalendar implements CalendarFeed {
         ...fallback,
         connection: {
           ...fallback.connection,
+          ...connectionPublicFields(this.config.appEnv),
           ...(connection.account_email ? { account_email: connection.account_email } : {}),
           revoked_at: connection.revoked_at,
         },
@@ -143,6 +153,7 @@ class LazyFounderCalendar implements CalendarFeed {
       google,
       connection: {
         provider: "google",
+        ...connectionPublicFields(this.config.appEnv),
         ...(connection.account_email ? { account_email: connection.account_email } : {}),
         connected_at: connection.connected_at,
         scopes: connection.scopes,

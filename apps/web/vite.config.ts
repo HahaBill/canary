@@ -17,6 +17,8 @@ export default defineConfig({
     proxy: {
       "/api": "http://localhost:8787",
       "/webhooks": "http://localhost:8787",
+      // Operator OAuth start/callback live on the Worker, not Vite.
+      "/oauth": "http://localhost:8787",
     },
   },
   test: {

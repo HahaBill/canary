@@ -32,6 +32,7 @@ export function scoutPageFrom(derived: DerivedDemoObject, cache: ScoutCacheFile,
   now: ISODateTime;
   tavilyCalls?: number;
   refreshError?: string;
+  freshEntities?: readonly string[];
 }): ScoutPage {
   return assembleScoutPage({
     weeklyVariableByEntity: derived.burn.weekly_variable_by_entity,
@@ -43,6 +44,7 @@ export function scoutPageFrom(derived: DerivedDemoObject, cache: ScoutCacheFile,
     displayName,
     tavilyCalls: extras.tavilyCalls,
     refreshError: extras.refreshError,
+    freshEntities: extras.freshEntities,
   });
 }
 

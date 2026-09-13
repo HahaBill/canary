@@ -17,11 +17,12 @@ describe("AskCanaryPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("points at the corner Ask a question button", async () => {
+  it("points at the corner Start a call control", async () => {
     renderApp("/ask");
 
     expect(await screen.findByRole("heading", { name: "Ask Canary" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ask Canary a question" })).toBeInTheDocument();
-    expect(screen.getByText(/What if AWS were 20% lower/)).toBeInTheDocument();
+    expect(screen.getByText(/Start a call/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ask Canary a question" })).not.toBeInTheDocument();
+    expect(screen.getAllByText(/What if AWS were 20% lower/).length).toBeGreaterThan(0);
   });
 });
