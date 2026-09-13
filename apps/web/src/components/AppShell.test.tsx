@@ -4,6 +4,7 @@ import { buildMockDerived } from "@canary/shared/fixtures";
 import { resetMockSnapshot } from "@/api/mock.ts";
 import { clearApiCache } from "@/api/useDerived.ts";
 import { SIDEBAR_STORAGE_KEY } from "@/components/AppShell.tsx";
+import { formatDateMedium } from "@/lib/format.ts";
 import { installApiStub, renderApp, setViewport } from "@/test-utils.tsx";
 
 describe("AppShell", () => {
@@ -45,6 +46,17 @@ describe("AppShell", () => {
     const sidebar = await screen.findByRole("complementary", { name: "Main navigation" });
     expect(within(sidebar).getByRole("link", { name: /Ask Canary/ })).toHaveAttribute("href", "/ask");
     expect(within(sidebar).queryByText("soon")).not.toBeInTheDocument();
+  });
+
+  it("keeps the live clock and does not name the fictional company", async () => {
+    const derived = buildMockDerived();
+    renderApp("/");
+
+    const clock = await screen.findByRole("region", { name: "Live clock" });
+    expect(clock).toHaveTextContent("Live");
+    expect(clock).toHaveTextContent(formatDateMedium(derived.provenance.end_date));
+    expect(screen.queryByText(/Perch Analytics/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/fictional company/i)).not.toBeInTheDocument();
   });
 
   it("collapses the sidebar and remembers it across mounts", async () => {

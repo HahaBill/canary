@@ -11,7 +11,6 @@
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type {
-  AlertHistoryItem,
   AvailabilityResponse,
   CalendarConnectionResponse,
   CashCalendar,
@@ -32,7 +31,6 @@ import type {
 } from "@canary/shared";
 import {
   ApiError,
-  getAlertHistory,
   getAvailability,
   getCalendar,
   getCalendarConnection,
@@ -48,7 +46,6 @@ import {
   simulate,
 } from "./client.ts";
 import {
-  mockAlertHistory,
   mockAvailability,
   mockCalendar,
   mockCalendarConnection,
@@ -458,31 +455,4 @@ export function useSimulate(
   }, [key, debounceMs]);
 
   return state;
-}
-
-async function loadAlertHistory(limit: number): Promise<Loaded<AlertHistoryItem[]>> {
-  if (usingFixtures()) {
-    activeSource = mockSource();
-    return { data: mockAlertHistory(limit), source: activeSource };
-  }
-  try {
-    const data = await getAlertHistory(limit);
-    activeSource = "live";
-    return { data, source: "live" };
-  } catch (err) {
-    if (fallbackAllowed() && err instanceof ApiError && err.isUnreachable) {
-      activeSource = "mock-fallback";
-      return { data: mockAlertHistory(limit), source: "mock-fallback" };
-    }
-    throw err;
-  }
-}
-
-/**
- * The iMessage conversation. Optional chrome: the route is not implemented on
- * every deployment, so callers render nothing on error rather than an error
- * state. Not cached alongside the derived object — it changes independently.
- */
-export function useAlertHistory(limit = 8): AsyncResource<AlertHistoryItem[]> {
-  return useAsyncResource(`alerts:${limit}`, () => loadAlertHistory(limit));
 }

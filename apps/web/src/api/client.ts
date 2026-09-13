@@ -5,8 +5,6 @@
  */
 import {
   API_ROUTES,
-  type AlertHistoryItem,
-  type AlertHistoryResponse,
   type AskCanaryResponse,
   type AvailabilityResponse,
   type CalendarConnectionResponse,
@@ -148,15 +146,6 @@ export async function setIncidentStatus(id: string, status: IncidentStatus): Pro
   );
   if (result && typeof result === "object" && "incident" in result) return result.incident ?? null;
   return (result as Incident) ?? null;
-}
-
-/**
- * Outbound alerts and inbound founder replies, newest first. Optional chrome:
- * callers hide the strip on failure rather than surfacing an error.
- */
-export function getAlertHistory(limit = 8, signal?: AbortSignal): Promise<AlertHistoryItem[]> {
-  const path = `${routePath(API_ROUTES.alertHistory)}?limit=${encodeURIComponent(String(limit))}`;
-  return request<AlertHistoryResponse>(path, signal ? { signal } : undefined).then((r) => r.items ?? []);
 }
 
 /**

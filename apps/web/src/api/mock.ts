@@ -10,10 +10,6 @@ import {
   assembleScoutPage,
   emptyScoutCache,
   EVIDENCE_KINDS,
-  formatMonths,
-  formatSignedUsd,
-  formatUsdWhole,
-  type AlertHistoryItem,
   type AskCanaryResponse,
   type AvailabilityResponse,
   type CalendarConnectionResponse,
@@ -228,75 +224,7 @@ export function sortByTaxonomy(items: EvidenceItem[]): EvidenceItem[] {
   return [...items].sort((a, b) => EVIDENCE_KINDS.indexOf(a.kind) - EVIDENCE_KINDS.indexOf(b.kind));
 }
 
-/**
- * Stand-in for `GET /api/alerts/history`: the alert, its voice note, the
- * founder's WHY and the reply — the four beats of the iMessage demo. Timestamps
- * are anchored to the fixture's `generated_at` so the strip stays deterministic,
- * and every figure in the bodies comes from the same derived object the real
- * alert renders from.
- */
-export function mockAlertHistory(limit = 8): AlertHistoryItem[] {
-  const d = derived();
-  const phone = "+17862139361";
-  const incident = d.primary_incident;
-  const rate = incident?.detection.cusum?.post_change_rate_weekly_cents ?? null;
-  const delta = incident?.financial_impact.delta_weekly_cents ?? null;
-
-  const observed =
-    delta !== null
-      ? `Variable spend is up ${formatSignedUsd(delta, "/wk")}.`
-      : "Variable spend shifted above its baseline.";
-  const level = rate !== null ? ` It now runs ${formatUsdWhole(rate)} a week.` : "";
-
-  const items: AlertHistoryItem[] = [
-    {
-      id: 4,
-      direction: "outbound",
-      phone,
-      body: `${observed}${level} Modeled runway is ${formatMonths(d.burn.runway_months)}.\nReply WHY for the detector parameters.`,
-      created_at: shiftHours(d.provenance.generated_at, -6),
-      command: null,
-      voice: false,
-    },
-    {
-      id: 3,
-      direction: "outbound",
-      phone,
-      body: `${observed} Modeled runway is ${formatMonths(d.burn.runway_months)}. Reply SHOW ME for the incident page.`,
-      created_at: shiftHours(d.provenance.generated_at, -6),
-      command: null,
-      voice: true,
-    },
-    {
-      id: 2,
-      direction: "inbound",
-      phone,
-      body: "WHY",
-      created_at: shiftHours(d.provenance.generated_at, -5),
-      command: "WHY",
-      voice: false,
-    },
-    {
-      id: 1,
-      direction: "outbound",
-      phone,
-      body: `CUSUM flagged it. Change point: week of ${incident?.estimated_change_point ?? d.provenance.end_date}.\nLargest contributor: ${incident?.contributors[0]?.entity ?? "unknown"}.`,
-      created_at: shiftHours(d.provenance.generated_at, -5),
-      command: "WHY",
-      voice: false,
-    },
-  ];
-
-  // The route returns newest first; ids ascend with time, so sort by id desc.
-  return items.sort((a, b) => b.id - a.id).slice(0, limit);
-}
-
 /** Offline fixtures have no ElevenLabs agent; Ask Canary stays silent. */
 export function mockAskCanary(): AskCanaryResponse {
   return { configured: false };
-}
-
-/** Offsets an ISO timestamp by whole hours. Chrome only — no financial figure depends on it. */
-function shiftHours(ts: ISODateTime, hours: number): ISODateTime {
-  return new Date(new Date(ts).getTime() + hours * 3_600_000).toISOString();
 }

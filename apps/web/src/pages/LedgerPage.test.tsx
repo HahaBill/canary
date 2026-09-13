@@ -50,7 +50,8 @@ describe("LedgerPage", () => {
     expect(table).toHaveTextContent(
       formatUsdWhole(variable.cells[lastIndex]!.amount_cents).replace(/\u00a0/g, " "),
     );
-    // Cash is the bank-anchored balance, rendered compact.
+    // Closing cash is the same bank-anchored figure Home shows.
+    expect(rowById("section:CASH_END").cells[lastIndex]!.amount_cents).toBe(derived.cash_cents);
     expect(table).toHaveTextContent(
       formatPivotAmount("CASH_END", rowById("section:CASH_END").cells[lastIndex]!.amount_cents),
     );
@@ -63,13 +64,23 @@ describe("LedgerPage", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: "Weekly" }));
 
-    await screen.findByRole("table", { name: /Ledger by week/ });
+    const weekTable = await screen.findByRole("table", { name: /Ledger by week/ });
     const weekly = requests.filter(
       (r) => r.path === "/api/ledger" && r.params.get("granularity") === "week",
     );
     expect(weekly).toHaveLength(1);
     // Weeks are labelled by their Monday.
     expect(screen.getByRole("columnheader", { name: /Sep 7/ })).toBeInTheDocument();
+
+    const weeklyPivot = buildMockPivot(derived, "week");
+    const lastWeek = derived.weeks[derived.weeks.length - 1]!;
+    const lastWeekIndex = weeklyPivot.periods.length - 1;
+    const netBurn = weeklyPivot.rows.find((row) => row.id === "section:NET_BURN")!.cells[lastWeekIndex]!;
+    expect(weeklyPivot.periods[lastWeekIndex]!.start).toBe(lastWeek.week_start);
+    expect(netBurn.amount_cents).toBe(lastWeek.net_burn_cents);
+    expect(weekTable).toHaveTextContent(
+      formatPivotAmount("NET_BURN", netBurn.amount_cents).replace(/\u00a0/g, " "),
+    );
   });
 
   it("keeps categories collapsed until asked, then shows their vendors", async () => {

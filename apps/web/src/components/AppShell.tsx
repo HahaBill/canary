@@ -1,6 +1,6 @@
 /**
- * Application chrome: the disclosure strip the demo must never lose, a
- * collapsible sidebar on desktop, a bottom tab bar on phones, and the footer.
+ * Application chrome: the live clock strip (simulated date and cash movement),
+ * a collapsible sidebar on desktop, a bottom tab bar on phones, and the footer.
  *
  * Page content renders through `<Outlet />`; nothing in here knows what a
  * page does.
@@ -84,7 +84,6 @@ export function AppShell() {
           <MockBanner provenance={data.provenance} source={source} />
           <ProvenanceBanner
             provenance={data.provenance}
-            company={data.company}
             cashCents={data.cash_cents}
             refreshing={loading}
           />
