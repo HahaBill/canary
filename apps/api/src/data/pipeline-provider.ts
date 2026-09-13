@@ -24,29 +24,64 @@ import type {
 import { simulateCostChange } from "@canary/engine";
 import { loadDemoCaches, runPipeline } from "@canary/pipeline";
 import { buildCashCalendarEvents, pivotCell, pivotLedger, projectRecurring } from "@canary/engine";
-import { addDays } from "@canary/shared";
+import { addDays, DEMO } from "@canary/shared";
 import type { Ledger, RecurringSeries } from "@canary/shared";
 import { noChangeExplanation, whatIfSpeech } from "../speech.ts";
 import { MockDataProvider, type DataProvider } from "./provider.ts";
 import { listFromPostedTransactions, selectTransactions, type TransactionListQuery, type TransactionSelection } from "./transactions.ts";
 
+/** Simulated days kept warm at once. */
+const MAX_CACHED_DAYS = 4;
+
+type Loaded = { provider: MockDataProvider; transactions: Transaction[]; ledger: Ledger; recurring: RecurringSeries[] };
+
 export class PipelineDataProvider implements DataProvider {
-  private inner: Promise<{ provider: MockDataProvider; transactions: Transaction[]; ledger: Ledger; recurring: RecurringSeries[] }> | null = null;
+  /** Keyed by `asOf`: the demo clock moves, so one frozen result is not enough. */
+  private readonly byAsOf = new Map<string, Promise<Loaded>>();
 
-  constructor(private readonly options: { seed?: number; now?: string } = {}) {}
+  constructor(
+    private readonly options: {
+      seed?: number;
+      now?: string;
+      /**
+       * The day the founder's account is current to, re-read on every request.
+       * Omitted → the end of history, which is how Canary behaved before the
+       * demo clock existed.
+       */
+      asOf?: () => string;
+    } = {},
+  ) {}
 
-  private load() {
-    if (!this.inner) {
-      this.inner = (async () => {
-        const caches = await loadDemoCaches();
-        const { derived, generated, ledger } = await runPipeline({ ...caches, seed: this.options.seed, now: this.options.now });
-        // Project recurring charges ~6 months past history end for the cash calendar.
-        const recurring = projectRecurring(ledger, { horizonEnd: addDays(ledger.history_end, 183) });
-        // Reuse the in-memory status overlay machinery over the real derived object.
-        return { provider: new MockDataProvider(derived), transactions: generated.transactions, ledger, recurring };
-      })();
+  private load(): Promise<Loaded> {
+    const asOf = this.options.asOf?.();
+    const key = asOf ?? "";
+    let entry = this.byAsOf.get(key);
+    if (entry) return entry;
+
+    entry = (async () => {
+      const caches = await loadDemoCaches();
+      const { derived, generated, ledger } = await runPipeline({
+        ...caches,
+        seed: this.options.seed,
+        // Incident timestamps follow the simulated clock, so "first detected" is
+        // the simulated day a detector saw it, not the day the Worker booted.
+        now: this.options.now ?? (asOf ? `${asOf}T12:00:00.000Z` : undefined),
+        ...(asOf ? { asOf, horizonWeeks: DEMO.HORIZON_WEEKS } : {}),
+      });
+      // Project recurring charges ~6 months past history end for the cash calendar.
+      const recurring = projectRecurring(ledger, { horizonEnd: addDays(ledger.history_end, 183) });
+      // Reuse the in-memory status overlay machinery over the real derived object.
+      return { provider: new MockDataProvider(derived), transactions: generated.transactions, ledger, recurring };
+    })();
+
+    this.byAsOf.set(key, entry);
+    // A full run is ~12ms, so this only stops a burst of requests inside one
+    // simulated day from repeating the work.
+    if (this.byAsOf.size > MAX_CACHED_DAYS) {
+      const oldest = this.byAsOf.keys().next().value;
+      if (oldest !== undefined) this.byAsOf.delete(oldest);
     }
-    return this.inner;
+    return entry;
   }
 
   private async ready(): Promise<MockDataProvider> {

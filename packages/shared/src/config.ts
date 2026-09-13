@@ -163,6 +163,12 @@ export const DEMO = {
   TEST_SEED: 424242,
   /** A full year of history. A founder's account does not begin 20 weeks ago. */
   WEEKS: 52,
+  /**
+   * Weeks generated PAST the end of history, so the demo has a future to reveal.
+   * Nothing here is visible to the founder until the clock reaches it; it exists
+   * so the dashboard keeps updating instead of stopping dead at "today".
+   */
+  HORIZON_WEEKS: 26,
   /** Sunday. History covers 52 complete Mon–Sun weeks ending here. */
   END_DATE: "2026-09-13",
   /**

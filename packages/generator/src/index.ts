@@ -214,12 +214,22 @@ function weeklyNoise(seed: number, weeks: number): number[] {
 
 export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany => {
   const { seed, closingBalanceCents, endDate, weeks, profile } = { ...DEFAULT_DEMO_OPTIONS, ...opts };
+  /**
+   * Weeks of schedule generated PAST the end of history. They are ordinary
+   * transactions that simply have not posted yet; the closing-balance anchor
+   * still applies at `endDate`, and `fixture.end_date` stays the end of HISTORY.
+   */
+  const horizonWeeks = Math.max(0, Math.floor(opts.horizonWeeks ?? 0));
   const accounts: BankAccount[] = opts.accounts ?? SANDBOX_ACCOUNTS;
   if (weeks < 8) throw new Error(`generateDemoCompany needs at least 8 weeks, got ${weeks}`);
 
-  const weekStarts = weekStartsEndingAt(endDate, weeks);
+  // Schedules run over history + horizon; every planted event is positioned
+  // against the END OF HISTORY, so the demo story does not drift into the tail.
+  const totalWeeks = weeks + horizonWeeks;
+  const weekStarts = weekStartsEndingAt(addDays(endDate, horizonWeeks * 7), totalWeeks);
   const start = historyStartOf(endDate, weeks);
-  const lastDay = addDays(weekStarts[weeks - 1]!, 6);
+  const historyLastDay = addDays(weekStarts[weeks - 1]!, 6);
+  const lastDay = addDays(weekStarts[totalWeeks - 1]!, 6);
   const changeStart = Math.min(DEMO.CHANGE_START_INDEX, weeks - WEEKS_BEFORE_END.CHANGE_START, weeks - 3);
   /** A planted event's week index, counted back from the end of the span. */
   const weekBeforeEnd = (n: number): number => weeks - 1 - n;
@@ -239,7 +249,7 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
     const monthDay = weekStarts[i]!.slice(5);
     return monthDay >= "12-20" || monthDay <= "01-03" ? 1 - HOLIDAY_DIP_FRACTION : 1;
   };
-  const noise = weeklyNoise(seed, weeks);
+  const noise = weeklyNoise(seed, totalWeeks);
 
   const accountId: Record<AccountKey, string> = {
     checking: accounts.find((a) => a.type === "checking")?.id ?? ACCOUNT_IDS.CHECKING,
@@ -259,7 +269,7 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
   // -- Fixed spend: biweekly payroll -----------------------------------------
   {
     const r = rng("payroll");
-    for (let i = 1; i < weeks; i += 2) {
+    for (let i = 1; i < totalWeeks; i += 2) {
       push({
         key: `payroll-${i}`,
         account: "checking",
@@ -316,7 +326,7 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
   // -- Weekly cadences: revenue, contractors --------------------------------
   {
     const r = rng("revenue");
-    for (let i = 0; i < weeks; i++) {
+    for (let i = 0; i < totalWeeks; i++) {
       push({
         key: `revenue-${i}`,
         account: "checking",
@@ -332,7 +342,7 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
   }
   {
     const r = rng("upwork");
-    for (let i = 0; i < weeks; i++) {
+    for (let i = 0; i < totalWeeks; i++) {
       push({
         key: `upwork-${i}`,
         account: "checking",
@@ -348,7 +358,7 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
   }
   for (const spec of BIWEEKLY_CONTRACTORS) {
     const r = rng(`contractor-${spec.merchant_normalized}`);
-    for (let i = spec.on_odd_weeks ? 1 : 0; i < weeks; i += 2) {
+    for (let i = spec.on_odd_weeks ? 1 : 0; i < totalWeeks; i += 2) {
       push({
         key: `contractor-${spec.merchant_normalized}-${i}`,
         account: "checking",
@@ -379,12 +389,12 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
   };
   {
     const r = rng("card-meals");
-    for (let i = 0; i < weeks; i++) {
+    for (let i = 0; i < totalWeeks; i++) {
       CARD_MEALS.forEach((spec, n) => pushCardSpend(i, spec, `card-meal-${i}-${n}`, r));
     }
     const travel = rng("card-travel");
     const equipment = rng("card-equipment");
-    for (let i = 0; i < weeks; i++) {
+    for (let i = 0; i < totalWeeks; i++) {
       const t = CARD_TRAVEL[i % CARD_SPEND_CYCLE_WEEKS];
       if (t) pushCardSpend(i, t, `card-travel-${i}`, travel);
       const e = CARD_EQUIPMENT[i % CARD_SPEND_CYCLE_WEEKS];
@@ -659,13 +669,13 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
 
   // -- AWS closes each week onto the designed variable target ---------------
   const supersededKeys = new Set(drafts.filter((d) => d.pending_of_key).map((d) => d.pending_of_key!));
-  const monitoredByWeek = new Array<number>(weeks).fill(0);
+  const monitoredByWeek = new Array<number>(totalWeeks).fill(0);
   for (const d of drafts) {
     if (!isMonitoredVariable(d, supersededKeys)) continue;
     const i = weekIndexOf(d.date, start);
-    if (i >= 0 && i < weeks) monitoredByWeek[i] = monitoredByWeek[i]! - d.amount_cents;
+    if (i >= 0 && i < totalWeeks) monitoredByWeek[i] = monitoredByWeek[i]! - d.amount_cents;
   }
-  for (let i = 0; i < weeks; i++) {
+  for (let i = 0; i < totalWeeks; i++) {
     // The holiday dip scales the BASELINE only, never the planted delta: a quiet
     // fortnight should not also shrink the shift Canary is meant to find.
     const target = Math.round(
@@ -691,8 +701,11 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
   // SANDBOX_ACCOUNTS reports for the corporate card at `as_of`.
   const settlementKeys: string[] = [];
   let firstUnsettledWeek = 0;
-  for (let i = 1; i < weeks; i++) {
-    if (i % 2 === 0 && i !== weeks - 1) continue;
+  for (let i = 1; i < totalWeeks; i++) {
+    // Always settle at the end of HISTORY (so the card reads $0 at `as_of`,
+    // which is what SANDBOX_ACCOUNTS reports) and at the end of the horizon (so
+    // no generated card purchase is ever left uncovered).
+    if (i % 2 === 0 && i !== weeks - 1 && i !== totalWeeks - 1) continue;
     const from = firstUnsettledWeek;
     firstUnsettledWeek = i + 1;
     const covered = drafts.filter((d) => {
@@ -767,8 +780,10 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
   // -- Backward anchoring onto the sandbox bank closing balance -------------
   const cashAccountIds = new Set(accounts.filter((a) => a.type !== "card").map((a) => a.id));
   const supersededIds = new Set(transactions.filter((t) => t.pending_of).map((t) => t.pending_of!));
+  // The anchor is the balance at the END OF HISTORY. Horizon rows have not
+  // posted yet, so they are not part of the identity the bank can confirm.
   const netCashMovement = transactions
-    .filter((t) => cashAccountIds.has(t.account_id) && !supersededIds.has(t.id))
+    .filter((t) => cashAccountIds.has(t.account_id) && !supersededIds.has(t.id) && t.date <= historyLastDay)
     .reduce((s, t) => s + t.amount_cents, 0);
   const openingBalanceCents = closingBalanceCents - netCashMovement;
 
@@ -836,8 +851,9 @@ export function assertFixtureInvariants(gen: GeneratedCompany): string[] {
   const cardIds = new Set(accounts.filter((a) => a.type === "card").map((a) => a.id));
   const superseded = new Set(transactions.filter((t) => t.pending_of).map((t) => t.pending_of!));
 
+  // The anchor identity holds at the END OF HISTORY; horizon rows are excluded.
   const net = transactions
-    .filter((t) => cashIds.has(t.account_id) && !superseded.has(t.id))
+    .filter((t) => cashIds.has(t.account_id) && !superseded.has(t.id) && t.date <= fixture.end_date)
     .reduce((s, t) => s + t.amount_cents, 0);
   if (fixture.opening_balance_cents + net !== fixture.closing_balance_cents) {
     problems.push(
@@ -849,8 +865,10 @@ export function assertFixtureInvariants(gen: GeneratedCompany): string[] {
   if (transactions.some((t) => !Number.isInteger(t.amount_cents))) problems.push("non-integer cents");
   if (transactions.some((t) => t.amount_cents === 0)) problems.push("zero-amount transaction");
   if (transactions.some((t) => !t.category_hint)) problems.push("transaction without category_hint");
-  const outOfSpan = transactions.filter((t) => t.date < fixture.start_date || t.date > fixture.end_date);
-  if (outOfSpan.length) problems.push(`${outOfSpan.length} transactions outside the history span`);
+  // Nothing may predate history. Rows AFTER `end_date` are the horizon: real
+  // transactions that have not posted yet, which is the point of generating them.
+  const beforeSpan = transactions.filter((t) => t.date < fixture.start_date);
+  if (beforeSpan.length) problems.push(`${beforeSpan.length} transactions before the history span`);
 
   const cardBalance = transactions
     .filter((t) => cardIds.has(t.account_id) && !superseded.has(t.id))

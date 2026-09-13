@@ -38,6 +38,18 @@ export interface PipelineOptions {
   includeFixture?: boolean;
   /** Reuse an already generated company (tests). */
   generated?: GeneratedCompany;
+  /**
+   * Project the ledger to a point in time. Transactions dated after it have not
+   * posted yet and are invisible: not in cash, not in burn, not in any detector.
+   * Defaults to the end of history, which is the whole ledger.
+   *
+   * This is what makes the demo live. The generator produces a horizon past the
+   * end of history (`horizonWeeks`), and advancing `asOf` reveals it one day at
+   * a time, exactly as a bank feed would.
+   */
+  asOf?: string;
+  /** Weeks of un-posted future to generate. Needed for `asOf` past the history end. */
+  horizonWeeks?: number;
 }
 
 export const FIXED_NOW = "2026-09-13T23:59:00.000Z";
@@ -54,8 +66,30 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
   const now = opts.now ?? FIXED_NOW;
 
   // 1. Generate
-  const generated = opts.generated ?? generateDemoCompany({ ...DEFAULT_DEMO_OPTIONS, seed, profile });
-  const { company, accounts, transactions, fixture } = generated;
+  const generated =
+    opts.generated ??
+    generateDemoCompany({ ...DEFAULT_DEMO_OPTIONS, seed, profile, ...(opts.horizonWeeks ? { horizonWeeks: opts.horizonWeeks } : {}) });
+  const { company, accounts: fullAccounts, transactions: allTransactions, fixture } = generated;
+
+  // 1b. Project to `asOf`. Rows dated after it simply have not happened yet.
+  const asOf = opts.asOf ?? fixture.end_date;
+  const superseded = new Set(allTransactions.filter((t) => t.pending_of).map((t) => t.pending_of!));
+  const transactions = allTransactions.filter((t) => t.date <= asOf);
+  // The bank reports its balance AS OF the same moment. `balance_cents` on the
+  // account is the balance at the end of history, so shift it by the rows that
+  // lie between the two dates — in whichever direction time has moved.
+  const accounts = fullAccounts.map((account) => {
+    if (account.type === "card") return { ...account, as_of: asOf };
+    const movement = (upTo: string): number =>
+      allTransactions
+        .filter((t) => t.account_id === account.id && !superseded.has(t.id) && t.date <= upTo)
+        .reduce((sum, t) => sum + t.amount_cents, 0);
+    return {
+      ...account,
+      balance_cents: account.balance_cents + movement(asOf) - movement(fixture.end_date),
+      as_of: asOf,
+    };
+  });
 
   // 2. Classify (cache first, then providers/rules)
   let classifications: ClassificationMap = {};
@@ -77,7 +111,7 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
 
   // 3. Ledger pass 1 (no one-off tags) → baseline burn → one-off detection
   // The sandbox bank reports the period's opening balance (fixture.opening_balance_cents), making reconciliation a real check.
-  const ledgerBase = { company, accounts, transactions, classifications, historyStart: fixture.start_date, historyEnd: fixture.end_date, expectedOpeningBalanceCents: fixture.opening_balance_cents };
+  const ledgerBase = { company: { ...company, accounts, as_of: asOf }, accounts, transactions, classifications, historyStart: fixture.start_date, historyEnd: asOf, expectedOpeningBalanceCents: fixture.opening_balance_cents };
   const ledger0 = buildLedger(ledgerBase);
   const burn0 = computeBurn(ledger0, { regimeStartWeekIndex: null });
   const oneOffs = detectOneOffs(ledger0, burn0);
@@ -136,7 +170,9 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
       seed,
       weeks: fixture.weeks,
       start_date: fixture.start_date,
-      end_date: fixture.end_date,
+      // What the founder can see right now, which is the end of history until
+      // the clock moves past it.
+      end_date: asOf,
       generated_at: now,
     },
     company,

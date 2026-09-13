@@ -47,6 +47,13 @@ export interface GenerateDemoCompanyOptions {
   profile: "demo" | "test";
   /** Accounts to generate against. Default: SANDBOX_ACCOUNTS. */
   accounts?: BankAccount[];
+  /**
+   * Weeks of schedule generated PAST `endDate`, so a live demo has a future to
+   * reveal. Default 0. The closing-balance anchor still applies at `endDate`:
+   * horizon rows are real transactions that simply have not posted yet, and the
+   * fixture's `end_date` stays the end of HISTORY, not of generation.
+   */
+  horizonWeeks?: number;
 }
 
 export type GenerateDemoCompany = (opts: GenerateDemoCompanyOptions) => GeneratedCompany;

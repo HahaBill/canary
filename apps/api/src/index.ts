@@ -5,6 +5,7 @@
  * `/webhooks/*` always run the Worker first (see wrangler.jsonc).
  */
 import { createApp, createScheduled } from "./app.ts";
+import { demoAsOf } from "./clock.ts";
 import { PipelineDataProvider } from "./data/pipeline-provider.ts";
 import type { Env } from "./env.ts";
 
@@ -16,7 +17,10 @@ export { createApp, createScheduled, type AppDeps } from "./app.ts";
  * classification → engine → detectors) — never the mock fixture. Tests build
  * their own app with injected dependencies.
  */
-const pipelineProvider = new PipelineDataProvider();
+// The demo clock advances the founder's "today" through the generated horizon,
+// so the dashboard keeps moving instead of stopping at the end of history. Pure
+// function of the wall clock, re-read per request — see clock.ts.
+const pipelineProvider = new PipelineDataProvider({ asOf: () => demoAsOf(new Date()) });
 const deps = {
   provider: pipelineProvider,
   bankTransactions: () => pipelineProvider.getTransactions(),
