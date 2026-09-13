@@ -68,7 +68,7 @@ export function NeedsReviewPage() {
   return (
     <>
       {error ? <ErrorState message={error} onRetry={reload} /> : null}
-      {!error && (loading || !data) ? (
+      {!error && !data ? (
         <div className="space-y-5">
           <PanelSkeleton className="h-16" />
           <PanelSkeleton className="h-72" />

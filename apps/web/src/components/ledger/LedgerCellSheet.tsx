@@ -79,7 +79,8 @@ function CellTransactions({
 
   if (error) return <ErrorState message={error} onRetry={reload} />;
 
-  if (loading || !data) {
+  // Keep the rows a reader is looking at; the heartbeat must not blank them.
+  if (!data) {
     return (
       <div className="space-y-2" aria-busy="true">
         <Skeleton className="h-12" />

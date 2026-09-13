@@ -20,7 +20,11 @@ export function CalendarPage() {
   const visibleMonth = month ?? (today ? monthKeyOf(today) : null);
 
   if (derivedError) return <ErrorState message={derivedError} onRetry={reload} />;
-  if (derivedLoading || !derived || !visibleMonth || !today) {
+  // Gate on DATA, not `loading`. The 30s live refresh sets loading:true while
+  // keeping the previous data (useDerived stale-while-revalidate), so gating on
+  // `loading` tears this subtree down twice a minute — resetting the what-if
+  // slider mid-drag and cutting the voice note off mid-playback.
+  if (!derived || !visibleMonth || !today) {
     return (
       <div className="space-y-5">
         <PanelSkeleton className="h-12" />
@@ -97,7 +101,8 @@ function MonthView({ month, today }: { month: string; today: ISODate }) {
   const [selectedDate, setSelectedDate] = useState<ISODate | null>(null);
 
   if (error) return <ErrorState message={error} onRetry={reload} />;
-  if (loading || !calendar) return <PanelSkeleton className="h-[28rem]" />;
+  // Same rule: keep the month grid up while the heartbeat refetches behind it.
+  if (!calendar) return <PanelSkeleton className="h-[28rem]" />;
 
   const selectedDay = selectedDate
     ? (calendar.days.find((day) => day.date === selectedDate) ?? {

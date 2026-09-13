@@ -59,7 +59,7 @@ function readCollapsed(): boolean {
 
 export function AppShell() {
   // Shares the cached request with whichever page is mounted.
-  const { data, source } = useDerived();
+  const { data, source, loading } = useDerived();
   const isDesktop = useIsDesktop();
   const [collapsed, setCollapsed] = useState(readCollapsed);
 
@@ -82,7 +82,12 @@ export function AppShell() {
       {data ? (
         <>
           <MockBanner provenance={data.provenance} source={source} />
-          <ProvenanceBanner provenance={data.provenance} company={data.company} />
+          <ProvenanceBanner
+            provenance={data.provenance}
+            company={data.company}
+            cashCents={data.cash_cents}
+            refreshing={loading}
+          />
         </>
       ) : (
         <div className="h-8 border-b border-neutral-200 bg-white/80" />

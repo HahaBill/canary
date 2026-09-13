@@ -12,7 +12,11 @@ export function Dashboard() {
 
   if (error) return <ErrorState message={error} onRetry={reload} />;
 
-  if (loading || !data) {
+  // Gate on DATA, not `loading`. The 30s live refresh sets loading:true while
+  // keeping the previous data (useDerived stale-while-revalidate), so gating on
+  // `loading` tears this subtree down twice a minute — resetting the what-if
+  // slider mid-drag and cutting the voice note off mid-playback.
+  if (!data) {
     return (
       <div className="space-y-6">
         <StatRowSkeleton />

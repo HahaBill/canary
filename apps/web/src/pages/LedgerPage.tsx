@@ -68,7 +68,7 @@ export function LedgerPage() {
 
       {error ? <ErrorState message={error} onRetry={reload} /> : null}
 
-      {!error && (loading || !pivot) ? <PanelSkeleton className="h-96" /> : null}
+      {!error && !pivot ? <PanelSkeleton className="h-96" /> : null}
 
       {!error && pivot && sheet ? (
         <>
