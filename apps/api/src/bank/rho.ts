@@ -57,6 +57,8 @@ export interface RhoAccount {
 
 export interface RhoTransaction {
   id: string;
+  /** Rho's id for the movement of money; shared by both legs of a transfer. */
+  money_movement_id?: string;
   account_id: string;
   account_name?: string;
   account_type?: string;
@@ -188,6 +190,17 @@ export function mapAccount(account: RhoAccount): BankAccount {
 }
 
 /**
+ * Flow types whose two legs Rho links with a shared `money_movement_id`.
+ *
+ * This is the field that makes Canary's reconciliation work on real Rho data
+ * without inventing anything: a transfer between the company's own accounts
+ * arrives as two rows sharing one movement id, and they sum to exactly zero.
+ * That is precisely what `transfer_pair_id` means to the engine, so the mapping
+ * is direct — verified against the sandbox, where every paired movement nets to 0.
+ */
+const PAIRED_BY_MOVEMENT: readonly FlowType[] = ["INTERNAL_TRANSFER"];
+
+/**
  * One Rho row → one Canary transaction, or `null` when no money moved.
  *
  * Sign convention is Canary's, not Rho's: inflow positive, outflow negative.
@@ -220,6 +233,13 @@ export function mapTransaction(tx: RhoTransaction, asOf: ISODate): Transaction |
     source: "sandbox_bank",
     tags: [],
   };
+
+  // Rho's `money_movement_id` IS Canary's `transfer_pair_id`: one movement, two
+  // legs, summing to zero. Without this the engine sees every Rho transfer as an
+  // orphan leg and warns about money that is perfectly accounted for.
+  if (PAIRED_BY_MOVEMENT.includes(mapped.flow_type) && tx.money_movement_id) {
+    mapped.transfer_pair_id = tx.money_movement_id;
+  }
   return mapped;
 }
 

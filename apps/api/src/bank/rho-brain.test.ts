@@ -117,3 +117,87 @@ describe("Canary's brain on Rho's bank", () => {
     expect(review.every((t) => t.counts_in_burn)).toBe(true);
   });
 });
+
+/**
+ * Schema fit: can Canary's ledger actually carry a real customer's Rho data?
+ *
+ * Not "does it run" but "does Rho send the fields reconciliation depends on".
+ * Two of them it does. Two it does not, and knowing which is the difference
+ * between an integration that works and one that quietly mis-states burn.
+ */
+describe("Rho's schema against Canary's ledger", () => {
+  it("pairs transfers natively: money_movement_id IS transfer_pair_id", async () => {
+    const { ledger } = await rhoStack();
+
+    // Two legs, one movement id, summing to zero — exactly what the engine means
+    // by a paired internal transfer. No invention required.
+    expect(ledger.reconciliation.internal_transfer_pairs).toBeGreaterThan(0);
+    const paired = ledger.transactions.filter((t) => t.transfer_pair_id);
+    const byPair = new Map<string, number>();
+    for (const t of paired) byPair.set(t.transfer_pair_id!, (byPair.get(t.transfer_pair_id!) ?? 0) + t.amount_cents);
+    for (const [, sum] of [...byPair].filter(([id]) => paired.filter((t) => t.transfer_pair_id === id).length === 2)) {
+      expect(sum).toBe(0);
+    }
+  });
+
+  it("reports one-sided transfers instead of trusting them", async () => {
+    const { ledger } = await rhoStack();
+    // Rho's sandbox sweeps savings against accounts it does not also report, so
+    // some movements arrive with a single leg. That is a real condition a real
+    // customer will hit, and the engine counts and warns rather than assuming
+    // the money is accounted for.
+    expect(ledger.reconciliation.unpaired_transfer_legs).toBeGreaterThan(0);
+    expect(ledger.reconciliation.warnings.length).toBeGreaterThan(0);
+    // Cash still reconciles exactly despite them.
+    expect(ledger.reconciliation.discrepancy_cents).toBe(0);
+  });
+
+  it("has no link from a card purchase to the repayment that covers it", async () => {
+    const { rho } = await rhoStack();
+    // Canary's own generator links them with settlement_pair_id, which lets the
+    // engine VERIFY a settlement covers exactly the purchases it claims. Rho
+    // sends no such link, so that verification is unavailable on Rho data.
+    //
+    // Correctness does not depend on it: a card purchase counts in burn and a
+    // repayment does not, by flow type alone, so nothing is double counted.
+    // What is lost is the cross-check, not the arithmetic.
+    expect(rho.transactions.some((t) => t.settlement_pair_id)).toBe(false);
+    const { ledger } = await rhoStack();
+    const repayments = ledger.transactions.filter((t) => t.flow_type === "CARD_SETTLEMENT");
+    const purchases = ledger.transactions.filter((t) => t.flow_type === "OPERATING_OUTFLOW");
+    expect(repayments.every((t) => !t.counts_in_burn)).toBe(true);
+    expect(purchases.every((t) => t.counts_in_burn)).toBe(true);
+  });
+
+  it("has no link from a settled row back to the pending row it replaces", async () => {
+    const { rho } = await rhoStack();
+    // Canary models this with pending_of so a settled twin supersedes its
+    // pending row. Rho sends no such field, and its pending rows share no
+    // movement id with any settled row.
+    //
+    // THE OPEN QUESTION FOR REAL DATA: when a Rho authorisation settles, does
+    // the same transaction `id` change status, or does a second row appear? If
+    // the id is stable, Canary is simpler than it needs to be and cannot double
+    // count. If a new row appears, the mapper must set pending_of or burn is
+    // overstated by every pending charge. A static sandbox cannot answer it.
+    expect(rho.transactions.some((t) => t.pending_of)).toBe(false);
+    const pending = rho.transactions.filter((t) => t.status === "pending");
+    expect(pending.length).toBeGreaterThan(0);
+    // Ids are unique today, so nothing is double counted in what we can see.
+    expect(new Set(rho.transactions.map((t) => t.id)).size).toBe(rho.transactions.length);
+  });
+
+  it("carries every field the ledger requires, and Canary supplies the rest", async () => {
+    const { rho } = await rhoStack();
+    const sample = rho.transactions[0]!;
+
+    // Required by Canary's Transaction and present from Rho, directly or derived.
+    for (const field of ["id", "account_id", "date", "amount_cents", "currency", "merchant_raw", "merchant_normalized", "flow_type", "status", "source"] as const) {
+      expect(sample[field]).toBeDefined();
+    }
+    // `category` is the one thing a bank never sends. It is Canary's job, not
+    // Rho's — rules, then OpenAI, then Tavily corroboration — which is why the
+    // classification package exists at all.
+    expect("category" in sample).toBe(false);
+  });
+});
