@@ -405,10 +405,9 @@ export async function refreshScoutSources(): Promise<ScoutPage> {
 /** Routed through the same source resolution as reads. */
 export async function submitClassificationOverride(
   req: ClassificationOverrideRequest,
-  secret: string,
 ): Promise<ClassificationOverrideResponse> {
   if (usingFixtures()) return mockClassificationOverride(req);
-  return postClassificationOverride(req, secret);
+  return postClassificationOverride(req);
 }
 
 /**

@@ -256,17 +256,12 @@ export function getAskCanary(signal?: AbortSignal): Promise<AskCanaryResponse> {
   return request<AskCanaryResponse>(routePath(API_ROUTES.askCanary), signal ? { signal } : undefined);
 }
 
-/**
- * Writes are guarded by the shared operator secret (the same one the Sendblue
- * webhook checks), so the header is required rather than optional.
- */
+/** Public write used by Needs Review Assign. Other privileged routes stay secret-gated. */
 export function postClassificationOverride(
   body: ClassificationOverrideRequest,
-  secret: string,
 ): Promise<ClassificationOverrideResponse> {
   return request<ClassificationOverrideResponse>(routePath(API_ROUTES.classificationOverride), {
     method: "POST",
     body: JSON.stringify(body),
-    headers: { "x-canary-secret": secret },
   });
 }

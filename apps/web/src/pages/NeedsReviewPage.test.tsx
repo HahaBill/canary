@@ -4,12 +4,10 @@ import { formatUsdWhole } from "@canary/shared";
 import { buildMockDerived } from "@canary/shared/fixtures";
 import { resetMockSnapshot } from "@/api/mock.ts";
 import { clearApiCache } from "@/api/useDerived.ts";
-import { SECRET_STORAGE_KEY } from "@/lib/secret.ts";
 import { installApiStub, renderApp, setViewport, type RecordedRequest } from "@/test-utils.tsx";
 
 const derived = buildMockDerived();
 const item = derived.needs_review.items[0]!;
-const SECRET = "demo-operator-secret";
 
 describe("NeedsReviewPage", () => {
   let requests: RecordedRequest[];
@@ -47,18 +45,17 @@ describe("NeedsReviewPage", () => {
     expect(research.closest("a")).toHaveAttribute("href", derived.vendor_enrichments[0]!.source_url);
   });
 
-  it("asks for the operator secret before it will save anything", async () => {
+  it("lets the reviewer assign without an operator secret", async () => {
     renderApp("/needs-review");
     await screen.findByText(item.merchant_raw);
 
-    expect(screen.getByLabelText("Enter operator secret")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Enter operator secret")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Assign category" }));
-    expect(screen.getByRole("button", { name: "Save category" })).toBeDisabled();
-    expect(screen.getByText(/Enter the operator secret above/)).toBeInTheDocument();
+    expect(screen.queryByText(/Enter the operator secret above/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save category" })).toBeEnabled();
   });
 
   it("makes the reviewer pick a category rather than accepting a default", async () => {
-    window.localStorage.setItem(SECRET_STORAGE_KEY, SECRET);
     renderApp("/needs-review");
     await screen.findByText(item.merchant_raw);
 
@@ -70,21 +67,7 @@ describe("NeedsReviewPage", () => {
     expect(screen.getByRole("button", { name: "Save category" })).toBeDisabled();
   });
 
-  it("stores a secret entered inline and stops asking", async () => {
-    renderApp("/needs-review");
-    await screen.findByText(item.merchant_raw);
-
-    fireEvent.change(screen.getByLabelText("Enter operator secret"), { target: { value: SECRET } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() =>
-      expect(screen.queryByLabelText("Enter operator secret")).not.toBeInTheDocument(),
-    );
-    expect(window.localStorage.getItem(SECRET_STORAGE_KEY)).toBe(SECRET);
-  });
-
-  it("submits an override with the secret header and drops the row", async () => {
-    window.localStorage.setItem(SECRET_STORAGE_KEY, SECRET);
+  it("submits an override without a secret header and drops the row", async () => {
     renderApp("/needs-review");
     await screen.findByText(item.merchant_raw);
 
@@ -104,7 +87,7 @@ describe("NeedsReviewPage", () => {
       return found;
     });
     expect(override.method).toBe("POST");
-    expect(override.headers["x-canary-secret"]).toBe(SECRET);
+    expect(override.headers["x-canary-secret"]).toBeUndefined();
     expect(override.body).toEqual({
       transaction_id: item.transaction_id,
       category: "PROFESSIONAL_SERVICES",
@@ -117,7 +100,6 @@ describe("NeedsReviewPage", () => {
   });
 
   it("confirms the save and records it under recent overrides", async () => {
-    window.localStorage.setItem(SECRET_STORAGE_KEY, SECRET);
     renderApp("/needs-review");
     await screen.findByText(item.merchant_raw);
 
@@ -129,7 +111,6 @@ describe("NeedsReviewPage", () => {
   });
 
   it("clears the sidebar badge once the queue empties", async () => {
-    window.localStorage.setItem(SECRET_STORAGE_KEY, SECRET);
     renderApp("/needs-review");
     await screen.findByText(item.merchant_raw);
 

@@ -16,7 +16,7 @@ import { D1Store } from "../data/d1.ts";
 import { FakeD1 } from "../test/fake-d1.ts";
 import { openAiClient } from "../conversation/openai.ts";
 import { fakeOpenAi } from "../test/fake-openai.ts";
-import { createHarness, FIXED_NOW, TEST_ENV } from "../test/harness.ts";
+import { createHarness, FIXED_NOW } from "../test/harness.ts";
 
 const MEETING: CalendarFeedEvent = {
   uid: "board@google.com",
@@ -310,18 +310,22 @@ describe("Needs Review", () => {
     expect(body.overrides).toEqual([]);
   });
 
-  it("requires the shared secret to override a category", async () => {
+  it("accepts an override without the shared secret", async () => {
     const h = createHarness();
-    const { status, body } = await h.post<ErrorResponse>("/api/classifications/override", { transaction_id: "mock_nr_1", category: "MARKETING" });
-    expect(status).toBe(401);
-    expect(body.error).toBe("unauthorized");
-    expect(h.db.rows("classification_overrides")).toHaveLength(0);
+    const transactionId = h.derived.needs_review.items[0]!.transaction_id;
+    const { status, body } = await h.post<ClassificationOverrideResponse>("/api/classifications/override", {
+      transaction_id: transactionId,
+      category: "MARKETING",
+    });
+    expect(status).toBe(200);
+    expect(body.override.category).toBe("MARKETING");
+    expect(h.db.rows("classification_overrides")).toHaveLength(1);
   });
 
   it("persists the override, drops the item and lowers the count", async () => {
     const h = createHarness();
     const transactionId = h.derived.needs_review.items[0]!.transaction_id;
-    const { status, body } = await h.authed<ClassificationOverrideResponse>("/api/classifications/override", {
+    const { status, body } = await h.post<ClassificationOverrideResponse>("/api/classifications/override", {
       transaction_id: transactionId,
       category: "PROFESSIONAL_SERVICES",
       apply_to_merchant: true,
@@ -369,30 +373,30 @@ describe("Needs Review", () => {
   it("rejects a category outside the taxonomy, and NEEDS_REVIEW itself", async () => {
     const h = createHarness();
     const id = h.derived.needs_review.items[0]!.transaction_id;
-    expect((await h.authed<ErrorResponse>("/api/classifications/override", { transaction_id: id, category: "SNACKS" })).body.error).toBe(
+    expect((await h.post<ErrorResponse>("/api/classifications/override", { transaction_id: id, category: "SNACKS" })).body.error).toBe(
       "invalid_category",
     );
-    const notADestination = await h.authed<ErrorResponse>("/api/classifications/override", { transaction_id: id, category: "NEEDS_REVIEW" });
+    const notADestination = await h.post<ErrorResponse>("/api/classifications/override", { transaction_id: id, category: "NEEDS_REVIEW" });
     expect(notADestination.status).toBe(400);
     expect(notADestination.body.error).toBe("invalid_category");
   });
 
   it("400s a missing transaction id and 404s an unknown one", async () => {
     const h = createHarness();
-    expect((await h.authed<ErrorResponse>("/api/classifications/override", { category: "MARKETING" })).body.error).toBe("invalid_transaction_id");
-    const unknown = await h.authed<ErrorResponse>("/api/classifications/override", { transaction_id: "tx_nope", category: "MARKETING" });
+    expect((await h.post<ErrorResponse>("/api/classifications/override", { category: "MARKETING" })).body.error).toBe("invalid_transaction_id");
+    const unknown = await h.post<ErrorResponse>("/api/classifications/override", { transaction_id: "tx_nope", category: "MARKETING" });
     expect(unknown.status).toBe(404);
     expect(unknown.body.error).toBe("transaction_not_found");
   });
 
-  it("503s when no shared secret is configured at all", async () => {
+  it("still applies when the webhook secret is unset", async () => {
     const h = createHarness({ env: { WEBHOOK_SECRET: "" } });
-    const { status, body } = await h.post<ErrorResponse>(
-      "/api/classifications/override",
-      { transaction_id: "mock_nr_1", category: "MARKETING" },
-      { headers: { "x-canary-secret": TEST_ENV.WEBHOOK_SECRET } },
-    );
-    expect(status).toBe(503);
-    expect(body.error).toBe("webhook_not_configured");
+    const transactionId = h.derived.needs_review.items[0]!.transaction_id;
+    const { status, body } = await h.post<ClassificationOverrideResponse>("/api/classifications/override", {
+      transaction_id: transactionId,
+      category: "MARKETING",
+    });
+    expect(status).toBe(200);
+    expect(body.override.category).toBe("MARKETING");
   });
 });

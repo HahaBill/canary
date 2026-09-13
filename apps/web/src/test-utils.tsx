@@ -3,8 +3,8 @@
  * bundled fixtures, and a viewport helper.
  *
  * Going through `fetch` rather than `VITE_USE_MOCK` is deliberate — it is the
- * only way to assert what the client actually asks for (query params, the
- * operator-secret header) while the data stays deterministic.
+ * only way to assert what the client actually asks for (query params, method)
+ * while the data stays deterministic.
  */
 import { render, type RenderResult } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -150,8 +150,6 @@ export function installApiStub(
       return Promise.resolve(jsonResponse(options.askCanary ?? { configured: false }));
     }
     if (url.pathname === "/api/classifications/override") {
-      // Same guard the Worker applies, so a missing header fails the test loudly.
-      if (!headers["x-canary-secret"]) return Promise.resolve(jsonResponse({ error: "Unauthorized" }, 401));
       return Promise.resolve(jsonResponse(mockClassificationOverride(body)));
     }
 

@@ -1,8 +1,8 @@
 /**
  * The ledger sheet, founder availability calendar and Needs Review.
  *
- * Read routes are public (PRD §31). `POST /api/classifications/override` mutates
- * stored state, so it carries the same shared secret as `/api/alerts/send`.
+ * Read routes are public (PRD §31). `POST /api/classifications/override` is the
+ * Needs Review Assign write — public on the demo, unlike alerts / webhook / OAuth.
  */
 import {
   CATEGORIES,
@@ -25,7 +25,6 @@ import { buildCashCalendar, MAX_CALENDAR_SPAN_DAYS } from "../calendar/cash-cale
 import { reviewCalendarEvents } from "../calendar/review-events.ts";
 import { jsonError, readJson, type CanaryApp, type CanaryContext } from "../context.ts";
 import { PIVOT_GRANULARITIES } from "../data/mock-views.ts";
-import { requestAuthorized } from "../security.ts";
 
 /** Categories a reviewer may choose. NEEDS_REVIEW is the state they are leaving, not a destination. */
 export const OVERRIDE_CATEGORIES = CATEGORIES.filter((c) => c !== "NEEDS_REVIEW");
@@ -132,12 +131,6 @@ export function registerViewRoutes(app: CanaryApp): void {
   });
 
   app.post("/api/classifications/override", async (c) => {
-    // Privileged: this writes a human decision into D1 and changes what the
-    // dashboard reports as unreviewed.
-    const auth = requestAuthorized(c.req.raw.headers, c.get("appEnv").WEBHOOK_SECRET);
-    if (auth === "unconfigured") return jsonError(c, 503, "webhook_not_configured", "WEBHOOK_SECRET is not set.");
-    if (auth === "unauthorized") return jsonError(c, 401, "unauthorized", "Missing or invalid x-canary-secret.");
-
     const body = await readJson(c);
     if (!body) return jsonError(c, 400, "invalid_json", "Request body must be a JSON object.");
 

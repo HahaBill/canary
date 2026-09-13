@@ -5,7 +5,6 @@ import {
   type Category,
   type NeedsReviewResponse,
 } from "@canary/shared";
-import { KeyRound } from "lucide-react";
 import { clearApiCache, submitClassificationOverride, useNeedsReview } from "@/api/useDerived.ts";
 import { ErrorState, PanelSkeleton } from "@/components/States.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
@@ -20,7 +19,6 @@ import {
   formatTimestampMedium,
   formatUsdWhole,
 } from "@/lib/format.ts";
-import { useOperatorSecret } from "@/lib/secret.ts";
 
 type Item = NeedsReviewResponse["items"][number];
 
@@ -38,21 +36,16 @@ const ASSIGNABLE: readonly Category[] = CATEGORIES.filter(
 
 export function NeedsReviewPage() {
   const { data, loading, error, reload } = useNeedsReview();
-  const { secret, save } = useOperatorSecret();
   const { toast, show, dismiss } = useToast();
 
   async function assign(item: Item, category: Category, applyToMerchant: boolean, note: string) {
-    if (!secret) return;
     try {
-      await submitClassificationOverride(
-        {
-          transaction_id: item.transaction_id,
-          category,
-          apply_to_merchant: applyToMerchant,
-          ...(note.trim() ? { note: note.trim() } : {}),
-        },
-        secret,
-      );
+      await submitClassificationOverride({
+        transaction_id: item.transaction_id,
+        category,
+        apply_to_merchant: applyToMerchant,
+        ...(note.trim() ? { note: note.trim() } : {}),
+      });
       show(
         `${item.merchant_raw} filed under ${categoryLabel(category)}${applyToMerchant ? " for every transaction from this merchant" : ""}.`,
       );
@@ -75,7 +68,7 @@ export function NeedsReviewPage() {
         </div>
       ) : null}
       {!error && data ? (
-        <Queue data={data} secret={secret} onSaveSecret={save} onAssign={assign} />
+        <Queue data={data} onAssign={assign} />
       ) : null}
       <Toaster toast={toast} onDismiss={dismiss} />
     </>
@@ -84,13 +77,9 @@ export function NeedsReviewPage() {
 
 function Queue({
   data,
-  secret,
-  onSaveSecret,
   onAssign,
 }: {
   data: NeedsReviewResponse;
-  secret: string | null;
-  onSaveSecret: (secret: string) => void;
   onAssign: (item: Item, category: Category, applyToMerchant: boolean, note: string) => Promise<void>;
 }) {
   return (
@@ -105,8 +94,6 @@ function Queue({
           silently — these amounts already count in cash and burn.
         </p>
       </header>
-
-      {secret ? null : <SecretPrompt onSave={onSaveSecret} />}
 
       {data.items.length === 0 ? (
         <p className="rounded-2xl border border-neutral-200 bg-white p-6 text-sm text-neutral-500">
@@ -159,7 +146,6 @@ function Queue({
                         data.items.filter((i) => i.merchant_normalized === item.merchant_normalized)
                           .length
                       }
-                      disabled={!secret}
                       onSubmit={onAssign}
                     />
                   </td>
@@ -226,12 +212,10 @@ function sourceLabel(source: string): string {
 function AssignCategory({
   item,
   merchantCount,
-  disabled,
   onSubmit,
 }: {
   item: Item;
   merchantCount: number;
-  disabled: boolean;
   onSubmit: (item: Item, category: Category, applyToMerchant: boolean, note: string) => Promise<void>;
 }) {
   return (
@@ -247,7 +231,6 @@ function AssignCategory({
         <AssignForm
           item={item}
           merchantCount={merchantCount}
-          disabled={disabled}
           onSubmit={onSubmit}
           onDone={close}
         />
@@ -259,13 +242,11 @@ function AssignCategory({
 function AssignForm({
   item,
   merchantCount,
-  disabled,
   onSubmit,
   onDone,
 }: {
   item: Item;
   merchantCount: number;
-  disabled: boolean;
   onSubmit: (item: Item, category: Category, applyToMerchant: boolean, note: string) => Promise<void>;
   onDone: () => void;
 }) {
@@ -330,60 +311,13 @@ function AssignForm({
         />
       </label>
 
-      {disabled ? (
-        <p className="text-[11px] leading-relaxed text-amber-700">
-          Enter the operator secret above before saving.
-        </p>
-      ) : null}
-
       <div className="flex items-center gap-2">
-        <Button type="submit" size="sm" disabled={disabled || saving || !category}>
+        <Button type="submit" size="sm" disabled={saving || !category}>
           {saving ? "Saving…" : "Save category"}
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={onDone}>
           Cancel
         </Button>
-      </div>
-    </form>
-  );
-}
-
-function SecretPrompt({ onSave }: { onSave: (secret: string) => void }) {
-  const [value, setValue] = useState("");
-
-  return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSave(value);
-        setValue("");
-      }}
-      className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4"
-    >
-      <div className="flex items-start gap-2">
-        <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
-        <div className="min-w-0 flex-1">
-          <label htmlFor="operator-secret" className="text-sm font-medium text-neutral-900">
-            Enter operator secret
-          </label>
-          <p className="mt-0.5 text-xs leading-relaxed text-neutral-600">
-            Assigning a category writes to the ledger, so it is guarded by the shared secret this
-            demo also uses for the iMessage webhook. It is kept in this browser only.
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <input
-              id="operator-secret"
-              type="password"
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              autoComplete="off"
-              className="min-w-0 flex-1 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-[13px] text-neutral-900"
-            />
-            <Button type="submit" size="sm" disabled={value.trim().length === 0}>
-              Save
-            </Button>
-          </div>
-        </div>
       </div>
     </form>
   );

@@ -77,6 +77,7 @@ export const API_ROUTES = {
   /** Secret-protected: run the deferred-alert delivery job now (same code path as the cron). */
   alertsDeliverPending: "POST /api/alerts/deliver-pending",
   needsReview: "GET /api/needs-review",
+  /** Public write: founder Assign on Needs Review. Not operator-secret gated. */
   classificationOverride: "POST /api/classifications/override",
   /** Dated changes at vendors we already pay. Cache only — no live Tavily. */
   scout: "GET /api/scout",
