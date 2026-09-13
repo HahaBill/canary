@@ -73,17 +73,35 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
 
   // 1b. Project to `asOf`. Rows dated after it simply have not happened yet.
   const asOf = opts.asOf ?? fixture.end_date;
-  const superseded = new Set(allTransactions.filter((t) => t.pending_of).map((t) => t.pending_of!));
   const transactions = allTransactions.filter((t) => t.date <= asOf);
+
+  /**
+   * Pending rows replaced by a settled twin that has ALREADY POSTED by `upTo`.
+   *
+   * Scoping this to `upTo` is the whole point. A card charge appears as a
+   * pending row on one day and a settled row on the next, and between those two
+   * dates the pending row is the only record that the money left. Deciding
+   * supersession from the entire transaction set would use knowledge of the
+   * future: the pending row would be dropped the moment its settlement exists
+   * anywhere in the ledger, including tomorrow. Cash would then be overstated by
+   * that charge here, while `buildLedger` — which only ever sees rows up to
+   * `asOf` (`packages/engine/src/ledger.ts`) — still counts it, and the two
+   * would disagree. Reconciliation would report a discrepancy that came from
+   * this function rather than from the books.
+   */
+  const supersededBy = (upTo: string): Set<string> =>
+    new Set(allTransactions.filter((t) => t.pending_of && t.date <= upTo).map((t) => t.pending_of!));
   // The bank reports its balance AS OF the same moment. `balance_cents` on the
   // account is the balance at the end of history, so shift it by the rows that
   // lie between the two dates — in whichever direction time has moved.
   const accounts = fullAccounts.map((account) => {
     if (account.type === "card") return { ...account, as_of: asOf };
-    const movement = (upTo: string): number =>
-      allTransactions
+    const movement = (upTo: string): number => {
+      const superseded = supersededBy(upTo);
+      return allTransactions
         .filter((t) => t.account_id === account.id && !superseded.has(t.id) && t.date <= upTo)
         .reduce((sum, t) => sum + t.amount_cents, 0);
+    };
     return {
       ...account,
       balance_cents: account.balance_cents + movement(asOf) - movement(fixture.end_date),
@@ -126,14 +144,24 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
   const ledger = buildLedger({ ...ledgerBase, oneOffTransactionIds: oneOffIds });
 
   // 5. CUSUM → regime → burn windows
+  //
+  // Burn averages COMPLETE weeks only. The week in progress holds a few days of
+  // spend in a seven-day bucket, so averaging it in understates burn and
+  // inflates runway — measured at up to +0.9 months every Monday, decaying
+  // through the week and dropping again on the next one. A founder watching
+  // their runway swing a month for no reason would stop trusting the number,
+  // correctly. The partial week stays in `ledger.weeks` for the chart, where
+  // showing the current week filling up is the honest thing to draw.
+  const completeWeeks = ledger.weeks.filter((week) => week.week_end <= asOf);
+  const burnLedger = completeWeeks.length > 0 ? { ...ledger, weeks: completeWeeks } : ledger;
   const cusum = runCusum(ledger.weeks);
   const regimeStart = cusum.fired && cusum.estimated_change_point_index !== null ? cusum.estimated_change_point_index + 1 : null;
-  const burnAfter = computeBurn(ledger, { regimeStartWeekIndex: regimeStart });
+  const burnAfter = computeBurn(burnLedger, { regimeStartWeekIndex: regimeStart });
   // "Before" = the entire pre-change segment (all weeks before the regime start), so runway_before
   // describes the same weeks the incident's OBSERVED evidence cites.
   const burnBefore =
     regimeStart !== null
-      ? computeBurn({ ...ledger, weeks: ledger.weeks.slice(0, regimeStart) }, { regimeStartWeekIndex: null, trailingWindowWeeks: regimeStart })
+      ? computeBurn({ ...burnLedger, weeks: burnLedger.weeks.slice(0, regimeStart) }, { regimeStartWeekIndex: null, trailingWindowWeeks: regimeStart })
       : burnAfter;
 
   // 6. Decomposition + incidents
