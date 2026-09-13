@@ -227,7 +227,7 @@ export interface ErrorResponse {
 // iMessage keyword protocol (PRD §23)
 // ---------------------------------------------------------------------------
 
-export const IMESSAGE_COMMANDS = ["WHY", "SHOW ME", "SOURCES", "HELP"] as const;
+export const IMESSAGE_COMMANDS = ["WHY", "SHOW ME", "SOURCES", "SCHEDULE", "HELP"] as const;
 export type IMessageCommand = (typeof IMESSAGE_COMMANDS)[number];
 
 // ---------------------------------------------------------------------------

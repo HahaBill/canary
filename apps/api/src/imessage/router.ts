@@ -13,6 +13,9 @@ const ALIASES: Record<string, IMessageCommand> = {
   SHOW: "SHOW ME",
   SOURCES: "SOURCES",
   SOURCE: "SOURCES",
+  SCHEDULE: "SCHEDULE",
+  BOOK: "SCHEDULE",
+  SCHEDULEREVIEW: "SCHEDULE",
   HELP: "HELP",
   COMMANDS: "HELP",
 };
@@ -54,10 +57,14 @@ export interface ReplyContext {
   derived: DerivedDemoObject;
   incident: Incident | null;
   baseUrl: string;
+  /** Books a review on the founder's calendar (Google only). Absent → honest "not connected" reply. */
+  schedule?: (incident: Incident | null) => Promise<string>;
 }
 
-export function replyFor(command: IMessageCommand, ctx: ReplyContext): string {
+export async function replyFor(command: IMessageCommand, ctx: ReplyContext): Promise<string> {
   switch (command) {
+    case "SCHEDULE":
+      return ctx.schedule ? ctx.schedule(ctx.incident) : "I can't book that — no calendar is connected to Canary yet.";
     case "WHY":
       return ctx.incident ? whyMessage(ctx.derived, ctx.incident) : noIncidentMessage();
     case "SHOW ME":

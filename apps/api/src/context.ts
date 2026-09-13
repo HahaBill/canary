@@ -4,6 +4,7 @@ import type { Context, Hono } from "hono";
 import type { CalendarFeed } from "./calendar/ics.ts";
 import type { CalendarResolver } from "./calendar/resolve.ts";
 import type { ReviewEventStore } from "./calendar/review-events.ts";
+import type { LlmClient } from "./conversation/openai.ts";
 import type { D1Store } from "./data/d1.ts";
 import type { DataProvider } from "./data/provider.ts";
 import { publicBaseUrl, type Env } from "./env.ts";
@@ -23,6 +24,8 @@ export interface Variables {
    * inspecting `calendar`.
    */
   calendarResolver: CalendarResolver;
+  /** Conversational iMessage. `configured: false` without OPENAI_API_KEY — the keyword path never uses it. */
+  llm: LlmClient;
   /** Null when no D1 binding is available (unit tests, `wrangler dev` without D1). */
   store: D1Store | null;
   /** Reviews Canary booked. Null without a D1 binding. */

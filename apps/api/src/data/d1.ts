@@ -1,7 +1,8 @@
 /**
  * Tiny typed wrapper over the D1 tables in `migrations/0001_init.sql`
- * (+ the additive columns in `0002_imessage_log_metadata.sql` and the two tables
- * in `0003_pending_alerts_and_overrides.sql`).
+ * (+ the additive columns in `0002_imessage_log_metadata.sql`, the two tables
+ * in `0003_pending_alerts_and_overrides.sql`, and the conversation memory in
+ * `0004_conversation_memory.sql`).
  *
  * Everything here talks to `SqlDatabase`, a structural subset of `D1Database`,
  * so tests can pass an in-memory fake without pulling in miniflare/workerd.
@@ -45,6 +46,29 @@ export interface MessageLogRow {
   created_at: ISODateTime;
   command?: string | null;
   provider_message_id?: string | null;
+  /** Tool names behind a conversational reply. Null on both keyword replies and inbound messages. */
+  tool_calls?: string[] | null;
+}
+
+/** One logged message, with the row id the conversation memory pages on. */
+export interface StoredMessage {
+  id: number;
+  direction: MessageDirection;
+  phone: string;
+  body: string;
+  created_at: ISODateTime;
+  command: string | null;
+  tool_calls: string[] | null;
+}
+
+/** The rolling compacted memory of one phone's thread (migration 0004). */
+export interface ConversationSummaryRow {
+  phone: string;
+  summary: string;
+  /** Highest `imessage_log.id` the summary already accounts for. */
+  covers_through_id: number;
+  turns_compacted: number;
+  updated_at: ISODateTime;
 }
 
 /** A queued alert, as stored. `PendingAlert` (the contract shape) is the public projection of this. */
@@ -67,6 +91,16 @@ const OVERRIDE_COLUMNS = "transaction_id, merchant_normalized, category, apply_t
 /** Deterministic row id, so re-queueing the same alert upserts instead of duplicating the text. */
 export function pendingAlertId(incidentId: string, createdAt: ISODateTime): string {
   return `${incidentId}|${createdAt}`;
+}
+
+function parseToolCalls(value: unknown): string[] | null {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.map((v) => String(v)) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** A voice note is logged with this prefix, which is how alert history knows it was spoken. */
@@ -135,7 +169,20 @@ export class D1Store {
       .run();
   }
 
+  /** Widest column list first; each `catch` steps back one migration. */
   async logMessage(row: MessageLogRow): Promise<void> {
+    const toolCalls = row.tool_calls ? JSON.stringify(row.tool_calls) : null;
+    try {
+      await this.db
+        .prepare(
+          "INSERT INTO imessage_log (direction, phone, body, created_at, command, provider_message_id, tool_calls) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(row.direction, row.phone, row.body, row.created_at, row.command ?? null, row.provider_message_id ?? null, toolCalls)
+        .run();
+      return;
+    } catch {
+      // Migration 0004 may not be applied yet — fall through to the 0002 columns.
+    }
     try {
       await this.db
         .prepare(
@@ -154,6 +201,75 @@ export class D1Store {
         // Logging is best-effort: never let an audit-log failure block a reply to the founder.
         console.warn(JSON.stringify({ msg: "imessage_log_failed", error: err instanceof Error ? err.message : String(err) }));
       }
+    }
+  }
+
+  /**
+   * One phone's messages, newest first — the raw material for conversation memory
+   * and the hourly conversational rate limit. The time window and the
+   * inbound/outbound split are applied by the caller in TypeScript: a phone's log
+   * is small, and a single `WHERE` keeps the statement shape boring enough to run
+   * against the in-memory fake (same reasoning as `listPendingAlerts`).
+   */
+  async listMessagesForPhone(phone: string, limit: number): Promise<StoredMessage[]> {
+    const select = (columns: string) =>
+      this.db.prepare(`SELECT ${columns} FROM imessage_log WHERE phone = ? ORDER BY id DESC LIMIT ?`).bind(phone, limit).all<Record<string, unknown>>();
+
+    let results: Record<string, unknown>[];
+    try {
+      ({ results } = await select("id, direction, phone, body, created_at, command, tool_calls"));
+    } catch {
+      try {
+        ({ results } = await select("id, direction, phone, body, created_at, command"));
+      } catch {
+        return [];
+      }
+    }
+
+    return (results ?? []).map((row) => ({
+      id: Number(row.id ?? 0),
+      direction: row.direction === "inbound" ? "inbound" : "outbound",
+      phone: String(row.phone),
+      body: String(row.body ?? ""),
+      created_at: String(row.created_at),
+      command: row.command === null || row.command === undefined ? null : String(row.command),
+      tool_calls: parseToolCalls(row.tool_calls),
+    }));
+  }
+
+  async getConversationSummary(phone: string): Promise<ConversationSummaryRow | null> {
+    try {
+      const row = await this.db
+        .prepare("SELECT phone, summary, covers_through_id, turns_compacted, updated_at FROM conversation_summaries WHERE phone = ?")
+        .bind(phone)
+        .first<Record<string, unknown>>();
+      if (!row) return null;
+      return {
+        phone: String(row.phone),
+        summary: String(row.summary ?? ""),
+        covers_through_id: Number(row.covers_through_id ?? 0),
+        turns_compacted: Number(row.turns_compacted ?? 0),
+        updated_at: String(row.updated_at),
+      };
+    } catch {
+      // Migration 0004 has not run: the thread simply has no compacted memory yet.
+      return null;
+    }
+  }
+
+  async saveConversationSummary(row: ConversationSummaryRow): Promise<void> {
+    try {
+      await this.db
+        .prepare(
+          "INSERT INTO conversation_summaries (phone, summary, covers_through_id, turns_compacted, updated_at) VALUES (?, ?, ?, ?, ?) " +
+            "ON CONFLICT(phone) DO UPDATE SET summary = excluded.summary, covers_through_id = excluded.covers_through_id, " +
+            "turns_compacted = excluded.turns_compacted, updated_at = excluded.updated_at",
+        )
+        .bind(row.phone, row.summary, row.covers_through_id, row.turns_compacted, row.updated_at)
+        .run();
+    } catch (err) {
+      // Compaction is best-effort: a thread that cannot be summarised still answers, just with more raw turns.
+      console.warn(JSON.stringify({ msg: "conversation_summary_save_failed", error: err instanceof Error ? err.message : String(err) }));
     }
   }
 

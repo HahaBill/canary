@@ -14,6 +14,7 @@ import { runPendingAlerts, type PendingRunSummary } from "./alerts/pending.ts";
 import type { CalendarFeed } from "./calendar/ics.ts";
 import { createCalendarResolver } from "./calendar/resolve.ts";
 import { reviewEventStoreFor } from "./calendar/review-events.ts";
+import { openAiClient, type LlmClient } from "./conversation/openai.ts";
 import type { AppEnv, CanaryApp, Variables } from "./context.ts";
 import { D1Store, type SqlDatabase } from "./data/d1.ts";
 import { MockDataProvider, withD1Overlay, type DataProvider } from "./data/provider.ts";
@@ -42,6 +43,8 @@ export interface AppDeps {
    * `CALENDAR_ICS_URL`, else none → Canary never defers an alert).
    */
   calendar?: CalendarFeed;
+  /** Defaults to OpenAI from env; unset key → conversational replies fall back to HELP. */
+  llm?: LlmClient;
   bank?: BankProvider;
   /** Overrides the `DB` binding — tests pass an in-memory fake. */
   db?: SqlDatabase;
@@ -102,6 +105,13 @@ export function buildVariables(appEnv: Env, deps: AppDeps): Variables {
       }),
     calendarResolver,
     calendar: deps.calendar ?? calendarResolver.feed,
+    llm:
+      deps.llm ??
+      openAiClient({
+        ...(appEnv.OPENAI_API_KEY ? { apiKey: appEnv.OPENAI_API_KEY } : {}),
+        ...(appEnv.OPENAI_MODEL ? { model: appEnv.OPENAI_MODEL } : {}),
+        ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
+      }),
   };
 }
 
