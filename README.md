@@ -234,21 +234,21 @@ unknown vendor corroborated (OpenAI == Tavily)           all dashboard figures d
 ```text
 === Derived demo numbers ===
 cash                 $2,012,880.19
-monthly net burn     $160,328.74  (window 2026-06-29..2026-09-13, POST_CHANGE_SEGMENT)
-runway               12.6 months
-cusum σ=$1,123.95 k=$561.98 h=$4,495.81 alarm=2026-07-20 change=2026-06-29 lag=3w
-variable spend pre→post  $15,352.18 → $19,479.09 /wk (+$4,127/wk)
-  aws            +$2,999/wk  +$12,996/mo
-  datadog        +$681/wk  +$2,952/mo
+monthly net burn     $163,481.89  (window 2026-06-29..2026-09-13, POST_CHANGE_SEGMENT)
+runway               12.3 months
+cusum σ=$1,125.58 k=$562.79 h=$4,502.34 alarm=2026-07-20 change=2026-06-29 lag=3w
+variable spend pre→post  $15,403.41 → $19,374.12 /wk (+$3,971/wk)
+  aws            +$3,144/wk  +$13,622/mo
+  datadog        +$624/wk  +$2,702/mo
   ashby          +$375/wk  +$1,625/mo
-  upwork         +$249/wk  +$1,078/mo
-  miguel_santos  +$219/wk  +$950/mo
-one-off              figma $13,827.00 = 12.0× median $1,152.14
-weekly variable      14428 16620 15765 15177 16749 15944 15116 14140 14231 16757 17531 18206 19123 20492 21380 19730 19015 21600 19989 20445
-incidents            inc_5b393334:BURN_RATE_SHIFT:aws:HIGH, inc_079155c3:ONE_OFF_VENDOR_PAYMENT:figma:MEDIUM
+  miguel_santos  +$115/wk  +$500/mo
+  dell           +$74/wk  +$320/mo
+one-off              figma $14,055.00 = 12.0× median $1,171.09
+weekly variable      14428 16620 15765 15177 16749 15944 15116 14140 14231 16757 15931 15006 14323 15692 15254 13736 14215 16800 15189 15645 16635 15928 14198 15183 16801 15658 14973 14294 15718 15005 14290 16510 14305 16535 15209 15842 16741 15981 15164 14112 15740 16678 16667 17645 20785 19755 18905 21349 21549 19205 19916 20661
+incidents            inc_5b393334:BURN_RATE_SHIFT:aws:HIGH, inc_40e99e9c:ONE_OFF_VENDOR_PAYMENT:figma:MEDIUM
 ```
 
-`npm test` runs **888 tests across 62 files** (2 skipped: live-provider tests that need real API keys), entirely offline.
+`npm test` runs **1,202 tests** (2 skipped: live-provider tests that need real API keys), entirely offline. The ledger is a full year — 52 weeks, 626 transactions — plus a 26-week generated horizon that the demo clock reveals one day per real minute, with reconciliation exact to the cent at every instant.
 
 ---
 
