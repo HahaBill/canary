@@ -475,7 +475,7 @@ Why-flagged panel quote.
 
 ```
 npm run typecheck   all workspaces, no errors
-npm test            1,273 tests, 4 skipped
+npm test            1,275 tests, 4 skipped
 npm run verify      22 checks, ALL CHECKS PASSED (on Windows, finally)
 ```
 

@@ -248,7 +248,7 @@ weekly variable      14428 16620 15765 15177 16749 15944 15116 14140 14231 16757
 incidents            inc_5b393334:BURN_RATE_SHIFT:aws:HIGH, inc_40e99e9c:ONE_OFF_VENDOR_PAYMENT:figma:MEDIUM
 ```
 
-`npm test` runs **1,273 tests** (4 skipped: live-provider tests that need real API keys), entirely offline. The ledger is a full year — 52 weeks, 626 transactions — plus a 26-week generated horizon that the demo clock reveals one day per real minute, with reconciliation exact to the cent at every instant.
+`npm test` runs **1,275 tests** (4 skipped: live-provider tests that need real API keys), entirely offline. The ledger is a full year — 52 weeks, 626 transactions — plus a 26-week generated horizon that the demo clock reveals one day per real minute, with reconciliation exact to the cent at every instant.
 
 ---
 
@@ -468,7 +468,7 @@ docs/              PRD, build order, data + detector contract, agent behaviour, 
 | Backend | Cloudflare Workers + Hono + D1, one cron trigger |
 | Web | React 18, Vite, Tailwind, shadcn/ui, Recharts, React Router |
 | Language | TypeScript ESM everywhere, npm workspaces monorepo |
-| Tests | Vitest — 1,273 tests (4 skipped), offline |
+| Tests | Vitest — 1,275 tests (4 skipped), offline |
 | Messaging | Sendblue (iMessage, inbound + outbound) |
 | Voice | ElevenLabs → in-Worker CAF → native iMessage voice memo |
 | Research | Tavily (corroboration, cited) · OpenAI (category proposals) |

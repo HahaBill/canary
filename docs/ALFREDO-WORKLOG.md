@@ -15,7 +15,7 @@ The deep dives live in three companion docs:
 ## Verify all of it in three commands
 
 ```text
-npm run typecheck && npm test     1,273 passing, 4 skipped, offline
+npm run typecheck && npm test     1,275 passing, 4 skipped, offline
 npm run verify                    ALL CHECKS PASSED
 npm run build                     SPA into apps/api/public
 node scripts? no — the golden path: see "Production dry run" at the bottom
@@ -134,8 +134,17 @@ it does not, and should not. Reconciliation is exact (`discrepancy_cents = 0`)
 on every one of these days, and on weekly samples across the entire generated
 span — `packages/pipeline/src/as-of-projection.test.ts`.
 
-**Burn is now flat WITHIN a week and steps only at a real week boundary.** That
-is the `09423b4` fix. Before it, burn averaged the week in progress — a few days
+**Every per-week average is now flat WITHIN a week and steps only at a real week
+boundary.** That is the `09423b4` fix, extended in `1f5e6b4` from burn to the
+CUSUM series and the contributor decomposition — which is where it mattered
+most. Measured on the deployed site one day into a week, the incident card read
+"+$2,611/wk, AWS +$2,248/wk, +$11,315/mo" against a true "+$3,971/wk, AWS
++$3,144/wk, +$17,206/mo": a **34% understatement of the headline the whole demo
+rests on**, healing itself every Sunday, and read aloud by the agent. A
+seven-day bucket holding one day of spend is not a low week, it is an unfinished
+one. The one-off and drift detectors deliberately keep the full ledger: they
+read dated transactions, never weekly averages, and a charge that posted is a
+real event whether or not its week has finished. Before it, burn averaged the week in progress — a few days
 of spend inside a seven-day bucket — and runway jumped about +0.9 months every
 Monday, then decayed through the week.
 

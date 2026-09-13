@@ -9,7 +9,7 @@
  *
  * The hard case is the gap between a card authorisation and its settlement.
  */
-import { DEMO, historyStart } from "@canary/shared";
+import { DEMO, addDays, historyStart } from "@canary/shared";
 import { describe, expect, it } from "vitest";
 import { runPipeline } from "./run.ts";
 
@@ -90,4 +90,58 @@ describe("projection across the whole generated span", () => {
       expect(run.derived.reconciliation.discrepancy_cents, `discrepancy at ${asOf}`).toBe(0);
     }
   }, 120_000);
+});
+
+describe("the week in progress never moves a per-week average", () => {
+  /**
+   * A seven-day bucket holding one day of spend is not a low week — it is an
+   * unfinished one. Averaging it in understates every weekly rate Canary
+   * reports, and understating is the failure that matters: the incident says
+   * spending rose, and a diluted average quietly walks that back.
+   *
+   * Measured on the deployed demo before the fix, one day into a week, the card
+   * read "+$2,611/wk, AWS +$2,248/wk, +$11,315/mo" against a true
+   * "+$3,971/wk, AWS +$3,144/wk, +$17,206/mo" — a 34% understatement that healed
+   * itself every Sunday and would have been read aloud by the agent.
+   */
+  const days = [0, 1, 2, 3, 4, 5, 6];
+
+  it("holds the incident headline flat from Sunday to Saturday", async () => {
+    const runs = await Promise.all(
+      days.map((d) => runPipeline({ asOf: addDays(DEMO.END_DATE, d), horizonWeeks: DEMO.HORIZON_WEEKS })),
+    );
+    const incidents = runs.map((r) => r.derived.primary_incident!);
+    expect(incidents.every(Boolean)).toBe(true);
+
+    const first = incidents[0]!;
+    for (const [i, incident] of incidents.entries()) {
+      const where = `day +${days[i]}`;
+      expect(incident.id, where).toBe(first.id);
+      expect(incident.financial_impact.delta_weekly_cents, where).toBe(first.financial_impact.delta_weekly_cents);
+      expect(incident.financial_impact.delta_monthly_cents, where).toBe(first.financial_impact.delta_monthly_cents);
+      expect(incident.contributors[0]?.entity, where).toBe(first.contributors[0]?.entity);
+      expect(incident.contributors[0]?.delta_weekly_cents, where).toBe(first.contributors[0]?.delta_weekly_cents);
+    }
+  }, 240_000);
+
+  it("holds burn and the change point flat too, and steps only on Sunday", async () => {
+    const runs = await Promise.all(
+      [...days, 7].map((d) => runPipeline({ asOf: addDays(DEMO.END_DATE, d), horizonWeeks: DEMO.HORIZON_WEEKS })),
+    );
+    const within = runs.slice(0, days.length);
+    const first = within[0]!;
+
+    for (const [i, run] of within.entries()) {
+      const where = `day +${days[i]}`;
+      expect(run.derived.burn.monthly_net_burn_cents, where).toBe(first.derived.burn.monthly_net_burn_cents);
+      expect(run.derived.primary_incident!.estimated_change_point, where).toBe(
+        first.derived.primary_incident!.estimated_change_point,
+      );
+    }
+
+    // Day +7 is a Sunday: a genuinely new complete week joins the window, so the
+    // figure is ALLOWED to move. What must never happen is drifting mid-week.
+    const sunday = runs[runs.length - 1]!;
+    expect(sunday.derived.burn.weeks_in_window).toBe(first.derived.burn.weeks_in_window + 1);
+  }, 240_000);
 });

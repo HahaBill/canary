@@ -71,7 +71,7 @@ Views: `GET /api/ledger?granularity=week|month`, `GET /api/ledger/cell?row_id&pe
 
 ## 5. Testing & verification
 
-- `npm test` — 1,273 unit tests (4 skipped), offline. Live OpenAI/Tavily/Rho tests auto-skip without keys.
+- `npm test` — 1,275 unit tests (4 skipped), offline. Live OpenAI/Tavily/Rho tests auto-skip without keys.
 - `npm run verify` — runs the full pipeline and asserts contract §15 (closing balance exact, transfer $0, settlements not double counted, one-off ≥3 priors and fires, winsorized out of CUSUM, CUSUM fires before last week, change point within ±2 weeks, post-change burn window, contributor sums, dedup incl. driver drift and stale incidents, Tavily cited, Ashby corroborated). Must print `ALL CHECKS PASSED`.
 - Local e2e: `npm run dev:api` then curl the routes above against `localhost:8787` (use `x-canary-secret` from `.dev.vars` for the webhook/alerts).
 - `npm run verify` had never actually run on Windows (the `import.meta.url` entry-point guard never matched, so it printed nothing and exited 0). Fixed in `c8915b6`. CI still does not run it — see `docs/ALFREDO-LOGIC-AUDIT.md` proposal 3.

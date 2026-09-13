@@ -154,7 +154,21 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
   // showing the current week filling up is the honest thing to draw.
   const completeWeeks = ledger.weeks.filter((week) => week.week_end <= asOf);
   const burnLedger = completeWeeks.length > 0 ? { ...ledger, weeks: completeWeeks } : ledger;
-  const cusum = runCusum(ledger.weeks);
+  // EVERY per-week AVERAGE reads complete weeks only. The week in progress holds
+  // a few days of spend in a seven-day bucket, so including it does not make the
+  // picture fresher, it makes it wrong — and wrong in a direction that hides the
+  // very thing Canary exists to report. Measured on the deployed demo one day
+  // into a week, the incident headline read "+$2,611/wk, AWS +$2,248/wk,
+  // +$11,315/mo" against a true "+$3,971/wk, AWS +$3,144/wk, +$17,206/mo": a 34%
+  // understatement that healed itself every Sunday.
+  //
+  // `runCusum` and `decomposeContributors` MUST see the same array, because the
+  // change point CUSUM returns is an index into it.
+  //
+  // The one-off and drift detectors deliberately keep the full ledger: they read
+  // dated transactions, never weekly averages, and a charge that posted is a
+  // real event whether or not its week has finished.
+  const cusum = runCusum(burnLedger.weeks);
   const regimeStart = cusum.fired && cusum.estimated_change_point_index !== null ? cusum.estimated_change_point_index + 1 : null;
   const burnAfter = computeBurn(burnLedger, { regimeStartWeekIndex: regimeStart });
   // "Before" = the entire pre-change segment (all weeks before the regime start), so runway_before
@@ -165,7 +179,7 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
       : burnAfter;
 
   // 6. Decomposition + incidents
-  const contributors = cusum.fired ? decomposeContributors(ledger.weeks, cusum) : [];
+  const contributors = cusum.fired ? decomposeContributors(burnLedger.weeks, cusum) : [];
   // Recurring-charge drift runs on the SECOND-pass ledger, where one-offs are
   // already tagged, so a planted spike can never read as a billing trend. A
   // drifting vendor that already contributes to the rate shift is folded into
