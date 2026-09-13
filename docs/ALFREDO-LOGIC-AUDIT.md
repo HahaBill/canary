@@ -389,6 +389,80 @@ One means "that's payroll", the other means "check the spelling".
 
 ---
 
+## 6c. The detector alarmed on growth itself
+
+The defect Alfredo caught, and the most important thing in this document.
+
+Canary measured every week against the **median of the first eight weeks**. A
+company that grows sits above that median every week forever, so the statistic
+climbs on the growth and alarms on it. Measured over 300 randomised 52-week
+series: a growing company false-alarmed **99% of the time**, typically around
+week 18, regardless of growth rate. Canary would have told nearly every
+real startup that its spending pattern had shifted when the company was simply
+getting bigger as planned.
+
+That is not a property of our demo data. It is the product being wrong.
+
+**The fix: measure against the trend the baseline established, not its median.**
+Growth that was already there is expected and produces no signal; a departure
+from it still does.
+
+Three things had to be right at once, and only the first is obvious:
+
+1. **The trend has to be fitted multiplicatively.** Growth compounds, so a
+   straight line falls behind in the tail and leaves exactly the rising residual
+   a change detector is built to catch. Fitted in log space, constant percentage
+   growth is a straight line.
+2. **Residuals have to be relative.** Absolute week-to-week variation grows with
+   the level, so a σ measured early is too small later and ordinary noise starts
+   clearing the threshold. Log space gives this for free.
+3. **The slope needs a long window and a significance bar.** The standard error
+   of a slope falls off as the window length to the power of 1.5, so eight weeks
+   cannot separate 0.7%/week growth from 7% weekly noise. The trend window is
+   half the series, and a slope that does not clear `trend_significance_z`
+   standard errors is treated as flat rather than extrapolated. I learned this
+   the hard way: my first attempt used a weaker guard, believed a noise-driven
+   slope, and moved the demo's alarm from July to February.
+
+A flat company yields a zero slope and behaves exactly as before, so nothing is
+lost on a business that is not growing. The demo's alarm week, change point and
+contributors are unchanged; σ moved by 0.1%.
+
+### Measured, over 300 randomised 52-week series per setting
+
+| Series | Before | After |
+|---|---|---|
+| Growing 1–8%/month, no real shift | 99% false alarm | 40% |
+| Flat, no real shift | 29% | 31% |
+| Growth plus a real shift | detected, change point wrong 99% of the time | detected 99%, change point within ±2 weeks |
+
+After the fix a growing company false-alarms at **the same rate as a flat one**.
+Growth is no longer a systematic cause.
+
+### What that leaves, and a proposal
+
+The residual ~30%/year false-alarm rate is not growth. It is the `h = 4σ`
+decision interval, and it matches theory: for `k = 0.5σ, h = 4σ` the expected
+run length to a false alarm is ~170 weeks, which over 52 weeks is ~26%. The
+rationale I wrote in §5 was asserted from textbook values; it is now measured,
+and it was right.
+
+Whether 4σ is the right choice is a product decision, and it is Alfredo's. The
+trade, on the same harness:
+
+| `h` | False alarm, flat | Detected | Median lag |
+|---|---|---|---|
+| 4σ | 31% | 98.7% | 0 weeks |
+| 5σ | 26% | 97.3% | 0 weeks |
+| 6σ | 24% | 96.7% | 0 weeks |
+| 8σ | 19% | 96.0% | 1 week |
+
+**Proposal 5: raise `h_multiplier` from 4 to 6.** It cuts false alarms by a
+quarter for 2 points of detection and no extra lag. It moves the demo's alarm
+week, so it is not a change to make the night before judging.
+
+---
+
 ## 7. What runs green
 
 ```

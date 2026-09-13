@@ -77,6 +77,7 @@ describe("whyMessage", () => {
       config: CUSUM_DEFAULTS,
       baseline_weeks: 8,
       baseline_median_cents: 1_547_083,
+      baseline_slope_weekly_cents: 0,
       sigma_cents: 112_395,
       k_cents: 56_198,
       h_cents: 449_581,

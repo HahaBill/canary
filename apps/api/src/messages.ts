@@ -155,8 +155,15 @@ export function whyMessage(derived: DerivedDemoObject, incident: Incident): stri
 
     const cusum = incident.detection.cusum;
     if (cusum?.alarm_week_start) {
+      // When the baseline was already growing, say so. Otherwise a founder who
+      // knows their spend has been climbing all year would reasonably ask
+      // whether Canary just noticed the growth.
+      const expectedGrowth =
+        cusum.baseline_slope_weekly_cents > 0
+          ? `, after allowing for the ${formatSignedUsd(cusum.baseline_slope_weekly_cents, "/wk")} growth your baseline already had`
+          : "";
       lines.push(
-        `Rule: CUSUM change-point detection on weekly variable spend (${cusum.baseline_weeks}-week baseline, alarm above ${formatUsdWhole(cusum.h_cents)}), alarm in the week of ${formatDateShort(cusum.alarm_week_start)}.`,
+        `Rule: CUSUM change-point detection on weekly variable spend (${cusum.baseline_weeks}-week baseline, alarm above ${formatUsdWhole(cusum.h_cents)})${expectedGrowth}, alarm in the week of ${formatDateShort(cusum.alarm_week_start)}.`,
       );
     }
 

@@ -45,6 +45,24 @@ export const CUSUM_DEFAULTS: CusumConfig = {
   h_multiplier: 4,
   min_baseline_weeks: 8,
   sigma_floor_fraction: 0.02,
+  /**
+   * Half the series estimates the baseline trend. Eight weeks cannot separate
+   * 0.7%/week growth from 7% weekly noise, and neither can seventeen: the
+   * standard error of a slope shrinks with the window length to the power of
+   * one and a half, so the window has to be long before slow growth is real.
+   */
+  trend_window_fraction: 0.5,
+  /**
+   * Standard errors a slope must clear before it is believed and extrapolated.
+   *
+   * Chosen by measurement, not convention. Over 300 randomised 52-week series
+   * per setting, a stricter bar rejects real growth and the detector then
+   * alarms on it, while a looser bar occasionally believes a noise slope and
+   * bends the line. 1.5 sits at the balance: a flat company false-alarms at
+   * 31% a year and a growing one at 40%, against 99% for a growing company
+   * when the trend is ignored entirely. See docs/ALFREDO-LOGIC-AUDIT.md.
+   */
+  trend_significance_z: 1.5,
 };
 
 /** Post-change segment must have at least this many weeks before it becomes the burn window. */

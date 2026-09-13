@@ -283,3 +283,85 @@ describe("runCusum — edge cases outside the demo path", () => {
     expect(result.statistic_cents).toHaveLength(weeks.length);
   });
 });
+
+/**
+ * A growing company is the case a level-only CUSUM gets wrong, and it is not an
+ * edge case — it is most startups. Spend above a flat baseline every week adds
+ * up, so the statistic climbs on the growth itself and alarms on a company that
+ * is simply getting bigger as planned.
+ */
+describe("runCusum — a company that is growing", () => {
+  /** Scale week `i` by (1 + rate)^i, keeping entity shares intact. */
+  const growing = (weeklyRate: number, options: Parameters<typeof buildWeeks>[0] = {}) =>
+    buildWeeks({ changeAt: null, ...options }).map((week, i) => {
+      const factor = Math.pow(1 + weeklyRate, i);
+      const scale = (cents: number) => Math.round(cents * factor);
+      return {
+        ...week,
+        variable_spend_cents: scale(week.variable_spend_cents),
+        variable_by_entity: Object.fromEntries(Object.entries(week.variable_by_entity).map(([k, v]) => [k, scale(v)])),
+      };
+    });
+
+  /** 3%/month — an ordinary seed-stage trajectory, not a crisis. */
+  const STEADY = 0.03 / 4.345;
+
+  it("does not alarm on ordinary growth", () => {
+    const result = runCusum(growing(STEADY));
+
+    expect(result.fired).toBe(false);
+    // It recognised the growth rather than ignoring it.
+    expect(result.baseline_slope_weekly_cents).toBeGreaterThan(0);
+  });
+
+  it("WOULD have alarmed without the trend, which is the bug this prevents", () => {
+    // z = Infinity makes no slope believable, reproducing the old level-only
+    // behaviour on the identical series.
+    const levelOnly = runCusum(growing(STEADY), { trend_significance_z: Number.POSITIVE_INFINITY });
+
+    expect(levelOnly.baseline_slope_weekly_cents).toBe(0);
+    expect(levelOnly.fired).toBe(true);
+    // And it fires early and permanently: growth never stops exceeding a fixed median.
+    expect(levelOnly.alarm_week_index!).toBeLessThan(DEMO.WEEKS / 2);
+  });
+
+  it("stays quiet through fast growth too", () => {
+    // 2%/week is a company roughly tripling its spend over a year.
+    expect(runCusum(growing(0.02)).fired).toBe(false);
+  });
+
+  it("still catches a real shift on top of growth", () => {
+    const rate = STEADY;
+    const changeAt = DEMO.CHANGE_START_INDEX;
+    const withShift = growing(rate).map((week, i) =>
+      i < changeAt ? week : { ...week, variable_spend_cents: week.variable_spend_cents + 600_000 },
+    );
+    const result = runCusum(withShift);
+
+    expect(result.fired).toBe(true);
+    const regimeStart = result.estimated_change_point_index! + 1;
+    expect(Math.abs(regimeStart - changeAt)).toBeLessThanOrEqual(CHANGE_POINT_TOLERANCE_WEEKS);
+    // Growth alone was not the signal: the detector knew what to expect.
+    expect(result.baseline_slope_weekly_cents).toBeGreaterThan(0);
+  });
+
+  it("refuses to believe a slope that noise alone could produce", () => {
+    // A flat series with ordinary noise must be reported as flat. Trusting a
+    // noise-driven slope would bend the line every later week is judged against.
+    const flat = runCusum(buildWeeks({ changeAt: null, noiseFraction: 0.07 }));
+    expect(flat.baseline_slope_weekly_cents).toBe(0);
+    expect(flat.fired).toBe(false);
+  });
+
+  it("leaves a flat company's numbers exactly as they were", () => {
+    // The demo series is flat, so the trend must change nothing about it.
+    const weeks = buildWeeks();
+    const result = runCusum(weeks);
+    const levelOnly = runCusum(weeks, { trend_significance_z: Number.POSITIVE_INFINITY });
+
+    expect(result.baseline_slope_weekly_cents).toBe(0);
+    expect(result.sigma_cents).toBe(levelOnly.sigma_cents);
+    expect(result.alarm_week_index).toBe(levelOnly.alarm_week_index);
+    expect(result.estimated_change_point_index).toBe(levelOnly.estimated_change_point_index);
+  });
+});

@@ -336,6 +336,16 @@ export interface CusumConfig {
   min_baseline_weeks: number;
   /** σ floor as a fraction of baseline median, to avoid degenerate MAD = 0. */
   sigma_floor_fraction: number;
+  /**
+   * Fraction of the series used to estimate the baseline TREND (never less than
+   * `min_baseline_weeks`). A growing company's spend is above a flat median
+   * every week forever, so a level-only CUSUM alarms on growth itself. The trend
+   * window has to be long enough to tell slow growth from noise, which eight
+   * weeks cannot do.
+   */
+  trend_window_fraction: number;
+  /** Standard errors the baseline slope must clear before it is extrapolated. */
+  trend_significance_z: number;
 }
 
 export interface CusumResult {
@@ -343,6 +353,14 @@ export interface CusumResult {
   config: CusumConfig;
   baseline_weeks: number;
   baseline_median_cents: Cents;
+  /**
+   * Weekly growth the baseline already established, in cents/week. Every week is
+   * measured against this trend rather than against a flat median, so expected
+   * growth is not mistaken for a change. `0` when the baseline is flat, or when
+   * the apparent slope was too small to tell from noise.
+   */
+  baseline_slope_weekly_cents: Cents;
+  /** Dispersion of the baseline around its trend line. */
   sigma_cents: Cents;
   k_cents: Cents;
   h_cents: Cents;
