@@ -457,9 +457,13 @@ trade, on the same harness:
 | 6σ | 24% | 96.7% | 0 weeks |
 | 8σ | 19% | 96.0% | 1 week |
 
-**Proposal 5: raise `h_multiplier` from 4 to 6.** It cuts false alarms by a
-quarter for 2 points of detection and no extra lag. It moves the demo's alarm
-week, so it is not a change to make the night before judging.
+**Proposal 5 — adopted.** `h_multiplier` is now 6. Before adopting it I measured
+the one thing that made it look risky: on the demo ledger the alarm week, change
+point, detection lag and therefore the incident id are byte-identical at 4σ and
+6σ, on every day the demo clock can reach — the planted shift clears both
+thresholds in the same week. So the false-alarm resistance was free, and the
+only visible change is the honest one: the threshold the WHY message and the
+Why-flagged panel quote.
 
 ---
 

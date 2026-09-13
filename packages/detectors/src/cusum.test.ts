@@ -246,14 +246,20 @@ describe("runCusum — edge cases outside the demo path", () => {
     expect(result.h_cents).toBe(Math.round(CUSUM_DEFAULTS.h_multiplier * result.sigma_cents));
   });
 
-  it("alarms on a single modest week once the sigma floor is the only dispersion estimate", () => {
-    // h is 4 x 2% = 8% of the median, so a +10% week clears it on its own.
-    // This is why the floor fraction is a real threshold decision, not a guard value.
-    const weeks = buildWeeks({ changeAt: null, noiseFraction: 0, spike: { index: 9, amount: 76_500 } });
-    const result = runCusum(weeks);
+  it("tolerates a +10% week on a flat baseline at h=6σ, but not a +14% one", () => {
+    // With MAD = 0 the floor is the whole σ estimate, so one week alarms on its
+    // own as soon as it exceeds floor × (h + k) ≈ 13% of the median. Raising h
+    // from 4σ to 6σ moved that bar from 9% to 13% — a real gain this test used
+    // to document as a failure. The floor fraction is still a live threshold
+    // decision (proposal 1 in docs/ALFREDO-LOGIC-AUDIT.md): at a 5% floor the
+    // one-week bar would sit near 33%, out of reach of any plausible blip.
+    const spiked = (amount: number) =>
+      runCusum(buildWeeks({ changeAt: null, noiseFraction: 0, spike: { index: 9, amount } }));
 
-    expect(result.fired).toBe(true);
-    expect(result.alarm_week_index).toBe(9);
+    expect(spiked(76_500).fired).toBe(false); // +10% of the $7,650 flat level
+    const bigger = spiked(107_100); // +14%
+    expect(bigger.fired).toBe(true);
+    expect(bigger.alarm_week_index).toBe(9);
   });
 
   it("survives an all-zero week in the baseline and in the monitored window", () => {

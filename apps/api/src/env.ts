@@ -29,6 +29,13 @@ export interface Env {
   /** `"1"` to show real event titles in the calendar view. Anything else renders "Busy". */
   CALENDAR_SHOW_TITLES?: string;
   /**
+   * Demo clock speed: real minutes per simulated day. Unset → 1 (one day per
+   * minute). `"0"` freezes the ledger at the end of history — the setting for a
+   * recorded clip or any run that must reproduce exactly. Editable in the
+   * Cloudflare dashboard, so no deploy is needed to freeze or unfreeze a demo.
+   */
+  DEMO_CLOCK_MINUTES_PER_DAY?: string;
+  /**
    * Google OAuth web client (one account: the founder's). With both set and a
    * connected `google_oauth` row, Google replaces the ICS feed and Canary can
    * also book the review. See `apps/api/README.md`.

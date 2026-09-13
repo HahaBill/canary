@@ -24,3 +24,5 @@ GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 # IANA zone the 09:00-18:00 review slots are read in. Default America/New_York.
 CALENDAR_TIMEZONE=
+# Demo clock: real minutes per simulated day. 0 freezes at the end of history; unset = 1.
+DEMO_CLOCK_MINUTES_PER_DAY=

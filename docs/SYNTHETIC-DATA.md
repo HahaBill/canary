@@ -118,7 +118,10 @@ or two, which is what makes the page look alive.
 
 `minutesPerDay: 0` freezes it at the end of history, which is precisely how
 Canary behaved before the clock existed. That is the setting for a screenshot or
-a recorded clip that has to be reproducible.
+a recorded clip that has to be reproducible. It is wired to the
+`DEMO_CLOCK_MINUTES_PER_DAY` Worker variable, editable in the Cloudflare
+dashboard, so freezing for the recording and unfreezing for the booth needs no
+deploy: set it to `0`, record, delete it.
 
 A full pipeline run is about 12ms, so the provider simply re-derives when the
 simulated day changes rather than maintaining anything clever.

@@ -5,7 +5,7 @@
  * `/webhooks/*` always run the Worker first (see wrangler.jsonc).
  */
 import { createApp, createScheduled } from "./app.ts";
-import { demoAsOf } from "./clock.ts";
+import { demoAsOf, parseMinutesPerDay } from "./clock.ts";
 import { PipelineDataProvider } from "./data/pipeline-provider.ts";
 import type { Env } from "./env.ts";
 
@@ -20,7 +20,15 @@ export { createApp, createScheduled, type AppDeps } from "./app.ts";
 // The demo clock advances the founder's "today" through the generated horizon,
 // so the dashboard keeps moving instead of stopping at the end of history. Pure
 // function of the wall clock, re-read per request — see clock.ts.
-const pipelineProvider = new PipelineDataProvider({ asOf: () => demoAsOf(new Date()) });
+//
+// The speed comes from DEMO_CLOCK_MINUTES_PER_DAY, captured from the latest
+// request's env: bindings only exist per-request in Workers, and reading them
+// this way lets an operator freeze the clock ("0") from the Cloudflare
+// dashboard without a deploy — a recorded clip needs the ledger to hold still.
+let clockEnv: Env | undefined;
+const pipelineProvider = new PipelineDataProvider({
+  asOf: () => demoAsOf(new Date(), { minutesPerDay: parseMinutesPerDay(clockEnv?.DEMO_CLOCK_MINUTES_PER_DAY) }),
+});
 const deps = {
   provider: pipelineProvider,
   bankTransactions: () => pipelineProvider.getTransactions(),
@@ -30,6 +38,7 @@ const deliverPendingAlerts = createScheduled(deps);
 
 export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response> {
+    clockEnv = env;
     return app.fetch(request, env, ctx);
   },
 

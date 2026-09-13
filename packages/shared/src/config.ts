@@ -42,7 +42,15 @@ export const VARIABLE_CATEGORIES: readonly Category[] = [
 
 export const CUSUM_DEFAULTS: CusumConfig = {
   k_factor: 0.5,
-  h_multiplier: 4,
+  /**
+   * Measured, not assumed (docs/ALFREDO-LOGIC-AUDIT.md §6c): over 300
+   * randomised 52-week series, 4σ false-alarms on 31% of flat companies a year
+   * and 6σ on 24%, while detection only moves 98.7% → 96.7% with the same
+   * median lag of zero weeks. On the demo ledger the alarm week, change point
+   * and detection lag are byte-identical at 4σ and 6σ — the planted shift
+   * clears both in the same week — so the extra false-alarm resistance is free.
+   */
+  h_multiplier: 6,
   min_baseline_weeks: 8,
   sigma_floor_fraction: 0.02,
   /**
