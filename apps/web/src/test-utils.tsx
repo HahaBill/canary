@@ -10,8 +10,8 @@ import { render, type RenderResult } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 import {
-  describeLedgerFilter,
-  parseLedgerQuery,
+  fakeLedgerProposer,
+  interpretLedgerFilter,
   type AskCanaryResponse,
   type AvailabilityResponse,
   type CalendarConnectionResponse,
@@ -108,8 +108,7 @@ export function installApiStub(
       const q = typeof payload?.q === "string" ? payload.q : "";
       const grain = (typeof payload?.granularity === "string" ? payload.granularity : granularity) as PivotGranularity;
       const pivot = mockLedger(grain);
-      const spec = parseLedgerQuery(q, pivot);
-      return Promise.resolve(jsonResponse({ spec, chips: describeLedgerFilter(spec, pivot), source: "rules" }));
+      return interpretLedgerFilter(q, pivot, fakeLedgerProposer).then((result) => jsonResponse(result));
     }
     if (url.pathname === "/api/ledger/cell") {
       const detail = mockLedgerCell(

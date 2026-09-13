@@ -23,6 +23,12 @@ describe("listFromWeeklyBuckets / selectTransactions", () => {
     expect(items.length).toBeGreaterThan(0);
     expect(items.every((row) => row.needs_review)).toBe(true);
   });
+
+  it("filters by a category the interpreter named", () => {
+    const { items, matched } = selectTransactions(listFromWeeklyBuckets(derived), { categories: ["MEALS"] });
+    expect(matched).toBeGreaterThan(0);
+    expect(items.every((row) => row.category === "MEALS" && row.entity === "doordash")).toBe(true);
+  });
 });
 
 describe("MockDataProvider.listTransactions", () => {

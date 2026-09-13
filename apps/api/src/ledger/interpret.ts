@@ -1,97 +1,84 @@
 /**
- * Natural-language → ledger filter spec.
+ * OpenAI proposer for ledger search.
  *
- * Rules parse first. The model may only name rows and periods that already
- * exist on the pivot; it never writes an amount. Dollar thresholds stay
- * whatever the founder typed (`parseLedgerQuery`).
+ * The model sees the founder's query plus a compact catalog of merchants and
+ * categories actually on the loaded sheet. It returns a structured filter.
+ * It never writes an amount. `interpretLedgerFilter` sanitizes keys against
+ * the pivot and applies typed dollar/ISO constraints from the founder's words.
  */
 import {
-  describeLedgerFilter,
-  isEmptyLedgerFilter,
-  mergeLedgerFilters,
-  parseLedgerQuery,
-  sanitizeLedgerFilter,
-  type LedgerFilterQueryResponse,
-  type LedgerFilterSpec,
+  formatLedgerCatalog,
+  interpretLedgerFilter,
+  type LedgerCatalog,
+  type LedgerFilterInterpretation,
+  type LedgerFilterProposal,
+  type LedgerFilterProposer,
   type LedgerPivot,
 } from "@canary/shared";
 import type { LlmClient } from "../conversation/openai.ts";
 
 const SYSTEM = [
-  "You translate a founder's request into a filter over an existing ledger sheet.",
-  "You may only choose from the entity keys, sections, categories and period keys provided.",
-  "Never invent a vendor, a date, a dollar amount, or a row that is not listed.",
+  "You translate a founder's request into a filter over THIS ledger sheet.",
+  "Choose only from the entity keys, category keys, section keys, period keys and flags in the catalog.",
+  "Never invent a vendor, a category, a date, a dollar amount, or a row that is not listed.",
   "Never include min_abs_cents or max_abs_cents — amounts are parsed from the founder's words elsewhere.",
-  "If the request is not about this ledger, return {}.",
-  'Respond with JSON only: {"entities":[],"sections":[],"categories":[],"flags":[],"has_incident":false,"post_change_only":false,"pre_change_only":false,"period_keys":[]}.',
+  "Match the request to rows that exist: e.g. a delivery/food ask maps to meal merchants and the Meals category if those appear in the catalog; a cloud/hosting ask maps to cloud merchants and CLOUD_INFRASTRUCTURE if those appear.",
+  "If nothing in the catalog matches, return {\"unmatched\":true,\"unmatched_reason\":\"<one short sentence, no figures>\"}.",
+  'Respond with JSON only: {"entities":[],"sections":[],"categories":[],"flags":[],"has_incident":false,"post_change_only":false,"pre_change_only":false,"period_keys":[],"unmatched":false}.',
 ].join("\n");
 
-function vocabulary(pivot: LedgerPivot): string {
-  const entities = [...new Set(pivot.rows.map((row) => row.entity).filter((e): e is string => Boolean(e)))];
-  const categories = [...new Set(pivot.rows.map((row) => row.category).filter((c): c is NonNullable<typeof c> => Boolean(c)))];
-  const sections = [...new Set(pivot.rows.filter((row) => row.level === 0).map((row) => row.section))];
-  return [
-    `entities: ${entities.join(", ") || "(none)"}`,
-    `sections: ${sections.join(", ")}`,
-    `categories: ${categories.join(", ") || "(none)"}`,
-    `period_keys: ${pivot.periods.map((p) => p.key).join(", ")}`,
-    pivot.regime_start ? `change_point: ${pivot.regime_start}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+function strings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
-function parseModelSpec(raw: string | null): LedgerFilterSpec {
-  if (!raw) return {};
+function parseModelSpec(raw: string | null): LedgerFilterProposal {
+  if (!raw) return { unmatched: true };
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    return parsed as LedgerFilterSpec;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { unmatched: true };
+    const record = parsed as Record<string, unknown>;
+    const spec: LedgerFilterProposal = {};
+    const entities = strings(record.entities);
+    const sections = strings(record.sections);
+    const categories = strings(record.categories);
+    const flags = strings(record.flags);
+    const periodKeys = strings(record.period_keys);
+    if (entities.length) spec.entities = entities;
+    if (sections.length) spec.sections = sections as LedgerFilterProposal["sections"];
+    if (categories.length) spec.categories = categories as LedgerFilterProposal["categories"];
+    if (flags.length) spec.flags = flags as LedgerFilterProposal["flags"];
+    if (periodKeys.length) spec.period_keys = periodKeys;
+    if (record.has_incident === true) spec.has_incident = true;
+    if (record.post_change_only === true) spec.post_change_only = true;
+    if (record.pre_change_only === true) spec.pre_change_only = true;
+    if (typeof record.from === "string") spec.from = record.from as LedgerFilterProposal["from"];
+    if (typeof record.to === "string") spec.to = record.to as LedgerFilterProposal["to"];
+    if (record.unmatched === true) spec.unmatched = true;
+    if (typeof record.unmatched_reason === "string") spec.unmatched_reason = record.unmatched_reason;
+    return spec;
   } catch {
-    return {};
+    return { unmatched: true };
   }
+}
+
+export function proposeLedgerFilterWithLlm(llm: LlmClient): LedgerFilterProposer {
+  return async (query: string, catalog: LedgerCatalog): Promise<LedgerFilterProposal> => {
+    const completion = await llm.complete({
+      jsonMode: true,
+      maxTokens: 250,
+      messages: [
+        { role: "system", content: SYSTEM },
+        { role: "user", content: `${formatLedgerCatalog(catalog)}\n\nFounder: ${query}` },
+      ],
+    });
+    return parseModelSpec(completion.content);
+  };
 }
 
 export async function interpretLedgerQuery(
   query: string,
   pivot: LedgerPivot,
   llm: LlmClient,
-): Promise<LedgerFilterQueryResponse> {
-  const rules = parseLedgerQuery(query, pivot);
-  const q = query.trim();
-
-  let spec = rules;
-  let source: LedgerFilterQueryResponse["source"] = "rules";
-
-  // Short, already-resolved queries do not need a model (and must stay offline).
-  const words = q.split(/\s+/).filter(Boolean);
-  const needsModel = q.length > 0 && isEmptyLedgerFilter(rules) && words.length >= 3 && llm.configured;
-
-  if (needsModel) {
-    try {
-      const completion = await llm.complete({
-        jsonMode: true,
-        maxTokens: 250,
-        messages: [
-          { role: "system", content: SYSTEM },
-          { role: "user", content: `${vocabulary(pivot)}\n\nFounder: ${q}` },
-        ],
-      });
-      const refined = sanitizeLedgerFilter(parseModelSpec(completion.content), pivot);
-      if (!isEmptyLedgerFilter(refined)) {
-        spec = sanitizeLedgerFilter(mergeLedgerFilters(rules, refined), pivot);
-        source = "model";
-      }
-    } catch (err) {
-      console.warn(JSON.stringify({ msg: "ledger_query_llm_failed", error: err instanceof Error ? err.message : String(err) }));
-    }
-  }
-
-  // Amounts always come from the founder's words, even when the model refined the rest.
-  if (rules.min_abs_cents !== undefined) spec.min_abs_cents = rules.min_abs_cents;
-  else delete spec.min_abs_cents;
-  if (rules.max_abs_cents !== undefined) spec.max_abs_cents = rules.max_abs_cents;
-  else delete spec.max_abs_cents;
-
-  return { spec, chips: describeLedgerFilter(spec, pivot), source };
+): Promise<LedgerFilterInterpretation> {
+  return interpretLedgerFilter(query, pivot, llm.configured ? proposeLedgerFilterWithLlm(llm) : null);
 }

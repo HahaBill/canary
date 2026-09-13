@@ -7,4 +7,5 @@ export * from "./contracts.ts";
 export * from "./views.ts";
 export * from "./api.ts";
 export * from "./ledger-filter.ts";
+export * from "./ledger-filter-fake.ts";
 export * from "./scout.ts";

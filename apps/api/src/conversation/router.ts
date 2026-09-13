@@ -139,7 +139,7 @@ export async function answerConversationally(req: ConversationRequest): Promise<
   const toolNames: string[] = [];
   const toolResults: ToolResult[] = [];
   const allowedUrls: string[] = [];
-  const ctx = { provider: req.provider, baseUrl: req.baseUrl };
+  const ctx = { provider: req.provider, baseUrl: req.baseUrl, llm: req.llm };
 
   let content: string | null = null;
   try {

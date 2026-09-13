@@ -15,16 +15,18 @@ import {
   formatUsdWhole,
   weeklyToMonthly,
   type AgentToolName,
+  type Category,
   type DerivedDemoObject,
   type Incident,
 } from "@canary/shared";
+import { interpretLedgerQuery } from "../ledger/interpret.ts";
 import type { DataProvider } from "../data/provider.ts";
 import { driverEntity, positiveContributors, primaryIncident, variableSpendRates } from "../derive.ts";
 import { assembleEvidence } from "../evidence.ts";
 import { displayName, formatDateShort } from "../format.ts";
 import { createLink, getHealthSummary, simulateCostChange, PERCENTAGE_MAX, PERCENTAGE_MIN } from "../tools.ts";
 import { resolveEntity } from "./entities.ts";
-import type { ToolSchema } from "./openai.ts";
+import type { LlmClient, ToolSchema } from "./openai.ts";
 
 export const TOOL_NAMES = AGENT_TOOL_NAMES;
 export type ToolName = AgentToolName;
@@ -34,6 +36,7 @@ export type ToolResult = Record<string, unknown>;
 export interface ToolContext {
   provider: DataProvider;
   baseUrl: string;
+  llm?: LlmClient;
 }
 
 /** `refuse` short-circuits the loop, so it is reported rather than returned as data. */
@@ -126,9 +129,10 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     type: "function",
     function: {
       name: "list_transactions",
-      description: "Newest matching ledger rows: a vendor, a date range (YYYY-MM-DD), and/or Needs Review. Use for 'what was that charge', 'recent AWS transactions', 'anything in Needs Review'. Returns a short newest-first list — never the whole ledger.",
+      description: "Newest matching ledger rows: a named vendor, a date range (YYYY-MM-DD), Needs Review, or a natural-language `query` interpreted against merchants and categories actually on the ledger (delivery services, cloud costs). Use for 'what was that charge', 'recent AWS transactions', 'display all delivery services'. Returns a short newest-first list — never the whole ledger.",
       parameters: OBJECT({
-        entity: { type: "string", description: "Vendor name as the founder said it. Omit to search every vendor." },
+        entity: { type: "string", description: "Vendor name as the founder said it. Omit when using query or searching every vendor." },
+        query: { type: "string", description: "Founder's words when they did not name a single vendor. Interpreted against the live ledger catalog. Omit when entity/from/to/needs_review is enough." },
         from: { type: "string", description: "Inclusive start date, YYYY-MM-DD." },
         to: { type: "string", description: "Inclusive end date, YYYY-MM-DD." },
         needs_review: { type: "boolean", description: "True to return only Needs Review rows." },
@@ -406,10 +410,43 @@ function displayCategory(category: string): string {
     .join(" ");
 }
 
+const UNCONFIGURED_LLM: LlmClient = {
+  configured: false,
+  model: "",
+  complete: async () => ({ content: null, tool_calls: [] }),
+};
+
 async function listedTransactions(ctx: ToolContext, args: Record<string, unknown>): Promise<ToolResult> {
   const derived = await ctx.provider.getDerived();
+  const rawQuery = str(args.query);
   const rawEntity = str(args.entity) ?? str(args.vendor);
   let entity: string | undefined;
+  let entities: string[] | undefined;
+  let categories: Category[] | undefined;
+  let interpretedUnmatched: string | undefined;
+
+  if (rawQuery) {
+    const pivot = await ctx.provider.getLedgerPivot("month");
+    const interpreted = await interpretLedgerQuery(rawQuery, pivot, ctx.llm ?? UNCONFIGURED_LLM);
+    if (interpreted.unmatched) {
+      interpretedUnmatched = interpreted.explanation ?? "Nothing on this sheet matches that.";
+    } else {
+      entities = interpreted.spec.entities;
+      categories = interpreted.spec.categories;
+      if (interpreted.spec.flags?.includes("needs_review")) args.needs_review = true;
+      if (interpreted.spec.from && !str(args.from)) args.from = interpreted.spec.from;
+      if (interpreted.spec.to && !str(args.to)) args.to = interpreted.spec.to;
+      if (interpreted.spec.post_change_only && pivot.regime_start && !str(args.from)) args.from = pivot.regime_start;
+      if (interpreted.spec.period_keys?.length) {
+        const periods = pivot.periods.filter((period) => interpreted.spec.period_keys!.includes(period.key));
+        if (periods.length > 0) {
+          if (!str(args.from)) args.from = periods.reduce((start, period) => (period.start < start ? period.start : start), periods[0]!.start);
+          if (!str(args.to)) args.to = periods.reduce((end, period) => (period.end > end ? period.end : end), periods[0]!.end);
+        }
+      }
+    }
+  }
+
   if (rawEntity) {
     const resolved = resolveEntity(derived, rawEntity);
     if (!resolved.known) {
@@ -423,8 +460,22 @@ async function listedTransactions(ctx: ToolContext, args: Record<string, unknown
     entity = resolved.entity;
   }
 
+  if (interpretedUnmatched && !entity) {
+    return {
+      known: true,
+      unmatched: true,
+      matched: 0,
+      shown: 0,
+      newest_first: true,
+      transactions: [],
+      detail: interpretedUnmatched,
+    };
+  }
+
   const selection = await ctx.provider.listTransactions({
     ...(entity ? { entity } : {}),
+    ...(entities?.length ? { entities } : {}),
+    ...(categories?.length ? { categories } : {}),
     ...(str(args.from) ? { from: str(args.from) } : {}),
     ...(str(args.to) ? { to: str(args.to) } : {}),
     ...(args.needs_review === true ? { needs_review: true } : {}),

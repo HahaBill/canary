@@ -19,6 +19,9 @@ export interface ListedTransaction {
 
 export interface TransactionListQuery {
   entity?: string;
+  /** Additional merchant keys (from an interpreted ledger filter). */
+  entities?: string[];
+  categories?: Category[];
   from?: ISODate;
   to?: ISODate;
   needs_review?: boolean;
@@ -39,8 +42,16 @@ function inRange(date: ISODate, from?: string, to?: string): boolean {
 }
 
 export function selectTransactions(rows: readonly ListedTransaction[], query: TransactionListQuery = {}): TransactionSelection {
+  const entities = [
+    ...(query.entity ? [query.entity] : []),
+    ...(query.entities ?? []),
+  ];
+  const entitySet = entities.length > 0 ? new Set(entities) : null;
+  const categorySet = query.categories?.length ? new Set(query.categories) : null;
+
   const filtered = rows.filter((row) => {
-    if (query.entity && row.entity !== query.entity) return false;
+    if (entitySet && !entitySet.has(row.entity)) return false;
+    if (categorySet && (row.category === null || !categorySet.has(row.category))) return false;
     if (query.needs_review && !row.needs_review) return false;
     return inRange(row.date, query.from, query.to);
   });

@@ -1,9 +1,11 @@
 /**
- * Natural-language filter for the ledger pivot.
+ * Ledger search: an agent proposes a structured filter from the *actual*
+ * merchants and categories on the loaded sheet; this module applies that
+ * filter deterministically.
  *
- * The language layer only chooses which existing rows and periods to keep.
- * It never computes an amount. Dollar thresholds are parsed from the founder's
- * own words and compared to cell amounts the engine already produced.
+ * The language layer never computes an amount. Dollar thresholds are copied
+ * from the founder's own words and compared to cell amounts the engine
+ * already produced. Invented vendors/categories are dropped.
  */
 import { CATEGORIES, type Category, type Cents, type ISODate } from "./types.ts";
 import { formatUsdWhole } from "./money.ts";
@@ -37,118 +39,178 @@ export interface LedgerFilterSpec {
   /** Inclusive. Copied from the query text, never invented. */
   min_abs_cents?: Cents;
   max_abs_cents?: Cents;
+  /**
+   * The query was understood and nothing on this sheet applies.
+   * The applicator returns no rows — never the full sheet.
+   */
+  unmatched?: boolean;
+  /** Non-numeric. Why nothing matched. */
+  unmatched_reason?: string;
 }
 
-const VENDOR_ALIASES: Record<string, string> = {
-  amazon: "aws",
-  amazonwebservices: "aws",
-  amazonwebservice: "aws",
-  aws: "aws",
-  googlecloud: "gcp",
-  googlecloudplatform: "gcp",
-  datadoghq: "datadog",
-  openaiapi: "openai",
-  ashbyhq: "ashby",
-  gusto: "gusto_payroll",
-  payroll: "gusto_payroll",
-  stripe: "stripe_payouts",
-};
+/** Compact vocabulary taken from the loaded sheet — never a static synonym table. */
+export interface LedgerCatalogMerchant {
+  entity: string;
+  label: string;
+  category?: Category;
+  category_label?: string;
+}
 
-const SECTION_WORDS: Array<{ words: string[]; section: PivotSection }> = [
-  { words: ["revenue", "inflow", "income"], section: "REVENUE" },
-  { words: ["variable"], section: "VARIABLE_SPEND" },
-  { words: ["fixed"], section: "FIXED_SPEND" },
-  { words: ["one-off", "oneoff", "one off"], section: "ONE_OFF" },
-  { words: ["net burn", "netburn"], section: "NET_BURN" },
-  { words: ["financing", "transfers", "transfer"], section: "FINANCING_AND_TRANSFERS" },
-  { words: ["cash at period end", "cash end", "closing cash", "cash"], section: "CASH_END" },
-];
+export interface LedgerCatalogCategory {
+  key: Category;
+  label: string;
+}
 
-const CATEGORY_WORDS: Array<{ words: string[]; category: Category }> = [
-  { words: ["cloud", "hosting", "infrastructure"], category: "CLOUD_INFRASTRUCTURE" },
-  { words: ["saas", "software"], category: "SAAS_SOFTWARE" },
-  { words: ["recruiting", "hiring", "ats"], category: "RECRUITING" },
-  { words: ["contractors", "contractor"], category: "CONTRACTORS" },
-  { words: ["meals", "food", "doordash"], category: "MEALS" },
-  { words: ["marketing", "ads"], category: "MARKETING" },
-  { words: ["rent"], category: "RENT" },
-  { words: ["travel"], category: "TRAVEL" },
-  { words: ["insurance"], category: "INSURANCE" },
-  { words: ["payroll"], category: "PAYROLL" },
-];
+export interface LedgerCatalogSection {
+  key: PivotSection;
+  label: string;
+}
 
-const FLAG_WORDS: Array<{ words: string[]; flag: LedgerCellFlag }> = [
-  { words: ["needs review", "needs-review", "uncategorized", "unreviewed"], flag: "needs_review" },
-  { words: ["one-off", "one off", "oneoff"], flag: "one_off" },
-  { words: ["refund", "refunds"], flag: "refund" },
-  { words: ["renewal", "annual"], flag: "annual_renewal" },
-];
+export interface LedgerCatalogPeriod {
+  key: string;
+  start: ISODate;
+  end: ISODate;
+  post_change: boolean;
+}
 
-const MONTHS: Record<string, string> = {
-  jan: "01",
-  january: "01",
-  feb: "02",
-  february: "02",
-  mar: "03",
-  march: "03",
-  apr: "04",
-  april: "04",
-  may: "05",
-  jun: "06",
-  june: "06",
-  jul: "07",
-  july: "07",
-  aug: "08",
-  august: "08",
-  sep: "09",
-  sept: "09",
-  september: "09",
-  oct: "10",
-  october: "10",
-  nov: "11",
-  november: "11",
-  dec: "12",
-  december: "12",
-};
+export interface LedgerCatalog {
+  merchants: LedgerCatalogMerchant[];
+  categories: LedgerCatalogCategory[];
+  sections: LedgerCatalogSection[];
+  periods: LedgerCatalogPeriod[];
+  change_point?: ISODate;
+  flags: readonly LedgerCellFlag[];
+}
 
-const STOP = new Set([
-  "a",
-  "an",
-  "and",
-  "at",
-  "for",
-  "in",
-  "just",
-  "me",
-  "my",
-  "of",
-  "on",
-  "only",
-  "our",
-  "please",
-  "show",
-  "the",
-  "to",
-  "what",
-  "were",
-  "was",
-  "looking",
-  "filter",
-  "find",
-  "list",
-  "recent",
-  "charges",
-  "transactions",
-  "transaction",
-  "spend",
-  "spending",
-  "vendors",
-  "vendor",
-  "rows",
-  "row",
-]);
+/**
+ * What a proposer may return. Amounts are stripped before apply — they come
+ * from the founder's words, not the model.
+ */
+export type LedgerFilterProposal = Omit<LedgerFilterSpec, "min_abs_cents" | "max_abs_cents">;
+
+export type LedgerFilterProposer = (
+  query: string,
+  catalog: LedgerCatalog,
+) => LedgerFilterProposal | Promise<LedgerFilterProposal>;
+
+export type LedgerFilterSource = "model" | "unconfigured" | "empty";
+
+export interface LedgerFilterInterpretation {
+  spec: LedgerFilterSpec;
+  chips: string[];
+  source: LedgerFilterSource;
+  unmatched: boolean;
+  /** Non-numeric. Shown when nothing matched or the model is missing. */
+  explanation?: string;
+}
+
+export const LEDGER_SEARCH_UNCONFIGURED =
+  "Canary needs a language model to interpret that. Nothing on this sheet was filtered.";
+
+export const LEDGER_SEARCH_UNMATCHED = "Nothing on this sheet matches that.";
+
+export const LEDGER_SEARCH_FAILED = "Could not interpret that. Nothing on this sheet was filtered.";
+
+function unique<T>(values: T[]): T[] {
+  return [...new Set(values)];
+}
+
+function uniqueBy<T>(values: T[], key: (value: T) => string): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const value of values) {
+    const k = key(value);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(value);
+  }
+  return out;
+}
+
+/** Distinct merchants, categories, sections and periods on this pivot. */
+export function buildLedgerCatalog(pivot: LedgerPivot): LedgerCatalog {
+  const merchants = uniqueBy(
+    pivot.rows
+      .filter((row) => row.entity && row.level === 2)
+      .map((row) => {
+        const categoryRow = row.category
+          ? pivot.rows.find((candidate) => candidate.category === row.category && candidate.level === 1)
+          : undefined;
+        return {
+          entity: row.entity!,
+          label: row.label,
+          ...(row.category ? { category: row.category } : {}),
+          ...(categoryRow ? { category_label: categoryRow.label } : {}),
+        };
+      }),
+    (merchant) => merchant.entity,
+  ).sort((a, b) => a.entity.localeCompare(b.entity));
+
+  const categories = uniqueBy(
+    pivot.rows
+      .filter((row) => row.category && row.level === 1)
+      .map((row) => ({ key: row.category!, label: row.label })),
+    (category) => category.key,
+  ).sort((a, b) => a.key.localeCompare(b.key));
+
+  const sections = uniqueBy(
+    pivot.rows.filter((row) => row.level === 0).map((row) => ({ key: row.section, label: row.label })),
+    (section) => section.key,
+  );
+
+  return {
+    merchants,
+    categories,
+    sections,
+    periods: pivot.periods.map((period) => ({
+      key: period.key,
+      start: period.start,
+      end: period.end,
+      post_change: period.post_change,
+    })),
+    ...(pivot.regime_start ? { change_point: pivot.regime_start } : {}),
+    flags: LEDGER_CELL_FLAGS,
+  };
+}
+
+/**
+ * Compact catalog for a prompt. Distinct keys and labels only — no row
+ * amounts, no every-transaction dump.
+ */
+export function formatLedgerCatalog(catalog: LedgerCatalog): string {
+  const merchants =
+    catalog.merchants.length === 0
+      ? "(none)"
+      : catalog.merchants
+          .map((merchant) => {
+            const category = merchant.category
+              ? ` · ${merchant.category}${merchant.category_label ? ` (${merchant.category_label})` : ""}`
+              : "";
+            return `${merchant.entity} · ${merchant.label}${category}`;
+          })
+          .join("\n");
+  const categories =
+    catalog.categories.length === 0
+      ? "(none)"
+      : catalog.categories.map((category) => `${category.key} · ${category.label}`).join("\n");
+  const sections = catalog.sections.map((section) => `${section.key} · ${section.label}`).join("; ");
+  const periods = catalog.periods.map((period) => period.key).join(", ") || "(none)";
+  return [
+    "Merchants on this sheet (entity · label · category):",
+    merchants,
+    "Categories on this sheet (key · label):",
+    categories,
+    `Sections: ${sections || "(none)"}`,
+    `Period keys: ${periods}`,
+    catalog.change_point ? `Change point: ${catalog.change_point}` : "",
+    `Flags you may set: ${catalog.flags.join(", ")}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
 
 export function isEmptyLedgerFilter(spec: LedgerFilterSpec): boolean {
+  if (spec.unmatched) return false;
   return (
     !spec.entities?.length &&
     !spec.sections?.length &&
@@ -165,14 +227,6 @@ export function isEmptyLedgerFilter(spec: LedgerFilterSpec): boolean {
   );
 }
 
-function normalize(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
-}
-
-function unique<T>(values: T[]): T[] {
-  return [...new Set(values)];
-}
-
 /** Parse a founder-typed amount (`$10k`, `10,000`, `1.5m`) into cents. */
 export function parseQueryCents(raw: string): Cents | null {
   const match = /^\$?\s*([\d,]+(?:\.\d+)?)\s*([kmb])?$/i.exec(raw.trim());
@@ -183,7 +237,8 @@ export function parseQueryCents(raw: string): Cents | null {
   return Math.round(dollars * 100);
 }
 
-function extractAmounts(text: string): Pick<LedgerFilterSpec, "min_abs_cents" | "max_abs_cents"> {
+/** Copy dollar thresholds the founder typed. Never invent one. */
+export function extractLedgerQueryAmounts(text: string): Pick<LedgerFilterSpec, "min_abs_cents" | "max_abs_cents"> {
   const min = /(?:over|above|more than|at least|>=)\s+(\$?\s*[\d,]+(?:\.\d+)?\s*[kmb]?)/i.exec(text);
   const max = /(?:under|below|less than|at most|<=)\s+(\$?\s*[\d,]+(?:\.\d+)?\s*[kmb]?)/i.exec(text);
   const spec: LedgerFilterSpec = {};
@@ -198,19 +253,13 @@ function extractAmounts(text: string): Pick<LedgerFilterSpec, "min_abs_cents" | 
   return spec;
 }
 
-function periodOverlaps(period: PivotPeriod, from?: ISODate, to?: ISODate): boolean {
-  if (from && period.end < from) return false;
-  if (to && period.start > to) return false;
-  return true;
-}
-
-function matchPeriods(pivot: LedgerPivot, text: string): Pick<LedgerFilterSpec, "post_change_only" | "pre_change_only" | "period_keys" | "from" | "to"> {
-  const spec: LedgerFilterSpec = {};
-  if (/\b(after|since|post)[- ]?(the )?(change|shift|regime)\b|\bpost[- ]change\b/i.test(text)) spec.post_change_only = true;
-  if (/\b(before|pre)[- ]?(the )?(change|shift|regime)\b|\bpre[- ]change\b/i.test(text)) spec.pre_change_only = true;
-
-  const keys: string[] = [];
+/** ISO dates the founder typed, matched to period keys already on the sheet. */
+export function extractLedgerQueryIsoPeriods(
+  text: string,
+  pivot: LedgerPivot,
+): Pick<LedgerFilterSpec, "period_keys"> {
   const iso = text.match(/\b(\d{4}-\d{2}(?:-\d{2})?)\b/g) ?? [];
+  const keys: string[] = [];
   for (const token of iso) {
     if (token.length === 7) {
       keys.push(...pivot.periods.filter((p) => p.key === token || p.start.startsWith(token)).map((p) => p.key));
@@ -218,90 +267,85 @@ function matchPeriods(pivot: LedgerPivot, text: string): Pick<LedgerFilterSpec, 
       keys.push(...pivot.periods.filter((p) => p.start <= token && p.end >= token).map((p) => p.key));
     }
   }
-
-  const words = text.toLowerCase().split(/[^a-z0-9]+/);
-  for (const word of words) {
-    const month = MONTHS[word];
-    if (!month) continue;
-    keys.push(...pivot.periods.filter((p) => p.start.slice(5, 7) === month || p.key.slice(5, 7) === month).map((p) => p.key));
-  }
-
-  if (/\blast month\b/i.test(text) && pivot.granularity === "month" && pivot.periods.length > 0) {
-    keys.push(pivot.periods[pivot.periods.length - 1]!.key);
-  }
-  if (/\blast week\b/i.test(text) && pivot.granularity === "week" && pivot.periods.length > 0) {
-    keys.push(pivot.periods[pivot.periods.length - 1]!.key);
-  }
-
-  if (keys.length > 0) spec.period_keys = unique(keys);
-  return spec;
+  return keys.length > 0 ? { period_keys: unique(keys) } : {};
 }
 
-function matchEntities(pivot: LedgerPivot, text: string): string[] {
-  const entities = unique(pivot.rows.map((row) => row.entity).filter((e): e is string => Boolean(e)));
-  const found: string[] = [];
-  const folded = normalize(text);
-
-  for (const entity of entities) {
-    const label = pivot.rows.find((row) => row.entity === entity)?.label ?? entity;
-    if (folded.includes(normalize(entity)) || folded.includes(normalize(label))) found.push(entity);
-  }
-  for (const [alias, entity] of Object.entries(VENDOR_ALIASES)) {
-    if (folded.includes(alias) && entities.includes(entity)) found.push(entity);
-  }
-
-  const tokens = text.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 1 && !STOP.has(t));
-  for (const token of tokens) {
-    const alias = VENDOR_ALIASES[normalize(token)];
-    if (alias && entities.includes(alias)) found.push(alias);
-    const exact = entities.find((e) => normalize(e) === normalize(token));
-    if (exact) found.push(exact);
-  }
-  return unique(found);
+/** Drop dollar figures a model is not allowed to write. */
+export function stripModelFigures(text: string): string {
+  return text
+    .replace(/\$[\d,.]+(?:\s*[kmb])?/gi, "")
+    .replace(/\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function includesPhrase(text: string, phrase: string): boolean {
-  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "[\\s-]+");
-  return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, "i").test(text);
+function overlayTypedConstraints(spec: LedgerFilterSpec, query: string, pivot: LedgerPivot): LedgerFilterSpec {
+  const amounts = extractLedgerQueryAmounts(query);
+  const iso = extractLedgerQueryIsoPeriods(query, pivot);
+  const next: LedgerFilterSpec = { ...spec };
+  delete next.min_abs_cents;
+  delete next.max_abs_cents;
+  if (amounts.min_abs_cents !== undefined) next.min_abs_cents = amounts.min_abs_cents;
+  if (amounts.max_abs_cents !== undefined) next.max_abs_cents = amounts.max_abs_cents;
+  if (iso.period_keys?.length) next.period_keys = unique([...(next.period_keys ?? []), ...iso.period_keys]);
+  return next;
+}
+
+function interpretation(
+  spec: LedgerFilterSpec,
+  pivot: LedgerPivot,
+  source: LedgerFilterSource,
+  explanation?: string,
+): LedgerFilterInterpretation {
+  const unmatched = Boolean(spec.unmatched);
+  return {
+    spec,
+    chips: unmatched ? [] : describeLedgerFilter(spec, pivot),
+    source,
+    unmatched,
+    ...(explanation ? { explanation } : unmatched ? { explanation: spec.unmatched_reason ?? LEDGER_SEARCH_UNMATCHED } : {}),
+  };
 }
 
 /**
- * Turn a founder sentence into a filter against this pivot's vocabulary.
- * Unknown words are ignored; an unmatched query returns an empty spec.
+ * Understand `query` via `propose` (production: OpenAI; tests: a fake).
+ * Apply/sanitize stay deterministic. A blank query is not a filter.
+ * An unknown/empty proposal is unmatched — never a silent full-sheet no-op.
  */
-export function parseLedgerQuery(text: string, pivot: LedgerPivot): LedgerFilterSpec {
-  const q = text.trim();
-  if (!q) return {};
+export async function interpretLedgerFilter(
+  query: string,
+  pivot: LedgerPivot,
+  propose: LedgerFilterProposer | null,
+): Promise<LedgerFilterInterpretation> {
+  const q = query.trim();
+  if (!q) return interpretation({}, pivot, "empty");
 
-  const spec: LedgerFilterSpec = {
-    ...extractAmounts(q),
-    ...matchPeriods(pivot, q),
-  };
-
-  const entities = matchEntities(pivot, q);
-  if (entities.length > 0) spec.entities = entities;
-
-  const sections: PivotSection[] = [];
-  for (const { words, section } of SECTION_WORDS) {
-    if (words.some((word) => includesPhrase(q, word))) sections.push(section);
+  if (!propose) {
+    return interpretation({ unmatched: true, unmatched_reason: LEDGER_SEARCH_UNCONFIGURED }, pivot, "unconfigured", LEDGER_SEARCH_UNCONFIGURED);
   }
-  if (sections.length > 0) spec.sections = unique(sections);
 
-  const categories: Category[] = [];
-  for (const { words, category } of CATEGORY_WORDS) {
-    if (words.some((word) => includesPhrase(q, word))) categories.push(category);
+  let proposal: LedgerFilterProposal;
+  try {
+    proposal = await propose(q, buildLedgerCatalog(pivot));
+  } catch {
+    return interpretation({ unmatched: true, unmatched_reason: LEDGER_SEARCH_FAILED }, pivot, "unconfigured", LEDGER_SEARCH_FAILED);
   }
-  if (categories.length > 0) spec.categories = unique(categories);
 
-  const flags: LedgerCellFlag[] = [];
-  for (const { words, flag } of FLAG_WORDS) {
-    if (words.some((word) => includesPhrase(q, word))) flags.push(flag);
+  const sanitized = overlayTypedConstraints(sanitizeLedgerFilter(proposal, pivot), q, pivot);
+  if (proposal.unmatched || sanitized.unmatched) {
+    const reason = stripModelFigures(proposal.unmatched_reason ?? sanitized.unmatched_reason ?? "") || LEDGER_SEARCH_UNMATCHED;
+    return interpretation({ unmatched: true, unmatched_reason: reason }, pivot, "model", reason);
   }
-  if (flags.length > 0) spec.flags = unique(flags);
+  if (isEmptyLedgerFilter(sanitized)) {
+    return interpretation({ unmatched: true, unmatched_reason: LEDGER_SEARCH_UNMATCHED }, pivot, "model", LEDGER_SEARCH_UNMATCHED);
+  }
+  return interpretation(sanitized, pivot, "model");
+}
 
-  if (/\b(incident|flagged|alarm|cusum)\b/i.test(q)) spec.has_incident = true;
-
-  return spec;
+function periodOverlaps(period: PivotPeriod, from?: ISODate, to?: ISODate): boolean {
+  if (from && period.end < from) return false;
+  if (to && period.start > to) return false;
+  return true;
 }
 
 function visiblePeriods(pivot: LedgerPivot, spec: LedgerFilterSpec): PivotPeriod[] {
@@ -361,6 +405,9 @@ function rowMatches(row: PivotRow, spec: LedgerFilterSpec, periodIndexes: number
  * so we do not invent a new annualization.
  */
 export function applyLedgerFilter(pivot: LedgerPivot, spec: LedgerFilterSpec): LedgerPivot {
+  if (spec.unmatched) {
+    return { ...pivot, rows: [] };
+  }
   if (isEmptyLedgerFilter(spec)) return pivot;
 
   const periods = visiblePeriods(pivot, spec);
@@ -430,6 +477,7 @@ export function applyLedgerFilter(pivot: LedgerPivot, spec: LedgerFilterSpec): L
 
 /** Short chips for the UI. Figures only appear when the founder typed them. */
 export function describeLedgerFilter(spec: LedgerFilterSpec, pivot: LedgerPivot): string[] {
+  if (spec.unmatched) return [];
   const chips: string[] = [];
   for (const entity of spec.entities ?? []) {
     const label = pivot.rows.find((row) => row.entity === entity)?.label ?? entity;
@@ -488,6 +536,15 @@ export function sanitizeLedgerFilter(spec: LedgerFilterSpec, pivot: LedgerPivot)
   // Amounts are never taken from a model — callers pass the parsed-from-text ones.
   if (spec.min_abs_cents !== undefined) out.min_abs_cents = spec.min_abs_cents;
   if (spec.max_abs_cents !== undefined) out.max_abs_cents = spec.max_abs_cents;
+  const namedWasInvented = Boolean(spec.entities?.length || spec.sections?.length || spec.categories?.length) &&
+    !out.entities?.length &&
+    !out.sections?.length &&
+    !out.categories?.length;
+  if (spec.unmatched || (namedWasInvented && isEmptyLedgerFilter(out))) {
+    out.unmatched = true;
+    const reason = spec.unmatched_reason ? stripModelFigures(spec.unmatched_reason) : "";
+    out.unmatched_reason = reason || LEDGER_SEARCH_UNMATCHED;
+  }
   return out;
 }
 
@@ -504,8 +561,13 @@ export function mergeLedgerFilters(base: LedgerFilterSpec, extra: LedgerFilterSp
   if (base.pre_change_only || extra.pre_change_only) merged.pre_change_only = true;
   if (base.from || extra.from) merged.from = extra.from ?? base.from;
   if (base.to || extra.to) merged.to = extra.to ?? base.to;
-  // Amounts stay with `base` (the query-text parse).
   if (base.min_abs_cents !== undefined) merged.min_abs_cents = base.min_abs_cents;
   if (base.max_abs_cents !== undefined) merged.max_abs_cents = base.max_abs_cents;
-  return Object.fromEntries(Object.entries(merged).filter(([, value]) => value !== undefined && !(Array.isArray(value) && value.length === 0))) as LedgerFilterSpec;
+  if (base.unmatched || extra.unmatched) {
+    merged.unmatched = true;
+    merged.unmatched_reason = extra.unmatched_reason ?? base.unmatched_reason ?? LEDGER_SEARCH_UNMATCHED;
+  }
+  return Object.fromEntries(
+    Object.entries(merged).filter(([, value]) => value !== undefined && !(Array.isArray(value) && value.length === 0)),
+  ) as LedgerFilterSpec;
 }

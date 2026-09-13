@@ -5,7 +5,7 @@
  * All routes are unauthenticated in the hackathon build (PRD §31), except the
  * inbound Sendblue webhook which checks a shared secret.
  */
-import type { LedgerFilterSpec } from "./ledger-filter.ts";
+import type { LedgerFilterInterpretation } from "./ledger-filter.ts";
 import type { ScoutPage } from "./scout.ts";
 import type {
   AlertHistoryItem,
@@ -216,13 +216,8 @@ export interface LedgerFilterQueryRequest {
   q: string;
   granularity?: PivotGranularity;
 }
-export interface LedgerFilterQueryResponse {
-  spec: LedgerFilterSpec;
-  /** Non-numeric chips describing the filter. */
-  chips: string[];
-  /** `rules` is the deterministic parser; `model` means OpenAI refined the spec. */
-  source: "rules" | "model";
-}
+/** Natural-language filter for the ledger sheet. The model never writes amounts. */
+export type LedgerFilterQueryResponse = LedgerFilterInterpretation;
 
 export interface CalendarQuery {
   /** Inclusive, `YYYY-MM-DD`. Defaults to the month containing `now`. */

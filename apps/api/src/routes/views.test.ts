@@ -14,6 +14,8 @@ import { describe, expect, it } from "vitest";
 import type { CalendarFeedEvent } from "../calendar/ics.ts";
 import { D1Store } from "../data/d1.ts";
 import { FakeD1 } from "../test/fake-d1.ts";
+import { openAiClient } from "../conversation/openai.ts";
+import { fakeOpenAi } from "../test/fake-openai.ts";
 import { createHarness, FIXED_NOW, TEST_ENV } from "../test/harness.ts";
 
 const MEETING: CalendarFeedEvent = {
@@ -112,18 +114,33 @@ describe("GET /api/ledger", () => {
 });
 
 describe("POST /api/ledger/query", () => {
-  it("parses a vendor + change-point filter without calling a model", async () => {
-    const h = createHarness();
+  it("interprets via the model against the live catalog", async () => {
+    const openai = fakeOpenAi([{ content: JSON.stringify({ entities: ["aws"], post_change_only: true }) }]);
+    const h = createHarness({ llm: openAiClient({ apiKey: "test", fetchImpl: openai.fetchImpl }) });
     const { status, body } = await h.post<LedgerFilterQueryResponse>("/api/ledger/query", {
       q: "Amazon after the change",
       granularity: "month",
     });
     expect(status).toBe(200);
-    expect(body.source).toBe("rules");
+    expect(body.source).toBe("model");
+    expect(body.unmatched).toBe(false);
     expect(body.spec.entities).toEqual(["aws"]);
     expect(body.spec.post_change_only).toBe(true);
     expect(body.chips.map((chip) => chip.toLowerCase())).toContain("aws");
     expect(body.chips).toContain("after the change");
+    expect(openai.textOf(0)).toMatch(/\baws · /i);
+  });
+
+  it("returns unmatched when no model is configured — not a full-sheet no-op", async () => {
+    const h = createHarness();
+    const { status, body } = await h.post<LedgerFilterQueryResponse>("/api/ledger/query", {
+      q: "display all delivery services",
+      granularity: "month",
+    });
+    expect(status).toBe(200);
+    expect(body.source).toBe("unconfigured");
+    expect(body.unmatched).toBe(true);
+    expect(body.spec.unmatched).toBe(true);
   });
 
   it("400s when q is missing", async () => {

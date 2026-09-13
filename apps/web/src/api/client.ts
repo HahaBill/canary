@@ -208,10 +208,15 @@ export function getLedgerCell(
   return request<LedgerCellResponse>(path, signal ? { signal } : undefined).then((r) => r.detail);
 }
 
-export function queryLedgerFilter(q: string, granularity: PivotGranularity): Promise<LedgerFilterQueryResponse> {
+export function queryLedgerFilter(
+  q: string,
+  granularity: PivotGranularity,
+  signal?: AbortSignal,
+): Promise<LedgerFilterQueryResponse> {
   return request<LedgerFilterQueryResponse>(routePath(API_ROUTES.ledgerQuery), {
     method: "POST",
     body: JSON.stringify({ q, granularity }),
+    ...(signal ? { signal } : {}),
   });
 }
 

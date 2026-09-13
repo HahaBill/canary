@@ -38,7 +38,7 @@ async function handleTool(c: CanaryContext, requested: string): Promise<Response
   }
 
   const args = unwrapToolArgs(raw);
-  const outcome = await runTool({ provider: c.get("provider"), baseUrl: baseUrl(c) }, name, args);
+  const outcome = await runTool({ provider: c.get("provider"), baseUrl: baseUrl(c), llm: c.get("llm") }, name, args);
   const result = await withSpeech(c.get("provider"), name, args, outcome.result);
   return c.json(result);
 }

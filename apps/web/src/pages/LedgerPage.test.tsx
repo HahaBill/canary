@@ -123,10 +123,61 @@ describe("LedgerPage", () => {
 
     fireEvent.change(screen.getByRole("searchbox", { name: /Filter the ledger/ }), { target: { value: "AWS" } });
 
-    expect(within(table).getByRole("rowheader", { name: /AWS/ })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(table).getByRole("rowheader", { name: /AWS/ })).toBeInTheDocument();
+    });
     expect(within(table).queryByRole("rowheader", { name: /Revenue/ })).not.toBeInTheDocument();
     expect(within(table).queryByRole("rowheader", { name: /Datadog/ })).not.toBeInTheDocument();
     expect(screen.getByRole("search")).toHaveTextContent("AWS");
+  });
+
+  it("filters cloud costs to cloud vendors, not meals", async () => {
+    renderApp("/ledger");
+    const table = await screen.findByRole("table", { name: /Ledger by month/ });
+
+    fireEvent.change(screen.getByRole("searchbox", { name: /Filter the ledger/ }), {
+      target: { value: "cloud costs" },
+    });
+
+    await waitFor(() => {
+      expect(within(table).getByRole("rowheader", { name: /AWS/ })).toBeInTheDocument();
+    });
+    expect(within(table).queryByRole("rowheader", { name: /DoorDash/ })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("rowheader", { name: /Meals/ })).not.toBeInTheDocument();
+  });
+
+  it("filters display-all delivery services to meal vendors", async () => {
+    renderApp("/ledger");
+    const table = await screen.findByRole("table", { name: /Ledger by month/ });
+
+    fireEvent.change(screen.getByRole("searchbox", { name: /Filter the ledger/ }), {
+      target: { value: "display all delivery services" },
+    });
+
+    await waitFor(() => {
+      expect(within(table).getByRole("rowheader", { name: /DoorDash/ })).toBeInTheDocument();
+    });
+    expect(within(table).queryByRole("rowheader", { name: /AWS/ })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("rowheader", { name: /Cloud Infrastructure/ })).not.toBeInTheDocument();
+  });
+
+  it("filters by vendor name for DoorDash and Figma", async () => {
+    renderApp("/ledger");
+    const table = await screen.findByRole("table", { name: /Ledger by month/ });
+    const box = screen.getByRole("searchbox", { name: /Filter the ledger/ });
+
+    fireEvent.change(box, { target: { value: "DoorDash" } });
+    await waitFor(() => {
+      expect(within(table).getByRole("rowheader", { name: /DoorDash/ })).toBeInTheDocument();
+    });
+    expect(within(table).queryByRole("rowheader", { name: /Figma/ })).not.toBeInTheDocument();
+
+    fireEvent.change(box, { target: { value: "Figma" } });
+    await waitFor(() => {
+      expect(within(table).getByRole("rowheader", { name: /Figma/ })).toBeInTheDocument();
+    });
+    expect(within(table).queryByRole("rowheader", { name: /DoorDash/ })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("rowheader", { name: /AWS/ })).not.toBeInTheDocument();
   });
 
   it("narrows period columns when the query is about the change point", async () => {
@@ -138,15 +189,37 @@ describe("LedgerPage", () => {
       target: { value: "after the change" },
     });
 
-    expect(within(table).getAllByRole("columnheader").length).toBeLessThan(before);
+    await waitFor(() => {
+      expect(within(table).getAllByRole("columnheader").length).toBeLessThan(before);
+    });
     expect(screen.getByText("after the change")).toBeInTheDocument();
+  });
+
+  it("does not show the full sheet for an unmatched phrase", async () => {
+    renderApp("/ledger");
+    const table = await screen.findByRole("table", { name: /Ledger by month/ });
+    expect(within(table).getByRole("rowheader", { name: /Revenue/ })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("searchbox", { name: /Filter the ledger/ }), {
+      target: { value: "what's the weather" },
+    });
+
+    await waitFor(() => {
+      expect(within(screen.getByRole("search")).getByRole("status")).toHaveTextContent(
+        /nothing on this sheet matches/i,
+      );
+    });
+    expect(within(table).queryByRole("rowheader", { name: /Revenue/ })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("rowheader", { name: /AWS/ })).not.toBeInTheDocument();
   });
 
   it("clears the filter and restores the full sheet", async () => {
     renderApp("/ledger");
     const table = await screen.findByRole("table", { name: /Ledger by month/ });
     fireEvent.change(screen.getByRole("searchbox", { name: /Filter the ledger/ }), { target: { value: "AWS" } });
-    expect(within(table).queryByRole("rowheader", { name: /Revenue/ })).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(table).queryByRole("rowheader", { name: /Revenue/ })).not.toBeInTheDocument();
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Clear ledger filter" }));
 

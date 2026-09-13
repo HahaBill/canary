@@ -1,7 +1,9 @@
 import { AGENT_TOOL_NAMES, formatUsd, type Classification, type DerivedDemoObject } from "@canary/shared";
 import { buildMockDerived } from "@canary/shared/fixtures";
 import { describe, expect, it } from "vitest";
+import { openAiClient } from "../conversation/openai.ts";
 import { MockDataProvider } from "../data/provider.ts";
+import { fakeOpenAi } from "../test/fake-openai.ts";
 import { createHarness } from "../test/harness.ts";
 
 function withCloudClassification(base: DerivedDemoObject): DerivedDemoObject {
@@ -83,5 +85,33 @@ describe("agent tools (iMessage parity)", () => {
     const link = await h.post<{ error: string }>("/api/tools/create_app_link", { destination: "space" });
     expect(link.status).toBe(200);
     expect(link.body.error).toBe("invalid_destination");
+  });
+
+  it("interprets list_transactions.query against the live catalog", async () => {
+    const openai = fakeOpenAi([{ content: JSON.stringify({ categories: ["MEALS"] }) }]);
+    const h = createHarness({ llm: openAiClient({ apiKey: "test", fetchImpl: openai.fetchImpl }) });
+    const { status, body } = await h.post<{
+      unmatched?: boolean;
+      matched: number;
+      transactions: Array<{ vendor: string; category?: string }>;
+    }>("/api/tools/list_transactions", { query: "display all delivery services" });
+    expect(status).toBe(200);
+    expect(body.unmatched).toBeUndefined();
+    expect(body.matched).toBeGreaterThan(0);
+    expect(body.transactions.every((row) => row.vendor === "DoorDash" || row.category === "Meals")).toBe(true);
+    expect(openai.requests).toHaveLength(1);
+    expect(openai.textOf(0)).toContain("Founder: display all delivery services");
+  });
+
+  it("returns unmatched rows rather than the whole ledger for a nonsense query", async () => {
+    const openai = fakeOpenAi([{ content: JSON.stringify({ unmatched: true, unmatched_reason: "Nothing on this sheet matches that." }) }]);
+    const h = createHarness({ llm: openAiClient({ apiKey: "test", fetchImpl: openai.fetchImpl }) });
+    const { body } = await h.post<{ unmatched: boolean; matched: number; transactions: unknown[] }>(
+      "/api/tools/list_transactions",
+      { query: "what's the weather" },
+    );
+    expect(body.unmatched).toBe(true);
+    expect(body.matched).toBe(0);
+    expect(body.transactions).toEqual([]);
   });
 });
