@@ -83,3 +83,37 @@ describe("the dashboard as the clock advances", () => {
     expect(JSON.stringify(second)).toBe(JSON.stringify(first));
   });
 });
+
+describe("the horizon is fuel, never history", () => {
+  it("lists no transaction dated after the clock, on any surface", async () => {
+    // The generator's future rows exist so the demo can reveal them a day at a
+    // time. Until the clock reaches a row it has not happened, and a founder
+    // asking "show me my transactions" must never see it — the future is only
+    // ever a labelled projection.
+    const { provider, set } = movingClock();
+    set(DEFAULT_MINUTES_PER_DAY * 5);
+    const derived = await provider.getDerived();
+    const today = derived.provenance.end_date;
+
+    const bank = await provider.getTransactions();
+    expect(bank.length).toBeGreaterThan(600);
+    expect(bank.filter((t) => t.date > today)).toEqual([]);
+
+    // Newest-first is exactly where a leak would surface in a text reply.
+    const listed = await provider.listTransactions({ limit: 10 });
+    expect(listed.items.length).toBeGreaterThan(0);
+    for (const row of listed.items) {
+      expect(row.date <= today).toBe(true);
+    }
+  });
+
+  it("still moves: a later clock reveals rows the earlier one hid", async () => {
+    const { provider, set } = movingClock();
+    set(0);
+    const before = (await provider.getTransactions()).length;
+    set(DEFAULT_MINUTES_PER_DAY * 8);
+    const after = (await provider.getTransactions()).length;
+
+    expect(after).toBeGreaterThan(before);
+  });
+});

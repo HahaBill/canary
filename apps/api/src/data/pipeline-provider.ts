@@ -70,8 +70,16 @@ export class PipelineDataProvider implements DataProvider {
       });
       // Project recurring charges ~6 months past history end for the cash calendar.
       const recurring = projectRecurring(ledger, { horizonEnd: addDays(ledger.history_end, 183) });
+      // POSTED rows only. The generator's horizon (transactions dated after the
+      // demo clock's "today") is fuel for the moving ledger, not history: it
+      // must never be listable by the bank endpoint or the conversation tools.
+      // The future does not exist yet — only labelled projections may mention
+      // it. Clip by the exact asOf, not ledger.history_end, which is widened to
+      // the Sunday of the asOf week and would leak up to six future days.
+      const cutoff = asOf ?? generated.fixture.end_date;
+      const posted = generated.transactions.filter((tx) => tx.date <= cutoff);
       // Reuse the in-memory status overlay machinery over the real derived object.
-      return { provider: new MockDataProvider(derived), transactions: generated.transactions, ledger, recurring };
+      return { provider: new MockDataProvider(derived), transactions: posted, ledger, recurring };
     })();
 
     this.byAsOf.set(key, entry);
