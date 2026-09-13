@@ -41,7 +41,7 @@ The thing worth knowing is not the level of spend. It is the moment the *behavio
 
 Canary is the watcher. It reconciles the ledger first so the series it monitors is real, runs a one-sided CUSUM on weekly variable spend, decomposes the shift into vendors, corroborates the vendors it cannot classify from rules alone, and then interrupts the founder exactly once — over iMessage, where they already read things.
 
-Per hackathon guidance this build runs on a **fictional company** (Perch Analytics, Inc., seed-stage B2B analytics, 14 people) banking with a **fictional Canary Sandbox Bank**. The live Rho API is not used. The sandbox sits behind a `BankProvider` interface, and the synthetic history is generated *backward* from the sandbox's reported closing balance so the ledger closes on that anchor to the cent. The only real external data is the Tavily vendor research, which resolves a real indexed vendor.
+Per hackathon guidance this build runs on a **fictional company** (Perch Analytics, Inc., seed-stage B2B analytics, 14 people) banking with a **fictional Canary Sandbox Bank**. The demo does not run on a live bank: it runs on a fictional company and a fictional sandbox bank. A real Rho client does exist alongside it — `GET /api/bank/rho` runs the same engine over Rho's public sandbox, which needs no credentials and reconciles to zero. The sandbox sits behind a `BankProvider` interface, and the synthetic history is generated *backward* from the sandbox's reported closing balance so the ledger closes on that anchor to the cent. The only real external data is the Tavily vendor research, which resolves a real indexed vendor.
 
 ---
 
@@ -113,7 +113,7 @@ Delivery is real iMessage, not SMS: ElevenLabs `pcm_24000` → loudness normaliz
 ```mermaid
 flowchart TB
     BANK["Canary Sandbox Bank<br/>BankProvider · reported closing balance"]
-    GEN["packages/generator<br/>20 Mon–Sun weeks, generated backward<br/>seeded: planted shift, one-off, unknown vendor"]
+    GEN["packages/generator<br/>52 Mon–Sun weeks + 26-week horizon, generated backward<br/>seeded: planted shift, one-off, unknown vendor"]
 
     subgraph CLS["packages/classification"]
         direction TB
@@ -137,7 +137,7 @@ flowchart TB
     subgraph DET["packages/detectors"]
         direction TB
         OFF["detectOneOffs<br/>vendor median · ≥3 priors"]
-        CUS["runCusum<br/>one-sided upward, k = 0.5σ, h = 4σ"]
+        CUS["runCusum<br/>one-sided upward, k = 0.5σ, h = 6σ, trend-relative"]
         DEC["decomposeContributors<br/>pre/post rate per entity"]
         DRIFT["detectRecurringDrift<br/>folded into the parent incident"]
         INC["buildIncidents + dedup<br/>materiality from config"]
@@ -236,7 +236,7 @@ unknown vendor corroborated (OpenAI == Tavily)           all dashboard figures d
 cash                 $2,012,880.19
 monthly net burn     $163,481.89  (window 2026-06-29..2026-09-13, POST_CHANGE_SEGMENT)
 runway               12.3 months
-cusum σ=$1,125.58 k=$562.79 h=$4,502.34 alarm=2026-07-20 change=2026-06-29 lag=3w
+cusum σ=$1,125.58 k=$562.79 h=$6,753.51 alarm=2026-07-20 change=2026-06-29 lag=3w
 variable spend pre→post  $15,403.41 → $19,374.12 /wk (+$3,971/wk)
   aws            +$3,144/wk  +$13,622/mo
   datadog        +$624/wk  +$2,702/mo
@@ -248,7 +248,7 @@ weekly variable      14428 16620 15765 15177 16749 15944 15116 14140 14231 16757
 incidents            inc_5b393334:BURN_RATE_SHIFT:aws:HIGH, inc_40e99e9c:ONE_OFF_VENDOR_PAYMENT:figma:MEDIUM
 ```
 
-`npm test` runs **1,202 tests** (2 skipped: live-provider tests that need real API keys), entirely offline. The ledger is a full year — 52 weeks, 626 transactions — plus a 26-week generated horizon that the demo clock reveals one day per real minute, with reconciliation exact to the cent at every instant.
+`npm test` runs **1,273 tests** (4 skipped: live-provider tests that need real API keys), entirely offline. The ledger is a full year — 52 weeks, 626 transactions — plus a 26-week generated horizon that the demo clock reveals one day per real minute, with reconciliation exact to the cent at every instant.
 
 ---
 
@@ -261,7 +261,9 @@ Every threshold lives in [`packages/shared/src/config.ts`](packages/shared/src/c
 | Constant | Value | Meaning |
 | --- | --- | --- |
 | `CUSUM_DEFAULTS.k_factor` | `0.5` | Slack, as a multiple of σ — the drift the chart tolerates for free |
-| `CUSUM_DEFAULTS.h_multiplier` | `4` | Alarm threshold, as a multiple of σ |
+| `CUSUM_DEFAULTS.h_multiplier` | `6` | Alarm threshold, as a multiple of σ |
+| `CUSUM_DEFAULTS.trend_window_fraction` | `0.5` | Share of the baseline used to fit the growth trend |
+| `CUSUM_DEFAULTS.trend_significance_z` | `1.5` | Standard errors a fitted slope must clear before it is believed |
 | `CUSUM_DEFAULTS.min_baseline_weeks` | `8` | Baseline used for the robust MAD σ estimate |
 | `CUSUM_DEFAULTS.sigma_floor_fraction` | `0.02` | Floor on σ, so an unnaturally quiet baseline can't make everything an alarm |
 | `TRAILING_WINDOW_WEEKS` | `8` | Burn window before a confirmed regime change |
@@ -376,11 +378,11 @@ curl -X POST https://canary.bill-nguyentonhoang.workers.dev/api/alerts/send \
 | --- | --- | --- |
 | Edge runtime | One Cloudflare Worker | Serves `/api/*` and `/webhooks/*` itself; everything else falls back to the SPA's `index.html`, so `/incidents/:id` survives a hard refresh |
 | HTTP | Hono | One route module per group, bodies typed from `packages/shared/src/api.ts` |
-| Storage | Cloudflare D1 | `incidents`, `vendor_enrichments`, `classifications`, `classification_overrides`, `imessage_log`, `pending_alerts`, `job_state`. Migrations are additive only; CI applies them before the new Worker goes live |
+| Storage | Cloudflare D1 | `incidents`, `vendor_enrichments`, `classifications`, `classification_overrides`, `imessage_log`, `pending_alerts`, `job_state`, `conversation_summaries`, `google_oauth`, `review_events`. Migrations are additive only; CI applies them before the new Worker goes live |
 | Scheduled work | Cron `*/5 * * * *` | Drains alerts the policy deferred while the founder was busy |
 | Web | React 18 + Vite + Tailwind + shadcn/ui + Recharts | Builds into `apps/api/public`, served as Worker static assets |
 | Data access | `DataProvider` interface | `PipelineDataProvider` over `@canary/pipeline` + `@canary/engine`; `withD1Overlay` layers persisted status, `last_notified` and enrichments on top of whichever provider is injected |
-| Bank | `BankProvider` → `SandboxBankProvider` | The seam a real bank API would slot into without touching engine, detectors or UI |
+| Bank | `BankProvider` → `SandboxBankProvider`, plus `RhoBankClient` | The seam a real bank API slots into without touching engine, detectors or UI — and `RhoBankClient` does, live, at `GET /api/bank/rho` |
 | Determinism | `now` and `seed` injected everywhere | The Worker bundle stays free of `node:` imports — the Worker imports `@canary/classification/core`, not the package root |
 | Testing | Vitest, offline | The Worker is tested with `app.request()` and injected fakes, no workerd; live provider tests skip themselves without keys |
 
@@ -443,7 +445,7 @@ Names only. They live in `apps/api/.dev.vars` (gitignored) and as Cloudflare Wor
 ```text
 packages/
   shared/          types, config (every threshold), company profile, dates, money, API + tool contracts, fixtures
-  generator/       deterministic 20-week synthetic ledger anchored to the sandbox bank balance
+  generator/       deterministic 52-week synthetic ledger (+26-week horizon) anchored to the sandbox bank balance
   engine/          reconciliation ledger, weekly buckets, burn/runway windows, what-if, ledger + calendar views
   detectors/       one-off rule, one-sided CUSUM, recurring-charge drift, decomposition, materiality, incidents
   classification/  merchant rules → OpenAI → Tavily corroboration → Needs Review, plus caches
@@ -466,7 +468,7 @@ docs/              PRD, build order, data + detector contract, agent behaviour, 
 | Backend | Cloudflare Workers + Hono + D1, one cron trigger |
 | Web | React 18, Vite, Tailwind, shadcn/ui, Recharts, React Router |
 | Language | TypeScript ESM everywhere, npm workspaces monorepo |
-| Tests | Vitest — 888 tests, offline |
+| Tests | Vitest — 1,273 tests (4 skipped), offline |
 | Messaging | Sendblue (iMessage, inbound + outbound) |
 | Voice | ElevenLabs → in-Worker CAF → native iMessage voice memo |
 | Research | Tavily (corroboration, cited) · OpenAI (category proposals) |

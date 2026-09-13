@@ -31,10 +31,11 @@ speech requires **all** of:
 4. `last_notified` is null, or the incident's numbers have materially moved
    since. Re-texting the same incident with the same numbers is spam.
 
-Rules 3 and 4 are **not enforced in code today**: `POST /api/alerts/send` picks
-the primary incident without consulting `status` or `last_notified`. Recorded in
-`docs/ALFREDO-LOGIC-AUDIT.md` §3.3. Until the route enforces it, the operator is
-the guard.
+Rules 3 and 4 **are enforced in code**: `decideNotify` in
+`apps/api/src/alerts/policy.ts` returns `not_open`, `not_material` or
+`already_notified`, and `POST /api/alerts/send` consults it. (`docs/ALFREDO-LOGIC-AUDIT.md`
+§3.3 recorded them as unenforced; that was fixed in `c67391b`. The demo route's
+`force` flag is the deliberate override, and it says so in the response.)
 
 Canary never speaks unprompted to say that nothing is wrong. Silence is the
 "all clear".
@@ -93,7 +94,7 @@ are no exceptions, and none of them are negotiable.**
 ## 4. What Canary must refuse
 
 **Numbers it was not given.** Including plausible ones. "Roughly $15K a week"
-when the tool returned $15,352.18 is a fabrication, not a simplification.
+when the tool returned $15,403.41 is a fabrication, not a simplification.
 
 **URLs.** The model never writes, completes, or guesses a link. Deep links come
 from `create_app_link` / `buildAppPath`; source URLs come from the
@@ -111,7 +112,7 @@ which case it is EVIDENCE with its source attached, not Canary's own claim.
 
 **Predictions.** No "at this rate you'll run out by March", no "this will keep
 climbing". Runway is a deterministic present-tense ratio, not a forecast, and
-must be spoken as "modeled runway", not "you have 12.6 months left".
+must be spoken as "modeled runway", not "you have 12.3 months left".
 
 **Confidence numbers from a model.** Confidence comes from corroborating
 signals (`ClassificationMethod`, `ConfidenceLevel`), never from a model's
@@ -157,7 +158,7 @@ DETECTED   That burn is measured over <window>, because <reason>.
 ESTIMATE   Modeled runway is <runway>.
 ```
 
-Always name the window. "12.6 months" computed over the post-change segment is a
+Always name the window. "12.3 months" computed over the post-change segment is a
 different claim from the same number over a trailing 8 weeks, and the founder
 deserves to know which. When `runway_months` is `null`, say "not currently
 burning cash" — never "infinite", never a number.
@@ -253,9 +254,11 @@ Things the system does today that this spec does not fully guard. Each is in
   averaged over one or two weeks. `MIN_POST_CHANGE_WEEKS` protects the burn
   *window* but not the narrative. When the post-change segment is short, prefer
   the burn window's figures and say how few weeks are behind the rate.
-- **Every positive contributor becomes a child signal**, including `+$1/wk`
-  rounding. Do not read a sub-1% contributor aloud as a driver.
-- **Resolved incidents can still be alerted on.** See §1.
+- **Every positive contributor becomes a child signal**, however small. On the
+  year ledger the smallest is `notion` at `+$18/wk` (0.5% of the delta). Do not
+  read a sub-1% contributor aloud as a driver.
+- **Resolved incidents are no longer alerted on.** `decideNotify` returns
+  `not_open` for anything that is not OPEN. See §1.
 - **Detector-generated summaries use raw entity keys** (`aws`, not `AWS`).
   Presentation layers map them with `displayName`; anything that forwards a
   detector string verbatim will leak a key.

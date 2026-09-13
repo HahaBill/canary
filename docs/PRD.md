@@ -7,7 +7,7 @@
 **Supporting technology:** OpenAI, Cloudflare, Sendblue  
 **Nice-to-have:** Notion
 
-> **Data source decision (2026-09-12):** The live Rho API is **not** used in this build. Per hackathon guidance, Canary runs against a **fictional company** and a **fictional bank sandbox** ("Canary Sandbox Bank"). The sandbox is implemented behind a `BankProvider` interface so a real bank API (Rho or otherwise) can be swapped in later without touching the engine, detectors, or UI. Everywhere this document previously said "Rho balance" or "Rho data", read "sandbox bank balance / sandbox bank data".
+> **Data source decision (2026-09-12, revised 2026-09-13):** The live Rho API is **not** what the demo runs on. A real Rho client now exists anyway — `GET /api/bank/rho` runs the same engine over Rho's public sandbox, which needs no credentials and reconciles to zero. The demo keeps its synthetic year because Rho's sandbox holds 72 transactions over three years and cannot carry a weekly detector. Per hackathon guidance, Canary runs against a **fictional company** and a **fictional bank sandbox** ("Canary Sandbox Bank"). The sandbox is implemented behind a `BankProvider` interface so a real bank API (Rho or otherwise) can be swapped in later without touching the engine, detectors, or UI. Everywhere this document previously said "Rho balance" or "Rho data", read "sandbox bank balance / sandbox bank data".
 
 ## Fictional company
 
@@ -15,7 +15,7 @@
 Company:      Perch Analytics, Inc.
 Stage:        Seed, B2B analytics SaaS, cloud-heavy
 Team:         14 people
-Raised:       ~$3.0M
+Raised:       ~$5.0M
 Bank:         Canary Sandbox Bank (fictional)
 Accounts:     Operating checking, savings/reserve, corporate card
 ```
@@ -197,7 +197,7 @@ The product demo requires enough history to establish normal behavior.
 
 Therefore the first system component is a **deterministic synthetic company generator**.
 
-The generator should produce **16–20 weeks** of realistic startup financial history and be seeded so the output is repeatable.
+The generator should produce **52 weeks** of realistic startup financial history, plus a 26-week un-posted horizon for the demo clock, and be seeded so the output is repeatable.
 
 **Important:** all demo numbers shown in React, iMessage, voice, and the demo script must be **derived from generator output**. Do not hand-type financial figures in documentation or UI.
 
@@ -444,7 +444,7 @@ Document/configure explicitly:
 ```text
 direction = upward
 k = 0.5σ
-h = 4–5σ
+h = 6σ
 σ = robust baseline estimate using MAD
 aggregation = non-overlapping calendar weeks
 ```
@@ -922,7 +922,7 @@ This is the **actual P0**.
    - create ElevenLabs agent/tool endpoint if possible.
 
 2. **Synthetic generator anchored to the sandbox bank closing balance**
-   - 16–20 weeks;
+   - 52 weeks (plus a 26-week un-posted horizon);
    - deterministic seed;
    - planted sustained burn shift;
    - planted one-off;

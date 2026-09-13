@@ -23,13 +23,13 @@ Canary is an explainable early-warning system for startup cash: it reconciles a 
 
 ```text
 packages/shared          types, config (all thresholds), company profile, dates, money, API + tool contracts, test fixtures
-packages/generator       deterministic 20-week synthetic ledger anchored to the sandbox bank balance (planted shift, one-off, unknown vendor; `test` profile adds messy statement shapes)
-packages/engine          reconciliation ledger, weekly buckets, burn/runway windows, what-if
+packages/generator       deterministic 52-week synthetic ledger (+26-week horizon for the demo clock) anchored to the sandbox bank balance (planted shift, one-off, unknown vendor; `test` profile adds messy statement shapes)
+packages/engine          reconciliation ledger, weekly buckets, burn/runway windows, what-if, views (pivot, cash calendar, recurring)
 packages/detectors       one-off rule, one-sided CUSUM, recurring-charge drift, contributor decomposition, materiality, incidents + dedup
 packages/classification  merchant rules → OpenAI → Tavily corroboration → Needs Review; cache/
 packages/pipeline        runPipeline() → DerivedDemoObject; verify.ts (contract §15 assertions); committed demo caches
-apps/api                 Cloudflare Worker (Hono): REST API, Sendblue webhook + alerts (text + voice), agent tools, D1, sandbox bank
-apps/web                 Vite + React SPA (dashboard, incident page); builds into apps/api/public and is served by the Worker
+apps/api                 Cloudflare Worker (Hono): REST API, Sendblue webhook + alerts (text + voice), agent tools, D1, sandbox bank, Rho client, demo clock, Scout, Google Calendar OAuth
+apps/web                 Vite + React SPA (dashboard, incidents, ledger, calendar, needs review, scout, ask); builds into apps/api/public and is served by the Worker
 ```
 
 ## Commands (from repo root, Node 22+, npm)

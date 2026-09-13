@@ -47,7 +47,7 @@ Needs Review outflows still count.
 
 The generator must:
 
-- produce 16–20 calendar weeks;
+- produce `DEMO.WEEKS` = 52 calendar weeks of history, plus `DEMO.HORIZON_WEEKS` = 26 weeks of un-posted future rows the demo clock reveals;
 - be deterministic for a seed;
 - produce non-overlapping calendar-week data;
 - support backward generation from a required closing balance;
@@ -69,7 +69,7 @@ generateDemoCompany({
 
 # 3. Sandbox Bank Balance Anchoring
 
-The live Rho API is not used. The fictional **Canary Sandbox Bank** (behind `BankProvider`) reports the closing balance for the fictional company **Perch Analytics, Inc.** That balance is a configured anchor in `packages/shared/src/company.ts`.
+The demo does not run on a live bank. A real Rho client does exist alongside it: `GET /api/bank/rho` runs the same engine over Rho's public sandbox, which needs no credentials and reconciles to zero. The fictional **Canary Sandbox Bank** (behind `BankProvider`) reports the closing balance for the fictional company **Perch Analytics, Inc.** That balance is a configured anchor in `packages/shared/src/company.ts`.
 
 Process:
 
@@ -131,7 +131,7 @@ The planted shift must satisfy the narrative:
 
 Recommended:
 
-- change begins around week 10 or 11 in a 20-week history;
+- change begins at `DEMO.CHANGE_START_INDEX` = week 42 of the 52-week history (ten weeks before the end);
 - enough post-change observations exist for CUSUM and current-regime burn.
 
 The generator should store:
@@ -166,7 +166,8 @@ Configuration:
 direction = upward
 k = 0.5 * sigma
 h = H_MULTIPLIER * sigma
-sigma = robust estimate based on baseline MAD
+sigma = max(1.4826 x MAD, sigma_floor_fraction x median) of the baseline's
+        residuals against a FITTED MULTIPLICATIVE TREND, not a flat median
 ```
 
 Store `H_MULTIPLIER` in config.

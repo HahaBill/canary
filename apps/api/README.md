@@ -5,7 +5,7 @@ Hono + D1 + Sendblue + agent tools. Serves the SPA from `./public` (built by `ap
 
 ```bash
 npm run typecheck -w @canary/api
-npm test -w @canary/api            # 412 vitest tests, Node env, no secrets, no workerd
+npm test -w @canary/api            # 573 vitest tests (2 skipped), Node env, no secrets, no workerd
 npx wrangler deploy --dry-run      # from apps/api; needs a public/index.html
 npm run dev -w apps/api            # wrangler dev; copy .dev.vars.example to .dev.vars first
 ```
@@ -104,7 +104,7 @@ The engine view functions (`pivotLedger`, `pivotCell`, `projectRecurring`, `buil
 
 `withD1Overlay(provider, db)` is applied by the app itself, so incident status, `last_notified`, and
 vendor enrichments persist regardless of which provider is injected. Sandbox bank transactions come
-from `createApp({ bankTransactions })` — currently an empty ledger.
+from `createApp({ bankTransactions })`, wired in `src/index.ts` to the pipeline's posted rows.
 
 ## Layout
 
@@ -122,7 +122,7 @@ from `createApp({ bankTransactions })` — currently an empty ledger.
 | `src/imessage/` | keyword router |
 | `src/sendblue/` | outbound client |
 | `src/voice/` | ElevenLabs TTS (iMessage CAF / web MP3) and the Ask Canary signed URL |
-| `src/bank/` | `SandboxBankProvider` |
+| `src/bank/` | `SandboxBankProvider`, `RhoBankClient` + `assessCoverage` |
 | `src/tools.ts` | agent tools shared by REST, iMessage, and voice |
 | `src/routes/tools.ts` | `GET|POST /api/tools/<name>` — same `runTool` payloads as iMessage (ElevenLabs) |
 | `src/test/` | in-memory D1 + app harness (no miniflare) |

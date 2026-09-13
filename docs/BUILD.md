@@ -40,9 +40,9 @@ No hand-written demo financial figures.
 
 ---
 
-# Rule 0.5 — No live Rho
+# Rule 0.5 — The demo does not run on Rho (but a Rho client exists)
 
-The live Rho API is **not** used (hackathon guidance). Canary runs on a fictional company (**Perch Analytics, Inc.**) banking with a fictional **Canary Sandbox Bank**, implemented behind the `BankProvider` interface in `packages/shared`. Wherever older text says "Rho balance", read "sandbox bank closing balance".
+The demo does not run on a live bank. A real Rho client does exist alongside it: `GET /api/bank/rho` runs the same engine over Rho's public sandbox, which needs no credentials and reconciles to zero. The demo itself runs on a fictional company (**Perch Analytics, Inc.**) banking with a fictional **Canary Sandbox Bank**, implemented behind the `BankProvider` interface in `packages/shared`. Wherever older text says "Rho balance", read "sandbox bank closing balance".
 
 ---
 
@@ -107,7 +107,7 @@ If Sendblue or ElevenLabs provisioning fails, know this immediately.
 
 - [x] Define canonical transaction schema (`packages/shared/src/types.ts`)
 - [ ] Read the sandbox bank closing balance from the company profile (`packages/shared/src/company.ts`)
-- [ ] Generate 16–20 weeks **backward** so the synthetic ledger closes on the sandbox bank balance
+- [x] Generate 52 weeks **backward** so the synthetic ledger closes on the sandbox bank balance (plus a 26-week horizon)
 - [ ] Use deterministic seed
 - [ ] Add recurring payroll/rent/SaaS/cloud
 - [ ] Add sustained variable-spend shift
@@ -186,7 +186,7 @@ No LLM numeric confidence.
 - [ ] Exclude/winsorize tagged one-offs
 - [ ] One-sided upward
 - [ ] k = 0.5σ
-- [ ] h = configured 4–5σ
+- [x] h = configured 6σ
 - [ ] σ estimated robustly from baseline MAD
 - [ ] Change point = last zero before alarm
 - [ ] Re-baseline after confirmed shift
@@ -289,7 +289,7 @@ Stretch:
 
 Canary is submission-ready when:
 
-- [ ] Sandbox `BankProvider` is the only source of current balance/accounts (no Rho; swappable seam)
+- [x] Sandbox `BankProvider` is the demo's source of current balance/accounts; the seam is real and `RhoBankClient` uses it at `GET /api/bank/rho`
 - [ ] Demo ledger closes on the sandbox bank balance
 - [ ] Financial engine handles transfers/settlements/financing correctly
 - [ ] CUSUM detects the planted sustained shift

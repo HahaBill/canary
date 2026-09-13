@@ -1,7 +1,7 @@
 # Alfredo's worklog — everything, in order, checkable
 
 Bill: this is the review entry point for all of my work on `main`, Saturday
-evening through Sunday ~1:30 AM. Sixteen commits. Every claim below has a
+evening through Sunday morning. Nineteen commits. Every claim below has a
 command next to it; nothing needs to be taken on my word.
 
 The deep dives live in three companion docs:
@@ -15,8 +15,9 @@ The deep dives live in three companion docs:
 ## Verify all of it in three commands
 
 ```text
-npm run typecheck && npm test     1,245 tests, offline
-npm run verify                    22 checks, ALL CHECKS PASSED
+npm run typecheck && npm test     1,273 passing, 4 skipped, offline
+npm run verify                    ALL CHECKS PASSED
+npm run build                     SPA into apps/api/public
 node scripts? no — the golden path: see "Production dry run" at the bottom
 ```
 
@@ -29,7 +30,7 @@ node scripts? no — the golden path: see "Production dry run" at the bottom
 | `c8915b6` | `npm run verify` had never run on Windows: the `import.meta.url` guard can't match there, so it printed nothing and exited 0 — a silent pass. `pathToFileURL` fix. | `packages/pipeline/src/verify.ts` |
 | `9ba75e9` | Detector audit: 27 edge-case tests written first, one real bug fixed — `decomposeContributors` on a change point of −1 published each entity's full-series average as its *delta*. Masked in prod, but exported contract surface. | `packages/detectors`, `packages/engine` tests |
 | `49f8a40` | `docs/AGENT_BEHAVIOR.md`, and WHY now names the rule that fired with its parameters. Wording only; every figure still comes from the incident object. | `apps/api/src/messages.ts` |
-| `542884b` | Third detector: recurring-charge drift. Median of a vendor's earlier charges vs later ones, so no single invoice moves both sides. Speaks in $/charge, not $/week, so it complements the contributor rates instead of contradicting them. Folds into the burn incident per contract §10 — including the time-overlap clause that had no implementation. Demo: Datadog $3,782 → $6,026/charge, +59%. | `packages/detectors/src/recurring-drift.ts`, `incidents.ts`, `pipeline/run.ts`, one new verify check |
+| `542884b` | Third detector: recurring-charge drift. Median of a vendor's earlier charges vs later ones, so no single invoice moves both sides. Speaks in $/charge, not $/week, so it complements the contributor rates instead of contradicting them. Folds into the burn incident per contract §10 — including the time-overlap clause that had no implementation. Demo: Datadog $3,959.25 → $5,721.50/charge, +45%. | `packages/detectors/src/recurring-drift.ts`, `incidents.ts`, `pipeline/run.ts`, one new verify check |
 | `d6089da` | Messy statement shapes, **test profile only**: same-day double-post + reversal, credit larger than the charge, `CHECK 1042 J MORALES`, anonymous `ACH DEBIT`, orphan transfer leg, never-settling pending. End-to-end assertions that cash stays exact and detectors don't hallucinate. Demo profile asserted untouched. | `packages/generator`, `packages/pipeline/src/messy-profile.test.ts` |
 | `d827134` | What-if says *why* nothing changed (payroll vs typo vs credits), and no longer inverts a negative balance — "20% lower" on net credits used to report burn RISING. | `packages/engine/src/whatif.ts`, `apps/api/src/speech.ts` |
 | `fb10bf6` | Docs sync. | `docs/` |
@@ -40,10 +41,13 @@ node scripts? no — the golden path: see "Production dry run" at the bottom
 | `b6f1bfb` | **The big one. CUSUM no longer alarms on growth itself.** It measured every week against the median of the first eight; a growing company sits above that forever, so over 300 randomised 52-week series it false-alarmed **99% of the time** around week 18. Now each week is measured against the trend the baseline established — fitted multiplicatively (growth compounds; a straight line leaves a rising tail residual), residuals relative (absolute noise grows with the level), slope believed only past `trend_significance_z` standard errors over a half-series window. Growth false alarms: 99% → 40%, which equals the flat-company rate, so growth is no longer a systematic cause. Flat companies byte-identical. WHY discloses the growth it allowed for. | `packages/detectors/src/cusum.ts`, `packages/shared/src/types.ts` + `config.ts` |
 | `d0a3d30` | The SPA now refreshes itself every 30s, stale-while-revalidate so nothing blinks: old numbers stay on screen until new ones land; a failed background refresh keeps the working page and retries. Key changes still reset (different incident = different data). | `apps/web/src/api/useDerived.ts`, `main.tsx` |
 | `8576b2a`, `d408f4d` | One-off incident id is `inc_40e99e9c` on the year ledger (hashes the txn id); HANDOFF + README re-quoted verbatim from `npm run verify`. | docs, README |
-| `f9b9435` | **The 2027 leak.** The iMessage agent answered a transactions question with rows dated 2027. The generator's 26-week horizon exists to feed the clock, but `getTransactions()` was handing the whole list to the bank endpoint and the agent's `list_transactions` tool. Clipped at the exact `asOf` — not `ledger.history_end`, which the engine widens to the week's Sunday and would still have leaked six days. The chat's system prompt was also told "today" from the wall clock while its data came from the demo clock; it now states the ledger's own date. | `apps/api/src/data/pipeline-provider.ts`, `conversation/prompt.ts` |
-| `953ce80`, `680c908`, `d68293a` | **Rho.** Measured the sandbox first: 72 transactions over three years, ending 2026-06-27, $258K across 14 accounts. It cannot carry the demo — no weekly series for CUSUM, no planted shift, no one-off, no unknown vendor. So the demo keeps its synthetic year and the integration is real anyway: a genuine client for docs.rho.co v1 (bearer auth, `next_page_token`, date filters) that needs **no credentials** against the sandbox. The mapping of Rho's 22 transaction types onto flow types is the reconciliation judgement, each line reasoned. `GET /api/bank/rho` runs our engine over live Rho data and reconciles to 0. Then Alfredo's schema question found a gap in my own mapper: Rho's `money_movement_id` IS our `transfer_pair_id` and I was not mapping it. Finally `assessCoverage()` reports what could be VERIFIED vs assumed, after I tested and rejected reconstructing settlement coverage (the amounts do not reconcile — a wrong cross-check is worse than none). | `apps/api/src/bank/rho.ts`, `rho.test.ts`, `rho-brain.test.ts`, `routes/data.ts` |
-| `e30aff0` | **One date on screen, not two.** Found by opening the deployed dashboard: the banner read "as of Sep 20" while the CASH card captioned the same balance "Sep 13". The card uses `company.as_of`, which was not moving with the clock. | `packages/pipeline/src/run.ts` |
+| `2b20b17` | **The 2027 leak.** The iMessage agent answered a transactions question with rows dated 2027. The generator's 26-week horizon exists to feed the clock, but `getTransactions()` was handing the whole list to the bank endpoint and the agent's `list_transactions` tool. Clipped at the exact `asOf` — not `ledger.history_end`, which the engine widens to the week's Sunday and would still have leaked six days. The chat's system prompt was also told "today" from the wall clock while its data came from the demo clock; it now states the ledger's own date. | `apps/api/src/data/pipeline-provider.ts`, `conversation/prompt.ts` |
+| `953ce80`, `680c908`, `d68293a`, `d4bc5fc` | **Rho.** Measured the sandbox first: 72 transactions over three years, ending 2026-06-27, $258K across 14 accounts. It cannot carry the demo — no weekly series for CUSUM, no planted shift, no one-off, no unknown vendor. So the demo keeps its synthetic year and the integration is real anyway: a genuine client for docs.rho.co v1 (bearer auth, `next_page_token`, date filters) that needs **no credentials** against the sandbox. The mapping of Rho's 22 transaction types onto flow types is the reconciliation judgement, each line reasoned. `GET /api/bank/rho` runs our engine over live Rho data and reconciles to 0. Then Alfredo's schema question found a gap in my own mapper: Rho's `money_movement_id` IS our `transfer_pair_id` and I was not mapping it. Finally `assessCoverage()` reports what could be VERIFIED vs assumed, after I tested and rejected reconstructing settlement coverage (the amounts do not reconcile — a wrong cross-check is worse than none). | `apps/api/src/bank/rho.ts`, `rho.test.ts`, `rho-brain.test.ts`, `routes/data.ts` |
+| `4dda942` | **One date on screen, not two.** Found by opening the deployed dashboard: the banner read "as of Sep 20" while the CASH card captioned the same balance "Sep 13". The card uses `company.as_of`, which was not moving with the clock. | `packages/pipeline/src/run.ts` |
 | `c251c1f` | `h_multiplier` 4σ → 6σ **after measuring it demo-identical**: alarm week, change point, lag and incident id byte-equal at 4 and 6 on every clock day, so the false-alarm cut (31% → 24%/yr, detection 98.7% → 96.7%, same zero lag) was free. Also: `DEMO_CLOCK_MINUTES_PER_DAY` Worker var — set `0` in the dashboard to freeze the ledger for the recorded clip, delete to go live; no deploy either way. | `packages/shared/src/config.ts`, `apps/api/src/{env,index}.ts` |
+| `09423b4` | **Two projection bugs, both measured.** (a) Burn averaged the week IN PROGRESS — a few days of spend inside a seven-day bucket — so runway jumped **+0.9 months every Monday** and decayed through the week. Burn now reads complete weeks only; the partial week stays in the chart, where drawing it fill up is honest. (b) The account balance shift decided pending/settled supersession from the WHOLE transaction set, including rows dated after `asOf` — so on any day between an authorisation and its settlement it dropped the pending row while `buildLedger` still counted it. Measured: **$731.48 discrepancy on 2026-07-22**, the day the planted Vercel charge is pending. Demo numbers unchanged (Sep 13 is a Sunday; every week complete, nothing mid-flight). | `packages/pipeline/src/run.ts`, new `as-of-projection.test.ts` |
+| `3c25858` | **The live stream is now actually visible, and stops fighting the user.** Seven render gates asked `if (loading)` before `if (!data)` — which threw away the stale-while-revalidate in `useDerived` and replaced the whole page with skeletons on every 30s heartbeat, resetting the what-if slider mid-drag and cutting the voice note off mid-playback. Every gate now tests for data. Plus `LiveBadge` in the provenance strip on every route: the simulated date, a dot that pulses while a fetch is in flight, and cash movement since the viewer arrived. It re-baselines when the 10-minute clock cycle wraps, so it never announces the company earning a week's burn every ten minutes. | `apps/web/src/components/LiveBadge.tsx`, `ProvenanceBanner.tsx`, `AppShell.tsx`, 5 pages |
+| `9642188` | Two determinism fixes from review. `mapAccount` stamped `new Date()` while `mapTransaction` beside it correctly took `asOf` — and the engine folds account dates into `reconciliation.as_of`, so the Rho route's report claimed the moment the mapper ran, not the day asked about. And `parseAsOfOverride` re-derived the start of history as `END_DATE - WEEKS*7`; the generator's real first day is `historyStart`, which snaps to the Monday of the earliest week — 363 days before a Sunday, not 364 — so the bound accepted one day with no transactions. | `apps/api/src/bank/rho.ts`, `apps/api/src/clock.ts` |
 
 ---
 
@@ -80,7 +84,7 @@ proposal) carry their Monte Carlo tables in §6c.
 ## Rho: what a reviewer should know
 
 - The demo does **not** run on Rho and should not. Measured: 72 transactions
-  across three years. `docs/ALFREDO-WORKLOG.md` above and the commit messages
+  across three years. The commit messages and `apps/api/src/bank/rho.ts`
   carry the numbers.
 - `GET /api/bank/rho` is live in production with no credentials and reconciles
   Rho's own data to 0 discrepancy. Set `RHO_API_KEY` and the same code reads
@@ -93,9 +97,95 @@ proposal) carry their Monte Carlo tables in §6c.
   same `id` flip status or does a second row appear? In-place is safe. A second
   row needs `pending_of` or burn is overstated by every pending charge. A static
   sandbox cannot answer it.
-- Four docs still say "the live Rho API is not used, per hackathon guidance".
-  We use the public **sandbox**, which is a different thing, but somebody should
-  confirm that distinction with the organisers before leaning on it in the pitch.
+- Every doc that said "the live Rho API is not used, per hackathon guidance" now
+  says what is actually true: the DEMO does not run on Rho, and a real Rho client
+  exists at `GET /api/bank/rho` against the public **sandbox**, which needs no
+  credentials. Somebody should still confirm that distinction with the organisers
+  before leaning on it in the pitch.
+
+## Is the continuous stream actually working? Measured, not asserted
+
+Yes. The table below is the whole 10-day clock cycle, produced by running the
+pipeline at each simulated day and by probing the deployed Worker. Local and
+production agree to the cent (prod at simulated Sep 16 returned
+`cash=$2,007,542.41`; prod at Sep 18 returned `$2,005,370.89` — both exactly the
+local figures).
+
+| Clock day | Simulated date | Cash | Burn / mo | Runway | Window |
+|---|---|---|---|---|---|
+| +0 | 2026-09-13 | $2,012,880.19 | $163,481.89 | 12.3 | 11 wk |
+| +1 | 2026-09-14 | $2,007,112.29 | $163,481.89 | 12.3 | 11 wk |
+| +2 | 2026-09-15 | $2,019,944.43 | $163,481.89 | 12.4 | 11 wk |
+| +3 | 2026-09-16 | $2,007,542.41 | $163,481.89 | 12.3 | 11 wk |
+| +4 | 2026-09-17 | $2,005,857.54 | $163,481.89 | 12.3 | 11 wk |
+| +5 | 2026-09-18 | $2,005,370.89 | $163,481.89 | 12.3 | 11 wk |
+| +6 | 2026-09-19 | $2,005,370.89 | $163,481.89 | 12.3 | 11 wk |
+| +7 | 2026-09-20 | $2,005,370.89 | $153,119.68 | 13.1 | 12 wk |
+| +8 | 2026-09-21 | $2,001,132.20 | $153,119.68 | 13.1 | 12 wk |
+| +9 | 2026-09-22 | $2,015,399.21 | $153,119.68 | 13.2 | 12 wk |
+| +10 | 2026-09-23 | $2,002,958.36 | $153,119.68 | 13.1 | 12 wk |
+
+Read it as three separate claims.
+
+**Cash moves every day, and moving UP some days is correct.** Revenue lands
+weekly, spend lands daily, so day +2 and day +9 end richer than the day before.
+I pushed a red test earlier in the week for asserting cash falls monotonically;
+it does not, and should not. Reconciliation is exact (`discrepancy_cents = 0`)
+on every one of these days, and on weekly samples across the entire generated
+span — `packages/pipeline/src/as-of-projection.test.ts`.
+
+**Burn is now flat WITHIN a week and steps only at a real week boundary.** That
+is the `09423b4` fix. Before it, burn averaged the week in progress — a few days
+of spend inside a seven-day bucket — and runway jumped about +0.9 months every
+Monday, then decayed through the week.
+
+**The remaining +0.8-month step at day +7 is a measurement artifact, and I know
+exactly what causes it.** It is not the company spending less. The post-change
+burn window is "every complete week since the change point", so it GROWS one
+week at a time — 11 weeks, then 12. Payroll runs biweekly. I counted: the
+11-week window and the 12-week window contain **the same 8 payroll runs**, so
+payroll density falls from 0.727 to 0.667 runs per week and the mean dilutes by
+about 6%. Any averaging window whose length is not a whole number of pay cycles
+does this.
+
+I did NOT change it, on purpose. Fixing it means changing how the burn window
+is chosen, which changes the demo's headline runway figure — the number in the
+README, in HANDOFF, and in the recorded video — a few hours before submission.
+That trade is not worth it. The fix for after the hackathon is in "Open
+decisions" below.
+
+**For judging, freeze the clock.** Set the Worker var
+`DEMO_CLOCK_MINUTES_PER_DAY=0` in the Cloudflare dashboard; the ledger pins to
+the end of history and every documented figure is exactly what is on screen. No
+deploy needed either way — delete the var to go live again. With it frozen, the
+day +7 step cannot occur at all.
+
+## Where the stream is VISIBLE, not just working
+
+Two problems made a working stream look like a broken page. Both fixed in
+`3c25858`.
+
+1. **The page tore itself down twice a minute.** Seven render gates asked
+   `if (loading)` before `if (!data)`. `useDerived` is stale-while-revalidate on
+   purpose: it sets `loading: true` while KEEPING the previous data, so a
+   refresh is invisible. Gating on `loading` threw that away and swapped the
+   whole subtree for skeletons on every heartbeat — which reset the what-if
+   slider mid-drag and cut the incident voice note off mid-playback. Every gate
+   now tests for data. `IncidentPage` keeps a skeleton for a genuine first load
+   (`!data && loading`) so a real 404 still reaches NotFound.
+
+2. **Nothing said the account was moving.** A number that was slightly different
+   a minute ago is indistinguishable from a page that never changes.
+   `LiveBadge` now sits in the provenance strip on every route: the simulated
+   date, a dot that pulses while a fetch is in flight, and cash movement since
+   the viewer arrived. It does no money math beyond subtracting two integer-cent
+   readings the API returned, formatted by the shared helpers.
+
+   Its one real rule is the wrap case. The clock runs a ten-minute cycle and
+   then returns to the end of history, so cash jumps back up. Measured naively
+   the badge would announce the company earning a week's burn every ten minutes.
+   A backwards date re-baselines instead and says "clock restarted".
+   `advanceLive` is a pure function with its own tests.
 
 ## Open decisions, yours
 
@@ -105,6 +195,13 @@ proposal) carry their Monte Carlo tables in §6c.
 - **`npm run verify` in CI** (prop. 3) — one line after `npm test`; offline.
 - **`WhatIfResult.no_change_reason`** additive field so the web panel can show
   what voice already says (prop. 4).
+- **Post-hackathon: the growing burn window.** POST_CHANGE_SEGMENT grows one
+  week at a time while payroll is biweekly, so the mean dilutes ~6% whenever a
+  payroll-free week joins a window that already holds every payroll run
+  (measured above: 8 runs in both the 11- and 12-week window). Two candidate
+  fixes: grow the post-change window in whole pay cycles, or slide a
+  fixed-length window forward instead of growing it. Either changes the
+  headline runway figure, so it is your call, not a hackathon-night change.
 - **Post-hackathon:** `ids.ts` hashes entity into rate-shift ids while your
   dedup ignores entity — cold-start id instability; fixing changes `inc_5b393334`.
 

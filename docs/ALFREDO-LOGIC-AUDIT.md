@@ -18,7 +18,7 @@ Six commits on `main`, in order:
 | `d6089da` | Messy statement shapes in the test profile |
 | `d827134` | What-if says why nothing changed; credit-balance fix |
 
-Nothing in `packages/shared` was edited. Three additive diffs are proposed in §6
+Nothing in `packages/shared` was edited **by the audit commits, whose baseline is `c0c4399`**. Later work does touch it — see `docs/ALFREDO-WORKLOG.md` § "Every touch on packages/shared" for the full list, all additive or value-only. Three additive diffs are proposed in §6
 and are ready to apply.
 
 Every demo number is unchanged. `npm run verify` prints the same cash, runway,
@@ -191,7 +191,7 @@ than a quick patch.
 |---|---|
 | Contract §11: dedup needs same type **and same entity** | Entity is ignored for `BURN_RATE_SHIFT` on purpose (`c67391b`). Contract text is stale. |
 | Contract §6: σ is "a robust estimate based on baseline MAD" | σ is `max(1.4826 × MAD, sigma_floor_fraction × median)`. The floor is undocumented in the contract and, on a flat baseline, is the *entire* estimate. |
-| Contract §2: generator produces 16–20 weeks | Code accepts ≥ 8. |
+| Contract §2 still says 16–20 weeks | The generator produces `DEMO.WEEKS` = 52; the code accepts ≥ 8. |
 | PRD §9: statement reconciliation is P1 | Shipped in P0 — the real opening-balance check is live. |
 | `BUILD.md` Phase 1 checkboxes unchecked | All of it is built. |
 | `HANDOFF.md` §5: "`npm run verify` must print ALL CHECKS PASSED" | True only on macOS/Linux until the fix in 1.1. |
@@ -208,8 +208,8 @@ Every value in `config.ts`, and why it is that number rather than another.
 |---|---|---|
 | `WEEKS_PER_MONTH` | 52/12 | Calendar-exact. 4-week months understate monthly burn by 7.7%. |
 | `k_factor` | 0.5σ | Standard CUSUM slack: tuned to detect a 1σ shift fastest. |
-| `h_multiplier` | 4σ | ARL₀ ≈ 170 weeks — a false alarm roughly every 3 years — while still catching a 2σ shift in ~3 weeks. |
-| `min_baseline_weeks` | 8 | Smallest sample where median/MAD are stable; leaves 12 of 20 weeks to detect in. |
+| `h_multiplier` | 6σ | Measured, not assumed: 24%/yr false-alarm rate on a flat company, 96.7% detection of the planted shift, zero median lag — and byte-identical demo output to 4σ, so the cut was free. (Was 4σ; adopted in `c251c1f`.) |
+| `min_baseline_weeks` | 8 | Smallest sample where median/MAD are stable; leaves 44 of 52 weeks to detect in. |
 | `sigma_floor_fraction` | 2% | **Proposal 1 — raise to 5%.** |
 | `MIN_POST_CHANGE_WEEKS` | 4 | One odd week weighs ≤25% of the window; matches a monthly billing cycle. |
 | `TRAILING_WINDOW_WEEKS` | 8 | Two payroll cycles and two invoice cycles. |
@@ -235,15 +235,15 @@ Every value in `config.ts`, and why it is that number rather than another.
 
 `sigma_floor_fraction` looks like a divide-by-zero guard. It is not: when a
 baseline has no dispersion (a company on flat monthly contracts), the floor
-becomes the **entire** σ estimate, and h is then `4 × 2% = 8%` of the median.
+becomes the **entire** σ estimate, and h is then `6 × 2% = 12%` of the median.
 A single week 10% above normal alarms on its own. Test:
 `cusum.test.ts` › "alarms on a single modest week once the sigma floor is the
 only dispersion estimate".
 
-At 5%, h is 20% of the median — still sensitive, no longer trigger-happy.
+At 5%, h is 30% of the median — still sensitive, no longer trigger-happy.
 
-**No effect on the demo:** the demo's real σ is $1,123.95 on a median of
-$15,470.83, i.e. 7.3%, which is already above both floors. I verified this:
+**No effect on the demo:** the demo's real σ is $1,125.58 on a median of
+$15,471.00, i.e. 7.3%, which is already above both floors. I verified this:
 `npm run verify` is byte-identical either way. This is purely about the first
 real customer whose spending is flatter than Perch Analytics'.
 
@@ -300,8 +300,8 @@ additive — every existing consumer keeps working untouched.
 ### Also proposed, lower priority
 
 - One-off severity `HIGH` when the amount is ≥25% of monthly gross burn. Today
-  every material one-off is `MEDIUM`, so a $500,000 mistaken wire and a $13,827
-  Figma upgrade look equally urgent. Figma at 6.5% stays MEDIUM.
+  every material one-off is `MEDIUM`, so a $500,000 mistaken wire and a $14,055
+  Figma upgrade look equally urgent. Figma at 6.6% stays MEDIUM.
 - Mark `CHANGE_POINT_TOLERANCE_WEEKS` and `CONTRIBUTOR_SUM_TOLERANCE` as
   test-only in `config.ts`.
 
@@ -313,7 +313,7 @@ additive — every existing consumer keeps working untouched.
 
 `detectRecurringDrift(ledger, burn)` in `packages/detectors/src/recurring-drift.ts`.
 
-The gap it closes: Datadog went from $3,688 to $6,026 across five monthly
+The gap it closes: Datadog went from $3,959.25 to $5,721.50 across monthly
 charges and **neither existing detector could see it**. The one-off rule asks
 "was this payment unusual?" — every charge is normal next to the one before it.
 CUSUM sees the aggregate but attributes it to a week, not to a bill.
@@ -325,7 +325,7 @@ cost, so +100% on a $9 seat stays quiet.
 
 It reports **dollars per charge, not per week** — deliberately. Contributor
 decomposition already owns the weekly rate; a second weekly number would read as
-a contradiction. "$3,782 → $6,026 per charge" is complementary, and it is what
+a contradiction. "$3,959 → $5,722 per charge" is complementary, and it is what
 the invoice says.
 
 `attachDriftSignals` implements contract §10 grouping including the
@@ -336,7 +336,7 @@ and adds one OBSERVED evidence line. Contributors, rates, severity and summary
 are untouched. A drift with no parent creates no incident — `IncidentType` has
 no member for it, and inventing one is the duplicate-alerting §10 forbids.
 
-On the demo: exactly one drift (datadog, +59%, ~$2,213/month more), folded into
+On the demo: exactly one drift (datadog, +45%, $3,959.25 → $5,721.50/charge), folded into
 `inc_5b393334`. A new verify assertion covers it.
 
 ### Messy statement shapes (`d6089da`) — test profile only
@@ -361,7 +361,7 @@ reach Needs Review and still count; the never-settled pending row counts; the
 orphan leg is counted and warned about. CUSUM still finds the shift and only the
 planted one-off is flagged.
 
-The demo profile is asserted clean of every one of these shapes, and its 246
+The demo profile is asserted clean of every one of these shapes, and its 626
 transactions are unchanged.
 
 ### What-if now says why (`d827134`)
@@ -441,13 +441,17 @@ Growth is no longer a systematic cause.
 
 ### What that leaves, and a proposal
 
-The residual ~30%/year false-alarm rate is not growth. It is the `h = 4σ`
-decision interval, and it matches theory: for `k = 0.5σ, h = 4σ` the expected
+*(Written while `h` was still 4σ. Proposal 5 below was adopted, so `h` is 6σ
+today and the shipped false-alarm rate is the 24% row of the table. The
+reasoning is kept because it is what the decision was made on.)*
+
+The residual ~30%/year false-alarm rate was not growth. It was the `h = 4σ`
+decision interval, and it matched theory: for `k = 0.5σ, h = 4σ` the expected
 run length to a false alarm is ~170 weeks, which over 52 weeks is ~26%. The
 rationale I wrote in §5 was asserted from textbook values; it is now measured,
 and it was right.
 
-Whether 4σ is the right choice is a product decision, and it is Alfredo's. The
+Whether 4σ was the right choice is a product decision, and it is Alfredo's. The
 trade, on the same harness:
 
 | `h` | False alarm, flat | Detected | Median lag |
@@ -471,7 +475,7 @@ Why-flagged panel quote.
 
 ```
 npm run typecheck   all workspaces, no errors
-npm test            589 tests (was 508)
+npm test            1,273 tests, 4 skipped
 npm run verify      22 checks, ALL CHECKS PASSED (on Windows, finally)
 ```
 
@@ -480,13 +484,13 @@ Demo numbers, unchanged throughout:
 | | |
 |---|---|
 | cash | $2,012,880.19 |
-| monthly net burn | $160,328.74 (POST_CHANGE_SEGMENT, 2026-06-29..2026-09-13) |
-| runway | 12.6 months (17.5 before the shift) |
-| CUSUM | σ $1,123.95 · k $561.98 · h $4,495.81 · alarm 2026-07-20 · change point 2026-06-29 · lag 3 weeks |
-| variable spend | $15,352.18 → $19,479.09 /wk (+$4,127/wk) |
-| primary driver | aws +$2,999/wk |
-| one-off | figma $13,827.00 = 12.0× median $1,152.14 |
-| incidents | `inc_5b393334` · `inc_079155c3` |
+| monthly net burn | $163,481.89 (POST_CHANGE_SEGMENT, 2026-06-29..2026-09-13) |
+| runway | 12.3 months (17 before the shift) |
+| CUSUM | σ $1,125.58 · k $562.79 · h $6,753.51 · alarm 2026-07-20 · change point 2026-06-29 · lag 3 weeks |
+| variable spend | $15,403.41 → $19,374.12 /wk (+$3,971/wk) |
+| primary driver | aws +$3,144/wk |
+| one-off | figma $14,055.00 = 12.0× median $1,171.09 |
+| incidents | `inc_5b393334` · `inc_40e99e9c` |
 
 Every commit above was gated on those numbers being byte-identical. The only
 deliberate change to what an incident *contains* is the drift signal folded into

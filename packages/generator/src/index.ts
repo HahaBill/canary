@@ -2,7 +2,7 @@
  * @canary/generator — the deterministic synthetic company generator.
  *
  * This package is the source of truth for every financial figure in Canary
- * (docs/DATA_AND_DETECTOR_CONTRACT.md §2). It produces 20 complete Mon–Sun weeks of
+ * (docs/DATA_AND_DETECTOR_CONTRACT.md §2). It produces 52 complete Mon–Sun weeks of
  * history for the fictional Perch Analytics, Inc., generated *backward* from the
  * Canary Sandbox Bank closing balance so the ledger closes on that anchor exactly.
  *
