@@ -103,6 +103,11 @@ function subscribeToCache(onChange: () => void): () => void {
   return () => cacheListeners.delete(onChange);
 }
 
+/** Test-only window into cache notifications; production uses the hooks. */
+export function subscribeToCacheForTests(onChange: () => void): () => void {
+  return subscribeToCache(onChange);
+}
+
 /** Drop cached responses (used by the retry buttons and by tests). */
 export function clearApiCache(): void {
   activeSource = null;
@@ -189,7 +194,17 @@ function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** Shared loading/error/cancellation machinery. `key` identifies the resource. */
+/**
+ * Shared loading/error/cancellation machinery. `key` identifies the resource.
+ *
+ * STALE-WHILE-REVALIDATE. The demo clock advances the backend a simulated day
+ * at a time, and the live heartbeat (`startLiveRefresh`) clears the cache to
+ * pick that up. A refresh must therefore keep showing the numbers it already
+ * has while the new ones load — resetting to skeletons would make the whole
+ * dashboard blink on every heartbeat, which reads as broken, not live. Data is
+ * only dropped when the KEY changes (a different incident, a different range):
+ * showing the previous resource under a new key would be showing the wrong data.
+ */
 function useAsyncResource<T>(key: string, load: () => Promise<Loaded<T>>): AsyncResource<T> {
   const loadRef = useRef(load);
   loadRef.current = load;
@@ -201,17 +216,35 @@ function useAsyncResource<T>(key: string, load: () => Promise<Loaded<T>>): Async
     error: null,
     source: null,
   });
+  const lastKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    setState({ data: null, loading: true, error: null, source: null });
+    const keyChanged = lastKeyRef.current !== key;
+    lastKeyRef.current = key;
+    setState((prev) =>
+      keyChanged || prev.data === null
+        ? { data: null, loading: true, error: null, source: null }
+        : { ...prev, loading: true, error: null },
+    );
     loadRef
       .current()
       .then(({ data, source }) => {
         if (active) setState({ data, loading: false, error: null, source });
       })
       .catch((err: unknown) => {
-        if (active) setState({ data: null, loading: false, error: messageOf(err), source: null });
+        if (!active) return;
+        setState((prev) => {
+          // A failed BACKGROUND refresh keeps the numbers already on screen: a
+          // blip in the heartbeat must never turn a working dashboard into an
+          // error page mid-demo. The next heartbeat retries; the console keeps
+          // the evidence. A failed FIRST load still reports normally.
+          if (prev.data !== null) {
+            console.warn(`canary: background refresh of ${key} failed; keeping previous data`, err);
+            return { ...prev, loading: false };
+          }
+          return { data: null, loading: false, error: messageOf(err), source: null };
+        });
       });
     return () => {
       active = false;
@@ -219,6 +252,25 @@ function useAsyncResource<T>(key: string, load: () => Promise<Loaded<T>>): Async
   }, [key, version]);
 
   return { ...state, reload: clearApiCache };
+}
+
+/**
+ * The heartbeat that makes the dashboard live. The backend's demo clock moves
+ * one simulated day per real minute; this clears the response cache on an
+ * interval so every mounted hook re-fetches and the new day appears in place —
+ * cash ticks, the "as of" date in the provenance banner rolls forward, and a
+ * transaction posts while a founder watches. Hidden tabs skip the work.
+ *
+ * Started once from main.tsx. Never started by tests, which is the point of it
+ * living behind an explicit call instead of a module side effect.
+ */
+export function startLiveRefresh(intervalMs = 30_000): () => void {
+  const tick = () => {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+    clearApiCache();
+  };
+  const handle = setInterval(tick, intervalMs);
+  return () => clearInterval(handle);
 }
 
 /** The whole derived demo object: provenance, company, cash, burn, incidents. */
