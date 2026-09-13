@@ -34,10 +34,34 @@ export function shouldIgnoreInbound(payload: SendblueInboundPayload, ownNumber?:
   return outbound || fromSelf || !payload.content || payload.content.trim().length === 0;
 }
 
-/** E.164-ish comparison ignoring formatting. */
+/**
+ * North American numbers, written any way a human writes them.
+ *
+ * Sendblue delivers `from_number` in E.164 (`+17875551234`), but the number an
+ * operator pastes into `FOUNDER_PHONE` / `ALLOWED_PHONES` is whatever they had
+ * in their contacts — often `787-555-1234`, with no country code. Comparing raw
+ * digit strings makes those two different numbers, so Canary silently answers
+ * nobody and the log just says `sender_not_allowed`. That is a miserable thing
+ * to debug live, so the leading NANP `1` is optional on both sides.
+ *
+ * Deliberately narrow: the `1` is only dropped when exactly ten digits remain,
+ * which is the North American plan. A number under any other country code keeps
+ * all of its digits and cannot collide with a US one — this loosens the match
+ * for one specific, well-defined case, not in general. Every other difference
+ * still means a different number, because the reply carries the company's cash
+ * position and must never reach someone who was not configured to see it.
+ */
+function nanp(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  return digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+}
+
+/** E.164-ish comparison ignoring formatting and an optional NANP country code. */
 export function samePhone(a: string | undefined, b: string | undefined): boolean {
   if (!a || !b) return false;
-  return a.replace(/\D/g, "") === b.replace(/\D/g, "");
+  const left = nanp(a);
+  const right = nanp(b);
+  return left.length > 0 && left === right;
 }
 
 /** Numbers Canary will talk to: FOUNDER_PHONE plus optional comma-separated ALLOWED_PHONES. */

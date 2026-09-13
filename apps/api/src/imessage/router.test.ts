@@ -95,6 +95,32 @@ describe("webhook auth", () => {
     expect(h2.messages[0]!.number).toBe(STRANGER);
   });
 
+  it("answers a number configured without its country code", async () => {
+    // Sendblue delivers E.164; people paste what is in their contacts. If those
+    // two spellings do not match, Canary answers nobody and the only clue is a
+    // `sender_not_allowed` log line — the worst possible thing to discover
+    // while someone is texting the demo from the audience.
+    const h = createHarness({ env: { ALLOWED_PHONES: "787-628-9072" } });
+    const res = await h.authed<SendblueWebhookResponse>(WEBHOOK, inbound("HELP", { from_number: "+17876289072" }));
+
+    expect(res.body.reply_sent).toBe(true);
+    expect(h.messages[0]!.number).toBe("+17876289072");
+  });
+
+  it("still refuses a number that merely looks similar", async () => {
+    // The country code is optional; nothing else is. A reply carries the
+    // company's cash position.
+    const h = createHarness({ env: { ALLOWED_PHONES: "787-628-9072" } });
+
+    // (An EMPTY from_number is a different path: `replyTarget` deliberately
+    // falls back to the conversation number, so it is not a matching case.)
+    for (const from of ["+17876289073", "+447876289072", "6289072"]) {
+      const res = await h.authed<SendblueWebhookResponse>(WEBHOOK, inbound("HELP", { from_number: from }));
+      expect(res.body.ignored, `must ignore ${from || "(empty)"}`).toBe(true);
+    }
+    expect(h.messages).toHaveLength(0);
+  });
+
   it("treats a string 'true' is_outbound and messages from its own line as outbound", async () => {
     const h = createHarness();
     expect((await h.authed<SendblueWebhookResponse>(WEBHOOK, inbound("WHY", { is_outbound: "true" }))).body.ignored).toBe(true);
