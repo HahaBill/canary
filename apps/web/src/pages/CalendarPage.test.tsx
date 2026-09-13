@@ -7,6 +7,29 @@ import { formatDateMedium, WEEKDAY_LABELS } from "@/lib/format.ts";
 import { installApiStub, renderApp, setViewport, type RecordedRequest } from "@/test-utils.tsx";
 
 const derived = buildMockDerived();
+
+/**
+ * Pages the calendar to whichever month holds `date` and returns its day button.
+ * The demo span is a year, so where a planted event sits is a property of the
+ * fixture; a test may not assume it is two clicks back from today.
+ */
+async function stepBackTo(date: string) {
+  const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const target = date.slice(0, 7);
+
+  for (let hops = 0; hops < 24; hops++) {
+    const day = screen.queryByRole("button", { name: new RegExp(`^${date}`) });
+    if (day) return day;
+
+    const heading = screen.getByRole("heading", { name: /^[A-Z][a-z]+ \d{4}$/ });
+    const [monthName, year] = heading.textContent!.split(" ");
+    const current = `${year}-${String(MONTHS.indexOf(monthName!) + 1).padStart(2, "0")}`;
+
+    fireEvent.click(screen.getByRole("button", { name: current > target ? "Previous month" : "Next month" }));
+    await screen.findByRole("heading", { name: /^[A-Z][a-z]+ \d{4}$/ });
+  }
+  throw new Error(`calendar never reached ${date}`);
+}
 /** The demo clock is the end of history, so "today" is 2026-09-13. */
 const today = derived.provenance.end_date;
 
@@ -73,17 +96,14 @@ describe("CalendarPage", () => {
     renderApp("/calendar");
     await screen.findByRole("button", { name: /^2026-09-01/ });
 
-    fireEvent.click(screen.getByRole("button", { name: "Previous month" }));
-    expect(await screen.findByRole("heading", { name: "August 2026" })).toBeInTheDocument();
-
-    // 2026-08-03 also holds a full week of posted charges and a busy block.
-    const oneOffDay = await screen.findByRole("button", { name: /^2026-08-03/ });
+    // Dates come from the incidents, not from literals: the demo span is a year
+    // and the planted events sit a fixed number of weeks before its end.
+    const oneOffDate = derived.one_off_incident!.alarm_date!;
+    const oneOffDay = await stepBackTo(oneOffDate);
     expect(within(oneOffDay).getByText(derived.one_off_incident!.title)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Previous month" }));
-    expect(await screen.findByRole("heading", { name: "July 2026" })).toBeInTheDocument();
     const changePoint = derived.primary_incident!.estimated_change_point!;
-    const changePointDay = await screen.findByRole("button", { name: new RegExp(`^${changePoint}`) });
+    const changePointDay = await stepBackTo(changePoint);
     expect(within(changePointDay).getByText(/Change point/)).toBeInTheDocument();
   });
 

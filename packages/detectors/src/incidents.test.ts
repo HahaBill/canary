@@ -115,7 +115,14 @@ describe("buildIncidents", () => {
     const incident = incidents.find((i) => i.type === "BURN_RATE_SHIFT")!;
 
     expect(incidents.filter((i) => i.type === "BURN_RATE_SHIFT")).toHaveLength(1);
-    expect(incident.child_signals.map((c) => c.entity).sort()).toEqual(["ashby", "datadog"]);
+    // Every positive contributor except the top one becomes a child signal.
+    // Which entities qualify depends on the span, so derive it rather than pin it.
+    const expectedChildren = incident.contributors
+      .filter((c) => c.delta_weekly_cents > 0 && c.entity !== incident.entity)
+      .map((c) => c.entity)
+      .sort();
+    expect(incident.child_signals.map((c) => c.entity).sort()).toEqual(expectedChildren);
+    expect(expectedChildren).toContain("datadog");
     expect(incident.child_signals.map((c) => c.entity)).not.toContain("aws");
     expect(incident.child_signals.every((c) => c.delta_weekly_cents > 0)).toBe(true);
     expect(incident.child_signals[0]!.category).not.toBeNull();

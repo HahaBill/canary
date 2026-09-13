@@ -58,6 +58,60 @@ export const AWS_MIN_WEEKLY_CENTS: Cents = 150_000;
 /** Secondary driver: datadog's monthly bill grows with the ramp (more infra → more logs). */
 export const DATADOG_SHIFT_FRACTION = 0.55;
 
+
+// ---------------------------------------------------------------------------
+// A year of history: growth, seasonality, and where the planted events sit
+// ---------------------------------------------------------------------------
+
+/**
+ * Fixture positions are WEEKS BEFORE THE END, never absolute week indexes.
+ *
+ * The demo span is a year, but the generator still has to produce a coherent
+ * 16-week fixture for tests, and "the shift started ten weeks ago" has to stay
+ * true in both. Absolute indexes would bunch every planted event into the first
+ * quarter of a year-long ledger and fall off the end of a short one.
+ */
+export const WEEKS_BEFORE_END = {
+  CHANGE_START: 10,
+  ONE_OFF: 5,
+  UNKNOWN_VENDOR: [9, 6, 3] as readonly number[],
+  FRANCHISE_TAX: 30,
+  REFUND: 20,
+  TRANSFER_DEMO: 35,
+  TRANSFER_TEST: 12,
+  FINANCING: 28,
+  ANNUAL_RENEWAL: 24,
+} as const;
+
+/**
+ * Headcount grows over the year, so payroll does too: roughly 8 people at the
+ * start and 14 at the end, stepping once a quarter as hires land rather than
+ * drifting smoothly, because that is how payroll actually moves.
+ *
+ * Growth lives HERE and in revenue, deliberately NOT in the monitored variable
+ * series. CUSUM baselines on the first eight weeks of whatever it is given; a
+ * year of organic growth in the monitored series would make it alarm on the
+ * growth long before the planted event, and the change point would be
+ * meaningless. Payroll is a FIXED category and revenue is an inflow, so both are
+ * outside the monitored series. The company visibly grows, and the detector
+ * still answers the question it was asked.
+ */
+export const PAYROLL_GROWTH_STEPS: readonly number[] = [0.58, 0.72, 0.86, 1];
+
+/** Weekly revenue a year ago as a fraction of today's: ~1.6%/week compounding. */
+export const REVENUE_START_FRACTION = 0.45;
+
+/**
+ * Holiday slowdown on the monitored series over the turn of the year. CUSUM is
+ * one-sided upward, so a dip can never cause a false alarm, and the demo span's
+ * first eight weeks (mid-September onward) are clear of it, leaving the baseline
+ * clean.
+ */
+export const HOLIDAY_DIP_FRACTION = 0.08;
+
+/** Travel and equipment recur on this cycle rather than only in the first weeks. */
+export const CARD_SPEND_CYCLE_WEEKS = 20;
+
 // ---------------------------------------------------------------------------
 // Fixed (predictable) spend — excluded from the CUSUM series, still in burn
 // ---------------------------------------------------------------------------
@@ -281,7 +335,8 @@ export const MONTHLY_VARIABLE: MonthlySpec[] = [
 ];
 
 /** The pending/settled pair is carved out of this vendor's Nth occurrence. */
-export const PENDING_PAIR = { merchant_normalized: "vercel", occurrence_index: 1 } as const;
+/** Recent, so the demo's pending/settled pair is current news. Clamped to the last occurrence on short spans. */
+export const PENDING_PAIR = { merchant_normalized: "vercel", occurrence_index: 10 } as const;
 
 // ---------------------------------------------------------------------------
 // Employee card spend (card account; settled biweekly by a CARD_SETTLEMENT pair)

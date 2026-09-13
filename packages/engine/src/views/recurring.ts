@@ -5,8 +5,9 @@
  * nothing is assumed from the merchant name, and no model is asked. A series is
  * only projected when it is regular enough to be worth a founder's attention:
  * enough observations, a median gap that matches one of three cadences, and
- * most gaps close to it. `typical_amount_cents` is the MEDIAN, so one true-up
- * cannot inflate what Canary says to expect next month.
+ * most gaps close to it. `typical_amount_cents` is the median of the most RECENT
+ * observations: a median so one true-up cannot inflate it, recent so a year of
+ * history does not project the smaller company the founder used to run.
  *
  * These are ESTIMATEs in the evidence taxonomy: "expected · from history".
  */
@@ -42,6 +43,7 @@ const CADENCES: readonly CadenceSpec[] = RECURRING.CADENCES;
 const MONTHLY = CADENCES.find((c) => c.cadence === "monthly")!;
 
 const MIN_ON_CADENCE_SHARE = RECURRING.MIN_ON_CADENCE_SHARE;
+const RECENT_OBSERVATIONS = RECURRING.RECENT_OBSERVATIONS;
 const DAY_OF_MONTH_TOLERANCE = RECURRING.DAY_OF_MONTH_TOLERANCE_DAYS;
 const MIN_MONTHLY_FALLBACK_GAP = RECURRING.MIN_MONTHLY_FALLBACK_GAP_DAYS;
 /** Guard against a pathological horizon; 5 years of weekly charges. */
@@ -113,7 +115,11 @@ function detectSeries(
     entity,
     category: dominantCategory(observations),
     cadence: spec.cadence,
-    typical_amount_cents: Math.round(median(days.map((d) => d.amount))),
+    // The median of the RECENT observations, not of all of them. Over a year of
+    // history a growing company's older payroll and revenue would drag the
+    // projection down to a rate it has already left behind. Still a median, so a
+    // single true-up cannot inflate what Canary says to expect next month.
+    typical_amount_cents: Math.round(median(days.slice(-RECENT_OBSERVATIONS).map((d) => d.amount))),
     observations: days.length,
     last_seen: lastSeen,
     next_dates: projectDates(spec.cadence, lastSeen, historyEnd, horizonEnd),

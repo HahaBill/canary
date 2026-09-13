@@ -16,19 +16,19 @@ describe("dates", () => {
 
   it("builds N complete weeks ending at end date", () => {
     const starts = weekStartsEndingAt(DEMO.END_DATE, DEMO.WEEKS);
-    expect(starts).toHaveLength(20);
-    expect(starts[19]).toBe("2026-09-07");
-    expect(starts[0]).toBe("2026-04-27");
-    expect(historyStart(DEMO.END_DATE, DEMO.WEEKS)).toBe("2026-04-27");
+    expect(starts).toHaveLength(DEMO.WEEKS);
+    expect(starts[DEMO.WEEKS - 1]).toBe(weekStart(DEMO.END_DATE));
+    expect(historyStart(DEMO.END_DATE, DEMO.WEEKS)).toBe(starts[0]);
+    expect(daysBetween(starts[0]!, DEMO.END_DATE)).toBe(DEMO.WEEKS * 7 - 1);
     for (let i = 1; i < starts.length; i++) expect(daysBetween(starts[i - 1]!, starts[i]!)).toBe(7);
   });
 
   it("weekIndexOf buckets by calendar week", () => {
     const hs = historyStart(DEMO.END_DATE, DEMO.WEEKS);
-    expect(weekIndexOf("2026-04-27", hs)).toBe(0);
-    expect(weekIndexOf("2026-05-03", hs)).toBe(0);
-    expect(weekIndexOf("2026-05-04", hs)).toBe(1);
-    expect(weekIndexOf(DEMO.END_DATE, hs)).toBe(19);
+    expect(weekIndexOf(hs, hs)).toBe(0);
+    expect(weekIndexOf(addDays(hs, 6), hs)).toBe(0);
+    expect(weekIndexOf(addDays(hs, 7), hs)).toBe(1);
+    expect(weekIndexOf(DEMO.END_DATE, hs)).toBe(DEMO.WEEKS - 1);
     expect(addDays("2026-02-28", 1)).toBe("2026-03-01");
   });
 });

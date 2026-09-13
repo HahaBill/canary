@@ -32,7 +32,11 @@ describe("GET /api/ledger", () => {
 
     const { pivot } = body;
     expect(pivot.granularity).toBe("month");
-    expect(pivot.periods.map((p) => p.key)).toEqual(["2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09"]);
+    // Derived from the span, not hard-coded: the demo history is a year long.
+    expect(pivot.periods[0]!.key).toBe(h.derived.provenance.start_date.slice(0, 7));
+    expect(pivot.periods[pivot.periods.length - 1]!.key).toBe(h.derived.provenance.end_date.slice(0, 7));
+    expect(pivot.periods.map((p) => p.key)).toEqual([...pivot.periods.map((p) => p.key)].sort());
+    expect(new Set(pivot.periods.map((p) => p.key)).size).toBe(pivot.periods.length);
     expect(pivot.history_start).toBe(h.derived.provenance.start_date);
     expect(pivot.history_end).toBe(h.derived.provenance.end_date);
     expect(pivot.weeks_of_history).toBe(h.derived.weeks.length);

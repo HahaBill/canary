@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildMockDerived, mockWhatIf } from "./mock-derived.ts";
 import { SAMPLE_EXPECTED, SAMPLE_TRANSACTIONS } from "./sample-transactions.ts";
+import { DEMO } from "../config.ts";
 
 describe("fixtures", () => {
   it("sample transactions cash sum matches hand-verified expectation", () => {
@@ -11,8 +12,8 @@ describe("fixtures", () => {
   it("mock derived is well-formed and flagged as mock", () => {
     const d = buildMockDerived();
     expect(d.provenance.history_source).toBe("mock");
-    expect(d.weeks).toHaveLength(20);
-    expect(d.cusum_statistic_cents).toHaveLength(20);
+    expect(d.weeks).toHaveLength(DEMO.WEEKS);
+    expect(d.cusum_statistic_cents).toHaveLength(DEMO.WEEKS);
     expect(d.primary_incident?.contributors[0]?.entity).toBe("aws");
     expect(d.burn.runway_months).not.toBeNull();
     const w = mockWhatIf(d, "aws", -20);

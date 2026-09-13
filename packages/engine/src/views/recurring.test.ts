@@ -210,9 +210,13 @@ describe("projectRecurring — demo ledger", () => {
   const byEntity = new Map(detected.map((s) => [s.entity, s]));
 
   it("finds the cadences the generator planted", () => {
-    expect(byEntity.get("gusto_payroll")).toMatchObject({ cadence: "biweekly", category: "PAYROLL", observations: 10 });
-    expect(byEntity.get("wework")).toMatchObject({ cadence: "monthly", category: "RENT", observations: 5 });
-    expect(byEntity.get("aws")).toMatchObject({ cadence: "weekly", category: "CLOUD_INFRASTRUCTURE", observations: 20 });
+    // Counts come from the span, not from a hard-coded 20 weeks: the demo
+    // history is a year and the test fixture has to follow it.
+    const weeks = demo.fixture.weeks;
+    expect(byEntity.get("gusto_payroll")).toMatchObject({ cadence: "biweekly", category: "PAYROLL", observations: Math.floor(weeks / 2) });
+    expect(byEntity.get("wework")).toMatchObject({ cadence: "monthly", category: "RENT" });
+    expect(byEntity.get("wework")!.observations).toBeGreaterThanOrEqual(Math.floor(weeks / 5));
+    expect(byEntity.get("aws")).toMatchObject({ cadence: "weekly", category: "CLOUD_INFRASTRUCTURE", observations: weeks });
     expect(byEntity.get("stripe_payouts")).toMatchObject({ cadence: "weekly", category: "CUSTOMER_REVENUE" });
     expect(byEntity.get("deel")).toMatchObject({ cadence: "biweekly" });
     expect(byEntity.get("datadog")).toMatchObject({ cadence: "monthly" });
@@ -239,9 +243,17 @@ describe("projectRecurring — demo ledger", () => {
     const figma = byEntity.get(demo.fixture.one_off.entity)!;
     expect(figma.cadence).toBe("monthly");
     expect(Math.abs(figma.typical_amount_cents)).toBeLessThan(demo.fixture.one_off.amount_cents / 4);
-    // Untagged, the true-up breaks the cadence and Canary says nothing.
+
+    // Untagged, the true-up is just one odd payment among a year of monthly
+    // ones, so the vendor is still recognisably monthly. Over a 20-week history
+    // the same payment broke the cadence outright and no series was projected.
+    // Either way the guarantee that matters holds: the projection is a median,
+    // so a single true-up never becomes what Canary tells the founder to expect.
     const untagged = projectRecurring(buildDemoLedger({ tagOneOff: false }).ledger, { horizonEnd });
-    expect(untagged.some((s) => s.entity === demo.fixture.one_off.entity)).toBe(false);
+    const untaggedFigma = untagged.find((s) => s.entity === demo.fixture.one_off.entity);
+    if (untaggedFigma) {
+      expect(Math.abs(untaggedFigma.typical_amount_cents)).toBeLessThan(demo.fixture.one_off.amount_cents / 4);
+    }
   });
 
   it("projects only dates after history and inside the horizon", () => {

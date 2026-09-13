@@ -101,6 +101,15 @@ export const SEVERITY_THRESHOLDS = {
 export const RECURRING = {
   /** Prior observations required before a vendor is projected. */
   MIN_OBSERVATIONS: 3,
+  /**
+   * How many of the most recent observations set `typical_amount_cents`.
+   * A year of history contains the company the founder USED to be: payroll at
+   * eight people, revenue at half today's. A median over all of it projects a
+   * past rate. Six recent observations is half a year of a monthly bill and
+   * three months of a biweekly one, enough for the median to stay robust
+   * against a single true-up while still tracking the current rate.
+   */
+  RECENT_OBSERVATIONS: 6,
   /** Share of inter-payment gaps that must land within the cadence tolerance. */
   MIN_ON_CADENCE_SHARE: 0.7,
   /** Day-of-month drift tolerated for monthly bills. */
@@ -152,11 +161,17 @@ export const CONVERSATION = {
 export const DEMO = {
   SEED: 20260912,
   TEST_SEED: 424242,
-  WEEKS: 20,
-  /** Sunday. History covers 20 complete Mon–Sun weeks ending here. */
+  /** A full year of history. A founder's account does not begin 20 weeks ago. */
+  WEEKS: 52,
+  /** Sunday. History covers 52 complete Mon–Sun weeks ending here. */
   END_DATE: "2026-09-13",
-  /** New regime begins at this 0-based week index (contract §5 recommends 10–11 of 20). */
-  CHANGE_START_INDEX: 10,
+  /**
+   * New regime begins at this 0-based week index: ten weeks before the end, so
+   * the shift is recent news rather than ancient history. The generator derives
+   * it from the span (`weeks - CHANGE_START_WEEKS_BEFORE_END`) so a shorter test
+   * span still puts the shift near its end.
+   */
+  CHANGE_START_INDEX: 42,
   /** Ramp the shift in over this many weeks so it reads as "sustained drift". */
   CHANGE_RAMP_WEEKS: 3,
   PRIMARY_DRIVER_ENTITY: "aws",

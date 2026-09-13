@@ -86,7 +86,11 @@ import {
   UNKNOWN_VENDOR_AMOUNT_CENTS,
   UNKNOWN_VENDOR_DAY_OFFSET,
   UNKNOWN_VENDOR_NOISE,
-  UNKNOWN_VENDOR_WEEKS,
+  CARD_SPEND_CYCLE_WEEKS,
+  HOLIDAY_DIP_FRACTION,
+  PAYROLL_GROWTH_STEPS,
+  REVENUE_START_FRACTION,
+  WEEKS_BEFORE_END,
   UPWORK,
   VARIABLE_WEEKLY_BASE_CENTS,
   type AccountKey,
@@ -216,7 +220,25 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
   const weekStarts = weekStartsEndingAt(endDate, weeks);
   const start = historyStartOf(endDate, weeks);
   const lastDay = addDays(weekStarts[weeks - 1]!, 6);
-  const changeStart = Math.min(DEMO.CHANGE_START_INDEX, weeks - 3);
+  const changeStart = Math.min(DEMO.CHANGE_START_INDEX, weeks - WEEKS_BEFORE_END.CHANGE_START, weeks - 3);
+  /** A planted event's week index, counted back from the end of the span. */
+  const weekBeforeEnd = (n: number): number => weeks - 1 - n;
+  /**
+   * Headcount grows over the year, so payroll steps up with it. PAYROLL is a
+   * FIXED category, so this growth never reaches the CUSUM series.
+   */
+  const payrollFactor = (i: number): number => {
+    const step = Math.min(PAYROLL_GROWTH_STEPS.length - 1, Math.floor((i / weeks) * PAYROLL_GROWTH_STEPS.length));
+    return PAYROLL_GROWTH_STEPS[step]!;
+  };
+  /** Revenue compounds up to today's rate. An inflow, so also outside the CUSUM series. */
+  const revenueFactor = (i: number): number =>
+    weeks <= 1 ? 1 : Math.pow(REVENUE_START_FRACTION, 1 - i / (weeks - 1));
+  /** The turn of the year is quiet. A dip can never trip a one-sided upward CUSUM. */
+  const holidayFactor = (i: number): number => {
+    const monthDay = weekStarts[i]!.slice(5);
+    return monthDay >= "12-20" || monthDay <= "01-03" ? 1 - HOLIDAY_DIP_FRACTION : 1;
+  };
   const noise = weeklyNoise(seed, weeks);
 
   const accountId: Record<AccountKey, string> = {
@@ -242,7 +264,7 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
         key: `payroll-${i}`,
         account: "checking",
         date: day(i, PAYROLL.day_offset),
-        amount_cents: -jitterCents(r, PAYROLL.amount_cents, PAYROLL.noise),
+        amount_cents: -jitterCents(r, Math.round(PAYROLL.amount_cents * payrollFactor(i)), PAYROLL.noise),
         merchant_raw: PAYROLL.merchant_raw,
         merchant_normalized: PAYROLL.merchant_normalized,
         description: PAYROLL.description,
@@ -279,7 +301,8 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
 
       // One occurrence becomes a pending row superseded by a settled row the next day.
       const isPendingPair =
-        spec.merchant_normalized === PENDING_PAIR.merchant_normalized && occurrence === PENDING_PAIR.occurrence_index;
+        spec.merchant_normalized === PENDING_PAIR.merchant_normalized &&
+        occurrence === Math.min(PENDING_PAIR.occurrence_index, dates.length - 1);
       if (!isPendingPair) {
         push(base);
         return;
@@ -298,7 +321,7 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
         key: `revenue-${i}`,
         account: "checking",
         date: day(i, REVENUE.day_offset),
-        amount_cents: jitterCents(r, REVENUE.amount_cents, REVENUE.noise),
+        amount_cents: jitterCents(r, Math.round(REVENUE.amount_cents * revenueFactor(i)), REVENUE.noise),
         merchant_raw: REVENUE.merchant_raw,
         merchant_normalized: REVENUE.merchant_normalized,
         description: REVENUE.description,
@@ -362,9 +385,9 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
     const travel = rng("card-travel");
     const equipment = rng("card-equipment");
     for (let i = 0; i < weeks; i++) {
-      const t = CARD_TRAVEL[i];
+      const t = CARD_TRAVEL[i % CARD_SPEND_CYCLE_WEEKS];
       if (t) pushCardSpend(i, t, `card-travel-${i}`, travel);
-      const e = CARD_EQUIPMENT[i];
+      const e = CARD_EQUIPMENT[i % CARD_SPEND_CYCLE_WEEKS];
       if (e) pushCardSpend(i, e, `card-equipment-${i}`, equipment);
     }
   }
@@ -372,7 +395,9 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
   // -- Unknown real vendor (Ashby): empty description, no rule will match ----
   {
     const r = rng("unknown-vendor");
-    for (const i of UNKNOWN_VENDOR_WEEKS) {
+    for (const n of WEEKS_BEFORE_END.UNKNOWN_VENDOR) {
+      const i = weekBeforeEnd(n);
+      if (i < 0) continue;
       if (i >= weeks) continue;
       push({
         key: `unknown-vendor-${i}`,
@@ -389,11 +414,12 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
   }
 
   // -- One-shot planted events ---------------------------------------------
-  if (FRANCHISE_TAX.week_index < weeks) {
+  const franchiseWeek = weekBeforeEnd(WEEKS_BEFORE_END.FRANCHISE_TAX);
+  if (franchiseWeek >= 0) {
     push({
       key: "franchise-tax",
       account: "checking",
-      date: day(FRANCHISE_TAX.week_index, FRANCHISE_TAX.day_offset),
+      date: day(franchiseWeek, FRANCHISE_TAX.day_offset),
       amount_cents: -FRANCHISE_TAX.amount_cents,
       merchant_raw: FRANCHISE_TAX.merchant_raw,
       merchant_normalized: FRANCHISE_TAX.merchant_normalized,
@@ -403,11 +429,11 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
     });
   }
   const refundDraft =
-    REFUND.week_index < weeks
+    weekBeforeEnd(WEEKS_BEFORE_END.REFUND) >= 0
       ? push({
           key: "refund",
           account: "checking",
-          date: day(REFUND.week_index, REFUND.day_offset),
+          date: day(weekBeforeEnd(WEEKS_BEFORE_END.REFUND), REFUND.day_offset),
           amount_cents: REFUND.amount_cents,
           merchant_raw: REFUND.merchant_raw,
           merchant_normalized: REFUND.merchant_normalized,
@@ -420,10 +446,11 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
   const transferPairIds: string[] = [];
   for (const [n, t] of TRANSFERS.entries()) {
     if (t.profile === "test" && profile !== "test") continue;
-    if (t.week_index >= weeks) continue;
+    const transferWeek = weekBeforeEnd(t.profile === "test" ? WEEKS_BEFORE_END.TRANSFER_TEST : WEEKS_BEFORE_END.TRANSFER_DEMO);
+    if (transferWeek < 0) continue;
     const pairKey = `xfer_${seed}_${n + 1}`;
     transferPairIds.push(pairKey);
-    const date = day(t.week_index, t.day_offset);
+    const date = day(transferWeek, t.day_offset);
     push({
       key: `${pairKey}-out`,
       account: "checking",
@@ -451,12 +478,12 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
   }
 
   const financingKeys: string[] = [];
-  if (profile === "test" && TEST_FINANCING.week_index < weeks) {
+  if (profile === "test" && weekBeforeEnd(WEEKS_BEFORE_END.FINANCING) >= 0) {
     financingKeys.push("financing");
     push({
       key: "financing",
       account: "checking",
-      date: day(TEST_FINANCING.week_index, TEST_FINANCING.day_offset),
+      date: day(weekBeforeEnd(WEEKS_BEFORE_END.FINANCING), TEST_FINANCING.day_offset),
       amount_cents: TEST_FINANCING.amount_cents,
       merchant_raw: TEST_FINANCING.merchant_raw,
       merchant_normalized: TEST_FINANCING.merchant_normalized,
@@ -465,11 +492,11 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
       category_hint: "FINANCING",
     });
   }
-  if (profile === "test" && TEST_ANNUAL_RENEWAL.week_index < weeks) {
+  if (profile === "test" && weekBeforeEnd(WEEKS_BEFORE_END.ANNUAL_RENEWAL) >= 0) {
     push({
       key: "annual-renewal",
       account: "checking",
-      date: day(TEST_ANNUAL_RENEWAL.week_index, TEST_ANNUAL_RENEWAL.day_offset),
+      date: day(weekBeforeEnd(WEEKS_BEFORE_END.ANNUAL_RENEWAL), TEST_ANNUAL_RENEWAL.day_offset),
       amount_cents: -TEST_ANNUAL_RENEWAL.amount_cents,
       merchant_raw: TEST_ANNUAL_RENEWAL.merchant_raw,
       merchant_normalized: TEST_ANNUAL_RENEWAL.merchant_normalized,
@@ -597,7 +624,7 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
   }
 
   // -- Planted one-off: derived from the vendor's own prior payments ---------
-  const oneOffWeek = Math.min(ONE_OFF.week_index, weeks - 2);
+  const oneOffWeek = Math.max(0, Math.min(weekBeforeEnd(WEEKS_BEFORE_END.ONE_OFF), weeks - 2));
   const oneOffDate = day(oneOffWeek, ONE_OFF.day_offset);
   const priorSameVendor = drafts.filter(
     (d) => d.merchant_normalized === DEMO.ONE_OFF_ENTITY && d.amount_cents < 0 && d.date < oneOffDate,
@@ -639,8 +666,10 @@ export const generateDemoCompany: GenerateDemoCompany = (opts): GeneratedCompany
     if (i >= 0 && i < weeks) monitoredByWeek[i] = monitoredByWeek[i]! - d.amount_cents;
   }
   for (let i = 0; i < weeks; i++) {
+    // The holiday dip scales the BASELINE only, never the planted delta: a quiet
+    // fortnight should not also shrink the shift Canary is meant to find.
     const target = Math.round(
-      VARIABLE_WEEKLY_BASE_CENTS * (1 + noise[i]!) +
+      VARIABLE_WEEKLY_BASE_CENTS * (1 + noise[i]!) * holidayFactor(i) +
         rampAt(i, changeStart, DEMO.CHANGE_RAMP_WEEKS) * PLANTED_DELTA_WEEKLY_CENTS,
     );
     const residual = Math.max(AWS_MIN_WEEKLY_CENTS, target - monitoredByWeek[i]!);

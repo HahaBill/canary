@@ -161,14 +161,24 @@ describe("buildCashCalendarEvents — canary markers", () => {
   });
 
   it("drops markers outside the range", () => {
+    const all = eventsOf(
+      buildCashCalendarEvents({ ledger, incidents: MOCK_INCIDENTS, recurring: [], from: ledger.history_start, to: ledger.history_end }),
+      "canary",
+    );
+    expect(all.length).toBeGreaterThan(1);
+
+    // Cut the range at the earliest marker: everything after it must drop out.
+    const earliest = all.map((e) => e.date).sort()[0]!;
     const narrow = buildCashCalendarEvents({
       ledger,
       incidents: MOCK_INCIDENTS,
       recurring: [],
       from: ledger.history_start,
-      to: burnShift!.estimated_change_point!,
+      to: earliest,
     });
-    expect(eventsOf(narrow, "canary")).toHaveLength(1);
+
+    expect(eventsOf(narrow, "canary").length).toBeLessThan(all.length);
+    expect(eventsOf(narrow, "canary").every((e) => e.date <= earliest)).toBe(true);
   });
 });
 

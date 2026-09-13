@@ -416,13 +416,25 @@ describe("pivotLedger — demo ledger identities", () => {
     expect(pivot.periods[demo.fixture.burn_shift.true_change_start_index]!.key).toBe(regimeStart);
   });
 
-  it("splits the 20 weeks into the months the history touches", () => {
+  it("splits the history into the months it touches", () => {
     const months = pivotLedger(ledger, { granularity: "month", regimeStart });
-    expect(months.periods.map((p) => p.key)).toEqual(["2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09"]);
-    expect(months.periods.map((p) => p.partial)).toEqual([true, false, false, false, false, true]);
-    expect(months.periods[0]).toMatchObject({ start: demo.fixture.start_date, end: "2026-04-30" });
-    expect(months.periods[5]).toMatchObject({ start: "2026-09-01", end: demo.fixture.end_date });
-    // Every dollar is still in the sheet, just in six columns instead of twenty.
+    // Derived from the span, not hard-coded: the demo history is a year.
+    const expectedKeys: string[] = [];
+    for (let d = demo.fixture.start_date.slice(0, 7); d <= demo.fixture.end_date.slice(0, 7); ) {
+      expectedKeys.push(d);
+      const [y, m] = d.split("-").map(Number);
+      d = m === 12 ? `${y! + 1}-01` : `${y}-${String(m! + 1).padStart(2, "0")}`;
+    }
+    const last = expectedKeys.length - 1;
+
+    expect(months.periods.map((p) => p.key)).toEqual(expectedKeys);
+    // Only the first and last months can be partial.
+    expect(months.periods[0]!.partial).toBe(true);
+    expect(months.periods[last]!.partial).toBe(true);
+    expect(months.periods.slice(1, last).every((p) => !p.partial)).toBe(true);
+    expect(months.periods[0]).toMatchObject({ start: demo.fixture.start_date });
+    expect(months.periods[last]).toMatchObject({ end: demo.fixture.end_date });
+    // Every dollar is still in the sheet, just in months instead of weeks.
     for (const id of ["section:VARIABLE_SPEND", "section:FIXED_SPEND", "section:ONE_OFF", "section:REVENUE"]) {
       expect(row(months, id).total_cents).toBe(row(pivot, id).total_cents);
     }
