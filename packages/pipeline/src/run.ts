@@ -111,7 +111,12 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
 
   // 3. Ledger pass 1 (no one-off tags) → baseline burn → one-off detection
   // The sandbox bank reports the period's opening balance (fixture.opening_balance_cents), making reconciliation a real check.
-  const ledgerBase = { company: { ...company, accounts, as_of: asOf }, accounts, transactions, classifications, historyStart: fixture.start_date, historyEnd: asOf, expectedOpeningBalanceCents: fixture.opening_balance_cents };
+  // The company profile is current to the same moment as the accounts it holds.
+  // Left at the generator's end date it reports one date while the provenance
+  // banner reports another, and the dashboard shows a single balance under two
+  // different "as of" dates — see the CASH card caption.
+  const companyAsOf = { ...company, accounts, as_of: asOf };
+  const ledgerBase = { company: companyAsOf, accounts, transactions, classifications, historyStart: fixture.start_date, historyEnd: asOf, expectedOpeningBalanceCents: fixture.opening_balance_cents };
   const ledger0 = buildLedger(ledgerBase);
   const burn0 = computeBurn(ledger0, { regimeStartWeekIndex: null });
   const oneOffs = detectOneOffs(ledger0, burn0);
@@ -175,7 +180,7 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
       end_date: asOf,
       generated_at: now,
     },
-    company,
+    company: companyAsOf,
     accounts,
     cash_cents: burnAfter.available_operating_cash_cents,
     burn: burnAfter,

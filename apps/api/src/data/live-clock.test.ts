@@ -117,3 +117,20 @@ describe("the horizon is fuel, never history", () => {
     expect(after).toBeGreaterThan(before);
   });
 });
+
+describe("one date on screen, not two", () => {
+  it("keeps the company profile current to the same day as the provenance", async () => {
+    // The dashboard's CASH card captions the balance with `company.as_of` while
+    // the provenance banner uses `provenance.end_date`. Left at the generator's
+    // end date, the profile reported Sep 13 beside a banner reading Sep 20 — one
+    // balance under two dates, which is the kind of detail that costs trust.
+    const { provider, set } = movingClock();
+    set(DEFAULT_MINUTES_PER_DAY * 6);
+    const derived = await provider.getDerived();
+
+    expect(derived.company.as_of).toBe(derived.provenance.end_date);
+    for (const account of derived.accounts) {
+      expect(account.as_of).toBe(derived.provenance.end_date);
+    }
+  });
+});
