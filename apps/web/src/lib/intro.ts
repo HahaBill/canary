@@ -5,12 +5,19 @@
  */
 export const INTRO_STORAGE_KEY = "canary.intro.seen";
 
-/** Speech-contract alert shape, with every figure line omitted (Rule 0). */
-export const INTRO_SAMPLE_ALERT = [
+/**
+ * Figure-free sample of the product alert (docs/AGENT_BEHAVIOR.md).
+ * Each line is its own incoming bubble on the intro — no invented money.
+ */
+export const INTRO_SAMPLE_BUBBLES = [
   "🐤 Canary",
-  "I detected a sustained increase in variable spending.",
-  "Reply WHY or SHOW ME.",
-].join("\n");
+  "Your company’s spending pattern changed.",
+  "Cloud infrastructure is the biggest driver.",
+  "Runway impact detected.",
+] as const;
+
+/** Speech-contract alert shape, with every figure line omitted (Rule 0). */
+export const INTRO_SAMPLE_ALERT = INTRO_SAMPLE_BUBBLES.join("\n");
 
 export function hasSeenIntro(): boolean {
   try {

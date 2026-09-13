@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildMockDerived } from "@canary/shared/fixtures";
 import { resetMockSnapshot } from "@/api/mock.ts";
 import { clearApiCache } from "@/api/useDerived.ts";
-import { INTRO_STORAGE_KEY, markIntroSeen } from "@/lib/intro.ts";
+import { INTRO_SAMPLE_BUBBLES, INTRO_STORAGE_KEY, markIntroSeen } from "@/lib/intro.ts";
 import { installApiStub, renderApp, setViewport } from "@/test-utils.tsx";
 
 describe("IntroPage", () => {
@@ -24,19 +24,25 @@ describe("IntroPage", () => {
   it("names Canary, explains the coal-mine origin, and waits for Start", () => {
     const { container } = renderApp("/");
 
-    expect(screen.getByRole("heading", { name: /Canary/ })).toBeInTheDocument();
-    expect(screen.getByText(/Early warning for startup cash/)).toBeInTheDocument();
-    expect(screen.getByText(/Coal miners used canaries/)).toBeInTheDocument();
-    expect(screen.getByText(/The product is the text/)).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Canary" })).toHaveAttribute("src", "/canary-lockup.png");
+    expect(
+      screen.getByRole("heading", { name: /Your early warning system for startup finances/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Canaries warned miners about toxic gas/)).toBeInTheDocument();
+    expect(screen.getByText(/dangerous shifts/)).toBeInTheDocument();
+    expect(screen.getByText(/what it means for your runway/)).toBeInTheDocument();
+    expect(screen.queryByText(/when the air changed/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/The product is the text/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Start" })).toBeInTheDocument();
     expect(screen.getByText(/or press Enter/)).toBeInTheDocument();
-    expect(screen.getByLabelText("Sample iMessage from Canary")).toHaveTextContent(
-      "I detected a sustained increase in variable spending.",
-    );
-    expect(screen.getByLabelText("Sample iMessage from Canary")).toHaveTextContent(
-      "Reply WHY or SHOW ME.",
-    );
-    expect(screen.getByText("SHOW ME")).toBeInTheDocument();
+
+    const imessage = screen.getByLabelText("Sample iMessage from Canary");
+    for (const line of INTRO_SAMPLE_BUBBLES) {
+      expect(imessage).toHaveTextContent(line);
+    }
+    expect(imessage).not.toHaveTextContent("I detected a sustained increase in variable spending.");
+    expect(imessage).not.toHaveTextContent("SHOW ME");
+    expect(container.querySelectorAll(".intro-imessage-bubble")).toHaveLength(4);
 
     expect(container.textContent).not.toMatch(/\$/);
     expect(container.textContent).not.toMatch(/Tavily/i);
@@ -78,7 +84,7 @@ describe("IntroPage", () => {
 
     expect(await screen.findByRole("heading", { name: "Home" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Start" })).not.toBeInTheDocument();
-    expect(screen.queryByText(/Coal miners used canaries/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Canaries warned miners/)).not.toBeInTheDocument();
   });
 
   it.each([

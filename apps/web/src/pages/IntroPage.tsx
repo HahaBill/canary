@@ -1,12 +1,12 @@
 /**
- * Five-second door: name, why it's called Canary, Start / Enter.
+ * Five-second door: the lockup, why it's called Canary, Start / Enter.
  * Deep links never mount this page. No figures, no vendor-research names.
  */
 import { useCallback, useEffect } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { APP_HOME_PATH } from "@canary/shared";
 import { Button } from "@/components/ui/button.tsx";
-import { INTRO_SAMPLE_ALERT, hasSeenIntro, markIntroSeen } from "@/lib/intro.ts";
+import { INTRO_SAMPLE_BUBBLES, hasSeenIntro, markIntroSeen } from "@/lib/intro.ts";
 
 export function IntroPage() {
   if (hasSeenIntro()) {
@@ -39,17 +39,25 @@ function IntroLanding() {
     <div className="intro-page min-h-dvh bg-[#f3efe6] text-[#1c1914]">
       <div className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col justify-center gap-12 px-6 py-12 lg:flex-row lg:items-center lg:gap-20 lg:px-10">
         <div className="max-w-md">
-          <h1 className="text-4xl font-semibold tracking-tight text-pretty sm:text-5xl">
-            <span className="block text-sm font-medium tracking-tight text-[#6b6458]">Canary</span>
-            <span className="mt-3 block">Early warning for startup cash.</span>
+          <img
+            src="/canary-lockup.png"
+            alt="Canary"
+            width={634}
+            height={652}
+            className="intro-lockup h-auto w-[11.25rem] sm:w-[13rem]"
+          />
+          <h1 className="mt-8 text-3xl font-semibold tracking-tight text-pretty sm:text-4xl">
+            Your early warning system for startup finances.
           </h1>
           <p className="mt-5 text-lg leading-relaxed text-[#3f3a32] text-pretty">
-            Coal miners used canaries when the air changed. Canary texts you when
-            company-wide spending does.
+            Canaries warned miners about toxic gas before they could detect it themselves.
+          </p>
+          <p className="mt-3 text-base leading-relaxed text-[#3f3a32] text-pretty">
+            Canary watches your company’s spending for dangerous shifts — and tells you when
+            something changes.
           </p>
           <p className="mt-3 text-base leading-relaxed text-[#6b6458] text-pretty">
-            The product is the text. The app is the investigation — WHY, SHOW ME,
-            then a what-if.
+            See what changed, what’s driving it, and what it means for your runway.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-2">
             <Button
@@ -64,26 +72,36 @@ function IntroLanding() {
           </div>
         </div>
 
-        <figure className="mx-auto w-full max-w-[280px] shrink-0" aria-label="Sample iMessage from Canary">
-          <div className="rounded-[2rem] border-[10px] border-[#1c1914] bg-[#f7f7f7] shadow-[0_24px_60px_rgb(28_25_20/0.18)]">
-            <div className="border-b border-black/5 px-4 pb-3 pt-3 text-center">
-              <p className="text-[11px] font-semibold text-[#1c1914]">Canary</p>
-              <p className="text-[10px] text-[#8e8e93]">iMessage</p>
-            </div>
-            <div className="space-y-2 px-3 py-4">
-              <p className="w-fit max-w-[92%] whitespace-pre-line rounded-[1.15rem] rounded-bl-md bg-white px-3.5 py-2.5 text-[13px] leading-snug text-[#1c1914] shadow-sm">
-                {INTRO_SAMPLE_ALERT}
-              </p>
-              <p className="ml-auto w-fit rounded-full bg-[#007aff] px-3 py-1.5 text-[13px] font-medium text-white">
-                SHOW ME
-              </p>
-            </div>
-          </div>
-          <figcaption className="mt-3 text-center text-[11px] leading-relaxed text-[#8a8376]">
-            Sample shape — no figures. Live numbers come from the ledger.
-          </figcaption>
-        </figure>
+        <IntroIMessage />
       </div>
     </div>
+  );
+}
+
+function IntroIMessage() {
+  return (
+    <figure className="intro-imessage mx-auto w-full max-w-[280px] shrink-0" aria-label="Sample iMessage from Canary">
+      <div className="rounded-[2rem] border-[10px] border-[#1c1914] bg-[#f7f7f7] shadow-[0_24px_60px_rgb(28_25_20/0.18)]">
+        <div className="border-b border-black/5 px-4 pb-3 pt-3 text-center">
+          <p className="text-[11px] font-semibold text-[#1c1914]">Canary</p>
+          <p className="text-[10px] text-[#8e8e93]">iMessage</p>
+        </div>
+        <div className="intro-imessage-thread relative min-h-[16.25rem] space-y-2 px-3 py-4">
+          <div className="intro-imessage-typing" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+          {INTRO_SAMPLE_BUBBLES.map((line, index) => (
+            <p key={line} className={`intro-imessage-bubble intro-imessage-bubble-${index + 1}`}>
+              {line}
+            </p>
+          ))}
+        </div>
+      </div>
+      <figcaption className="mt-3 text-center text-[11px] leading-relaxed text-[#8a8376]">
+        Sample shape — no figures. Live numbers come from the ledger.
+      </figcaption>
+    </figure>
   );
 }

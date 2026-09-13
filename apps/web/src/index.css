@@ -109,3 +109,184 @@
   padding: 1rem 1.1rem;
   box-shadow: 0 12px 40px rgb(0 0 0 / 0.14);
 }
+
+/* Intro iMessage: incoming bubbles on a 4s loop. Folk phone, not a clone. */
+.intro-imessage-typing {
+  position: absolute;
+  top: 1rem;
+  left: 0.75rem;
+  z-index: 1;
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 0.28rem;
+  border-radius: 1.15rem;
+  background: #fff;
+  padding: 0.65rem 0.9rem;
+  box-shadow: 0 1px 2px rgb(28 25 20 / 0.06);
+  pointer-events: none;
+  animation: intro-imessage-typing 4s ease-in-out infinite;
+}
+
+.intro-imessage-typing span {
+  display: block;
+  height: 0.35rem;
+  width: 0.35rem;
+  border-radius: 9999px;
+  background: #8e8e93;
+  animation: intro-imessage-dot 1s ease-in-out infinite;
+}
+
+.intro-imessage-typing span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.intro-imessage-typing span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.intro-imessage-bubble {
+  width: fit-content;
+  max-width: 92%;
+  border-radius: 1.15rem;
+  border-bottom-left-radius: 0.35rem;
+  background: #fff;
+  padding: 0.625rem 0.875rem;
+  font-size: 13px;
+  line-height: 1.35;
+  color: #1c1914;
+  box-shadow: 0 1px 2px rgb(28 25 20 / 0.06);
+  opacity: 0;
+  transform-origin: 0.4rem 100%;
+}
+
+.intro-imessage-bubble-1 {
+  animation: intro-imessage-in-1 4s ease-out infinite;
+}
+
+.intro-imessage-bubble-2 {
+  animation: intro-imessage-in-2 4s ease-out infinite;
+}
+
+.intro-imessage-bubble-3 {
+  animation: intro-imessage-in-3 4s ease-out infinite;
+}
+
+.intro-imessage-bubble-4 {
+  animation: intro-imessage-in-4 4s ease-out infinite;
+}
+
+@keyframes intro-imessage-dot {
+  0%,
+  70%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes intro-imessage-typing {
+  0%,
+  3% {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  6%,
+  11% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  14%,
+  100% {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+
+@keyframes intro-imessage-in-1 {
+  0%,
+  13% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.94);
+  }
+  18%,
+  88% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+@keyframes intro-imessage-in-2 {
+  0%,
+  28% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.94);
+  }
+  33%,
+  88% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+@keyframes intro-imessage-in-3 {
+  0%,
+  43% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.94);
+  }
+  48%,
+  88% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+@keyframes intro-imessage-in-4 {
+  0%,
+  58% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.94);
+  }
+  63%,
+  88% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-imessage-typing {
+    display: none;
+  }
+
+  .intro-imessage-bubble,
+  .intro-imessage-bubble-1,
+  .intro-imessage-bubble-2,
+  .intro-imessage-bubble-3,
+  .intro-imessage-bubble-4 {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
