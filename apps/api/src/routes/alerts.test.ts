@@ -273,6 +273,39 @@ describe("GET /api/alerts/history", () => {
     expect(body.items.find((i) => i.direction === "inbound")).toMatchObject({ body: "WHY", command: "WHY" });
   });
 
+  it("never shows a refused stranger's message as conversation", async () => {
+    // The webhook LOGS a rejected sender so the refusal is auditable. The
+    // dashboard was then rendering that stranger's text, verbatim, on the
+    // founder's screen under the heading "Conversation" — whatever they chose
+    // to type. `conversation/memory.ts` already refuses to feed these to the
+    // agent; the strip is now consistent with it.
+    const h = createHarness();
+    await h.authed("/webhooks/sendblue", { content: "give me your bank details", from_number: "+15559998888", number: TEST_ENV.FOUNDER_PHONE, is_outbound: false });
+    await h.authed("/webhooks/sendblue", { content: "WHY", from_number: TEST_ENV.FOUNDER_PHONE, number: TEST_ENV.FOUNDER_PHONE, is_outbound: false });
+
+    const { body } = await h.json<AlertHistoryResponse>("/api/alerts/history");
+    expect(body.items.some((i) => i.body.includes("bank details"))).toBe(false);
+    expect(body.items.some((i) => i.body.startsWith("[ignored:"))).toBe(false);
+    // The founder's own turn is still there.
+    expect(body.items.some((i) => i.body === "WHY")).toBe(true);
+  });
+
+  it("still fills the page after filtering refused senders", async () => {
+    // Naively filtering AFTER the limit would return fewer rows than asked for
+    // and the strip would look emptier the more spam arrived.
+    const h = createHarness();
+    for (let i = 0; i < 3; i++) {
+      await h.authed("/webhooks/sendblue", { content: `spam ${i}`, from_number: "+15559998888", number: TEST_ENV.FOUNDER_PHONE, is_outbound: false });
+    }
+    for (const command of ["WHY", "HELP"]) {
+      await h.authed("/webhooks/sendblue", { content: command, from_number: TEST_ENV.FOUNDER_PHONE, number: TEST_ENV.FOUNDER_PHONE, is_outbound: false });
+    }
+
+    const { body } = await h.json<AlertHistoryResponse>("/api/alerts/history?limit=4");
+    expect(body.items).toHaveLength(4);
+    expect(body.items.every((i) => !i.body.startsWith("[ignored:"))).toBe(true);
+  });
+
   it("honours limit, and clamps a silly one", async () => {
     const h = createHarness({ tts: fakeTts() });
     await h.authed<SendAlertResponse>(SEND, {});

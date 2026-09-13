@@ -33,9 +33,12 @@ export interface Thread {
 
 export const EMPTY_THREAD: Thread = { summary: null, turns: [], covers_through_id: 0, turns_compacted: 0 };
 
+/** Marks a logged message from a number Canary refused to answer. */
+export const IGNORED_SENDER_PREFIX = "[ignored:";
+
 /** Rows that are transport artefacts rather than things anyone said. */
 function isSpeech(row: StoredMessage): boolean {
-  return row.body.trim().length > 0 && !row.body.startsWith(VOICE_LOG_PREFIX) && !row.body.startsWith("[ignored:");
+  return row.body.trim().length > 0 && !row.body.startsWith(VOICE_LOG_PREFIX) && !row.body.startsWith(IGNORED_SENDER_PREFIX);
 }
 
 export function toTurn(row: StoredMessage): ThreadTurn {

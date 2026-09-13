@@ -15,7 +15,7 @@ The deep dives live in three companion docs:
 ## Verify all of it in three commands
 
 ```text
-npm run typecheck && npm test     1,281 passing, 4 skipped, offline
+npm run typecheck && npm test     1,335 passing, 4 skipped, offline
 npm run verify                    ALL CHECKS PASSED
 npm run build                     SPA into apps/api/public
 node scripts? no — the golden path: see "Production dry run" at the bottom
@@ -238,6 +238,29 @@ reason the app "looked like a placeholder": watch it for twenty seconds and
 nothing happened, because the page was lagging the backend by most of a
 simulated day. Refreshes are invisible either way, since the data on screen is
 kept until the new data lands.
+
+## Three stale rows in the iMessage log, visible on the dashboard
+
+The dashboard's CONVERSATION strip is real two-way traffic read from D1, not
+canned copy — which is the strongest proof the app is not a placeholder, and
+also means it still shows what we texted it while things were broken. Three rows
+a judge can read right now say things that are no longer true:
+
+| id | What it says | Why it is wrong |
+|---|---|---|
+| 29, 30 | "1. Mar 14, 2027 - Card settlement…" | The 2027 leak, before `2b20b17` clipped the horizon |
+| 25 | "runway would increase from 12.6 months to 13.7" | Runway is 12.3 |
+| 23 | "$15,352 → $19,479 … AWS +$2,999/wk" | Now $15,403 → $19,374, AWS +$3,144/wk |
+
+No new message can say any of that. These are stored rows from before the fixes,
+and clearing them needs D1 access I do not have:
+
+```text
+npx wrangler d1 execute canary --remote   --command "DELETE FROM imessage_log WHERE id IN (23,25,29,30)"
+```
+
+Texting the line fresh would regenerate a correct conversation, but sending is
+outward-facing, so that is a decision for whoever is holding the phone.
 
 ## Two things only someone with Cloudflare access can do
 

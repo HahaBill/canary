@@ -15,6 +15,7 @@ import type { AlertHistoryResponse, AlertsPendingResponse, SendAlertResponse } f
 import { deliverAlert, type AlertRuntime } from "../alerts/deliver.ts";
 import { listPending, queuePendingAlert, runPendingAlerts, type PendingRunSummary } from "../alerts/pending.ts";
 import { decideNotify, deliverAfter, isDeferred } from "../alerts/policy.ts";
+import { IGNORED_SENDER_PREFIX } from "../conversation/memory.ts";
 import { baseUrl, jsonError, readJson, type CanaryApp, type CanaryContext } from "../context.ts";
 import { primaryIncident } from "../derive.ts";
 import { renderAlert } from "../messages.ts";
@@ -120,7 +121,18 @@ export function registerAlertRoutes(app: CanaryApp): void {
   app.get("/api/alerts/history", async (c) => {
     const raw = Number.parseInt(c.req.query("limit") ?? "", 10);
     const limit = Number.isFinite(raw) && raw > 0 ? Math.min(raw, MAX_ALERT_HISTORY_LIMIT) : DEFAULT_ALERT_HISTORY_LIMIT;
-    const body: AlertHistoryResponse = { items: (await c.get("store")?.listMessages(limit)) ?? [] };
+    // A message from a number Canary refused to talk to is a rejection RECORD,
+    // not a turn in the founder's conversation. `conversation/memory.ts` already
+    // refuses to feed these to the agent for the same reason; the dashboard's
+    // conversation strip was the one surface still rendering them, which put a
+    // stranger's message text — whatever they chose to type — on the founder's
+    // screen under the heading "Conversation". The rows stay in `imessage_log`,
+    // so the rejection is still auditable; they just are not conversation.
+    //
+    // Over-fetch first, so filtering cannot return fewer items than asked for.
+    const stored = (await c.get("store")?.listMessages(limit * 2)) ?? [];
+    const items = stored.filter((m) => !m.body.startsWith(IGNORED_SENDER_PREFIX)).slice(0, limit);
+    const body: AlertHistoryResponse = { items };
     return c.json(body);
   });
 
