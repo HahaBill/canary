@@ -9,7 +9,7 @@ Everything in the P0 build order (`docs/BUILD.md`) is implemented, integrated, t
 | Production (SPA + API + webhook) | https://canary.bill-nguyentonhoang.workers.dev |
 | Dashboard | `/` |
 | Primary incident (demo) | `/incidents/inc_5b393334` (tabs: `?tab=overview\|drivers\|evidence\|whatif`) |
-| Standalone one-off incident | `/incidents/inc_079155c3` |
+| Standalone one-off incident | `/incidents/inc_40e99e9c` |
 | Health | `GET /api/health` |
 | Sendblue line (founder texts this) | +1 786 213 9361 |
 | Founder phone (receives alerts) | `FOUNDER_PHONE` secret |
