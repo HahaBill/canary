@@ -199,6 +199,24 @@ Two problems made a working stream look like a broken page. Both fixed in
    A backwards date re-baselines instead and says "clock restarted".
    `advanceLive` is a pure function with its own tests.
 
+## Two things only someone with Cloudflare access can do
+
+I have no Cloudflare token on this machine, and both of these are settings on
+the deployed Worker rather than code, so they are yours. Neither needs a deploy.
+
+1. **`ALLOWED_PHONES` — add Alfredo's number, `787-628-9072`.** Canary only
+   replies to `FOUNDER_PHONE` plus this comma-separated list; everyone else is
+   logged and ignored. Since `bae2164` the format no longer matters — a number
+   written `787-628-9072`, `+17876289072` or `(787) 628-9072` all match, because
+   the leading North American `1` is optional on both sides. Before that commit
+   the un-prefixed spelling silently matched nothing, which is worth knowing if
+   anyone tests with an older deploy.
+
+2. **`DEMO_CLOCK_MINUTES_PER_DAY=0` during judging.** Freezes the ledger at the
+   end of history, so every figure in the README, in HANDOFF and in the video is
+   exactly what is on screen, and the day +7 burn step in the table above cannot
+   happen while a judge is watching. Delete the var to go live again.
+
 ## Open decisions, yours
 
 - **Sigma floor 2% → 5%** (audit proposal 1) — still open; h=6σ softened the
