@@ -20,6 +20,11 @@ export function registerCoreRoutes(app: CanaryApp): void {
     // This object advances with the injected demo clock. Intermediary or
     // browser caching would make the SPA's live refresh return the same day.
     c.header("Cache-Control", "no-store");
+    const raw = await c.get("provider").getDemoJson();
+    if (raw !== null) {
+      c.header("Content-Type", "application/json; charset=utf-8");
+      return c.body(raw);
+    }
     const body: DemoResponse = stripFixture(await c.get("provider").getDerived());
     return c.json(body);
   });

@@ -16,6 +16,7 @@ import { D1Store } from "../data/d1.ts";
 import { FakeD1 } from "../test/fake-d1.ts";
 import { openAiClient } from "../conversation/openai.ts";
 import { fakeOpenAi } from "../test/fake-openai.ts";
+import { PipelineDataProvider } from "../data/pipeline-provider.ts";
 import { createHarness, FIXED_NOW } from "../test/harness.ts";
 
 const MEETING: CalendarFeedEvent = {
@@ -398,5 +399,25 @@ describe("Needs Review", () => {
     });
     expect(status).toBe(200);
     expect(body.override.category).toBe("MARKETING");
+  });
+
+  it("does not uniquely force a heavier path than the dashboard", async () => {
+    let derivedLoads = 0;
+    const derived = buildMockDerived();
+    const provider = new PipelineDataProvider({
+      asOf: () => derived.provenance.end_date,
+      snapshots: {
+        derived: async () => {
+          derivedLoads += 1;
+          return derived;
+        },
+      },
+    });
+    const h = createHarness({ provider });
+    expect((await h.json("/api/health-summary")).status).toBe(200);
+    expect((await h.json("/api/needs-review")).status).toBe(200);
+    expect(derivedLoads).toBe(1);
+    expect(provider.pipelineRuns).toBe(0);
+    expect(provider.snapshotHits).toBe(1);
   });
 });

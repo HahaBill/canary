@@ -6,6 +6,7 @@
  */
 import { createApp, createScheduled } from "./app.ts";
 import { demoAsOf, parseMinutesPerDay } from "./clock.ts";
+import { snapshotLoadersFromAssets } from "./data/as-of-snapshots.ts";
 import { PipelineDataProvider } from "./data/pipeline-provider.ts";
 import type { Env } from "./env.ts";
 
@@ -28,6 +29,7 @@ export { createApp, createScheduled, type AppDeps } from "./app.ts";
 let clockEnv: Env | undefined;
 const pipelineProvider = new PipelineDataProvider({
   asOf: () => demoAsOf(new Date(), { minutesPerDay: parseMinutesPerDay(clockEnv?.DEMO_CLOCK_MINUTES_PER_DAY) }),
+  snapshots: snapshotLoadersFromAssets(() => clockEnv),
 });
 const deps = {
   provider: pipelineProvider,
@@ -47,6 +49,7 @@ export default {
    * founder was in a meeting. Same job as `POST /api/alerts/deliver-pending`.
    */
   async scheduled(event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    clockEnv = env;
     const scheduled_time = new Date(event.scheduledTime).toISOString();
     try {
       const result = await deliverPendingAlerts(env);

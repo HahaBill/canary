@@ -9,7 +9,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --passWithNoTests",
     "migrate:local": "wrangler d1 migrations apply canary --local",
-    "migrate:remote": "wrangler d1 migrations apply canary --remote"
+    "migrate:remote": "wrangler d1 migrations apply canary --remote",
+    "seed-as-of": "node --experimental-strip-types scripts/seed-as-of-snapshots.ts"
   },
   "dependencies": {
     "@canary/shared": "*",

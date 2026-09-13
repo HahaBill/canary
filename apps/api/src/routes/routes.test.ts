@@ -16,8 +16,9 @@ import {
   type SimulateResponse,
   type VendorEnrichmentResponse,
 } from "@canary/shared";
-import { SAMPLE_TRANSACTIONS } from "@canary/shared/fixtures";
+import { buildMockDerived, SAMPLE_TRANSACTIONS } from "@canary/shared/fixtures";
 import { describe, expect, it } from "vitest";
+import { PipelineDataProvider } from "../data/pipeline-provider.ts";
 import { API_VERSION } from "../env.ts";
 import { createHarness, fakeTts, FIXED_NOW, TEST_ENV } from "../test/harness.ts";
 import type { IncidentStatusResponse } from "./incidents.ts";
@@ -99,6 +100,20 @@ describe("GET /api/demo", () => {
     expect(body.provenance.history_source).toBe("mock");
     expect(body.provenance.balance_source).toBe("mock");
     expect(body.provenance.company_is_fictional).toBe(true);
+  });
+
+  it("passes a snapshot body through without running the pipeline", async () => {
+    const derived = buildMockDerived();
+    const raw = JSON.stringify(derived);
+    const provider = new PipelineDataProvider({
+      asOf: () => derived.provenance.end_date,
+      snapshots: { derived: async () => raw },
+    });
+    const h = createHarness({ provider });
+    const { status, body } = await h.json<DemoResponse>("/api/demo");
+    expect(status).toBe(200);
+    expect(body.cash_cents).toBe(derived.cash_cents);
+    expect(provider.pipelineRuns).toBe(0);
   });
 });
 

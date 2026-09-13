@@ -13,6 +13,7 @@
   // here, Google's redirect would land on the SPA shell instead of the callback.
   "assets": {
     "directory": "./public",
+    "binding": "ASSETS",
     "not_found_handling": "single-page-application",
     "run_worker_first": [
       "/api",

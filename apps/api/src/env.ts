@@ -4,6 +4,8 @@
  */
 export interface Env {
   DB: D1Database;
+  /** Static assets (SPA + as-of snapshots). Set by wrangler `assets.binding`. */
+  ASSETS?: Fetcher;
   SENDBLUE_API_KEY?: string;
   SENDBLUE_API_SECRET?: string;
   SENDBLUE_FROM_NUMBER?: string;

@@ -142,6 +142,59 @@ describe("withD1Overlay", () => {
 });
 
 describe("PipelineDataProvider", () => {
+  it("reuses one pipeline run for getDerived and getNeedsReview", async () => {
+    const provider = new PipelineDataProvider();
+    await provider.getDerived();
+    expect(provider.pipelineRuns).toBe(1);
+    await provider.getNeedsReview();
+    expect(provider.pipelineRuns).toBe(1);
+  });
+
+  it("loads needs-review from the same as-of snapshot as getDerived, without running the pipeline", async () => {
+    const derived = buildMockDerived();
+    const provider = new PipelineDataProvider({
+      asOf: () => derived.provenance.end_date,
+      snapshots: { derived: async () => derived },
+    });
+    expect((await provider.getDerived()).cash_cents).toBe(derived.cash_cents);
+    expect((await provider.getNeedsReview()).map((i) => i.transaction_id)).toEqual(derived.needs_review.items.map((i) => i.transaction_id));
+    expect(provider.pipelineRuns).toBe(0);
+    expect(provider.snapshotHits).toBe(1);
+  });
+
+  it("returns raw snapshot JSON for the dashboard without a second derived load", async () => {
+    const derived = buildMockDerived();
+    const raw = JSON.stringify(derived);
+    let derivedLoads = 0;
+    const provider = new PipelineDataProvider({
+      asOf: () => derived.provenance.end_date,
+      snapshots: {
+        derived: async () => {
+          derivedLoads += 1;
+          return raw;
+        },
+      },
+    });
+    expect(await provider.getDemoJson()).toBe(raw);
+    expect(await provider.getDemoJson()).toBe(raw);
+    expect(derivedLoads).toBe(1);
+    expect(provider.pipelineRuns).toBe(0);
+  });
+
+  it("does not pass a raw demo snapshot through once an incident overlay exists", async () => {
+    const derived = buildMockDerived();
+    const inner = new PipelineDataProvider({
+      asOf: () => derived.provenance.end_date,
+      snapshots: { derived: async () => JSON.stringify(derived) },
+    });
+    const db = new FakeD1();
+    const wrapped = withD1Overlay(inner, db);
+    expect(await wrapped.getDemoJson()).toBe(JSON.stringify(derived));
+    await wrapped.updateIncidentStatus(derived.primary_incident!.id, "ACKNOWLEDGED", NOW);
+    expect(await wrapped.getDemoJson()).toBeNull();
+    expect((await wrapped.getDerived()).primary_incident?.status).toBe("ACKNOWLEDGED");
+  });
+
   it("serves the ledger pivot, cell detail, and calendar from the real engine, consistent with the pipeline", async () => {
     const provider = new PipelineDataProvider();
     const derived = await provider.getDerived();

@@ -30,6 +30,11 @@ import { listFromWeeklyBuckets, selectTransactions, type TransactionListQuery, t
 
 export interface DataProvider {
   getDerived(): Promise<DerivedDemoObject>;
+  /**
+   * Pre-serialized `DemoResponse` for the current as-of, when a snapshot exists.
+   * `null` → the route builds the body from `getDerived()` (tests, overlays).
+   */
+  getDemoJson(): Promise<string | null>;
   getIncident(id: string): Promise<Incident | null>;
   updateIncidentStatus(id: string, status: IncidentStatus, now: ISODateTime): Promise<Incident | null>;
   markNotified(id: string, now: ISODateTime): Promise<void>;
@@ -93,6 +98,10 @@ export class MockDataProvider implements DataProvider {
 
   async getDerived(): Promise<DerivedDemoObject> {
     return applyOverlay(this.base, this.overlay);
+  }
+
+  async getDemoJson(): Promise<string | null> {
+    return null;
   }
 
   async getIncident(id: string): Promise<Incident | null> {
@@ -185,6 +194,13 @@ export function withD1Overlay(provider: DataProvider, db: SqlDatabase): DataProv
 
   const getDerived = async (): Promise<DerivedDemoObject> => applyOverlay(await provider.getDerived(), await overlays());
 
+  const getDemoJson = async (): Promise<string | null> => {
+    // A raw snapshot would skip status overlays. Only pass it through when D1
+    // has nothing to apply — the usual demo isolate.
+    if ((await overlays()).size > 0) return null;
+    return provider.getDemoJson();
+  };
+
   const getIncident = async (id: string): Promise<Incident | null> => {
     const derived = await getDerived();
     return derived.incidents.find((i) => i.id === id) ?? null;
@@ -192,6 +208,7 @@ export function withD1Overlay(provider: DataProvider, db: SqlDatabase): DataProv
 
   return {
     getDerived,
+    getDemoJson,
     getIncident,
     // Writes are resolved through the OVERLAY-AWARE view, never the inner provider's
     // pristine base object: on a cold isolate the inner provider knows nothing about a
