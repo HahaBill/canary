@@ -1,7 +1,7 @@
 # Alfredo's worklog — everything, in order, checkable
 
 Bill: this is the review entry point for all of my work on `main`, Saturday
-evening through Sunday morning. Nineteen commits. Every claim below has a
+evening through Sunday morning. Twenty-three commits. Every claim below has a
 command next to it; nothing needs to be taken on my word.
 
 The deep dives live in three companion docs:
@@ -48,6 +48,9 @@ node scripts? no — the golden path: see "Production dry run" at the bottom
 | `09423b4` | **Two projection bugs, both measured.** (a) Burn averaged the week IN PROGRESS — a few days of spend inside a seven-day bucket — so runway jumped **+0.9 months every Monday** and decayed through the week. Burn now reads complete weeks only; the partial week stays in the chart, where drawing it fill up is honest. (b) The account balance shift decided pending/settled supersession from the WHOLE transaction set, including rows dated after `asOf` — so on any day between an authorisation and its settlement it dropped the pending row while `buildLedger` still counted it. Measured: **$731.48 discrepancy on 2026-07-22**, the day the planted Vercel charge is pending. Demo numbers unchanged (Sep 13 is a Sunday; every week complete, nothing mid-flight). | `packages/pipeline/src/run.ts`, new `as-of-projection.test.ts` |
 | `3c25858` | **The live stream is now actually visible, and stops fighting the user.** Seven render gates asked `if (loading)` before `if (!data)` — which threw away the stale-while-revalidate in `useDerived` and replaced the whole page with skeletons on every 30s heartbeat, resetting the what-if slider mid-drag and cutting the voice note off mid-playback. Every gate now tests for data. Plus `LiveBadge` in the provenance strip on every route: the simulated date, a dot that pulses while a fetch is in flight, and cash movement since the viewer arrived. It re-baselines when the 10-minute clock cycle wraps, so it never announces the company earning a week's burn every ten minutes. | `apps/web/src/components/LiveBadge.tsx`, `ProvenanceBanner.tsx`, `AppShell.tsx`, 5 pages |
 | `9642188` | Two determinism fixes from review. `mapAccount` stamped `new Date()` while `mapTransaction` beside it correctly took `asOf` — and the engine folds account dates into `reconciliation.as_of`, so the Rho route's report claimed the moment the mapper ran, not the day asked about. And `parseAsOfOverride` re-derived the start of history as `END_DATE - WEEKS*7`; the generator's real first day is `historyStart`, which snaps to the Monday of the earliest week — 363 days before a Sunday, not 364 — so the bound accepted one day with no transactions. | `apps/api/src/bank/rho.ts`, `apps/api/src/clock.ts` |
+| `bae2164` | iMessage answers a number configured WITHOUT its country code. Sendblue delivers E.164 (`+17875551234`); what an operator pastes is what was in their contacts (`787-555-1234`). `samePhone` compared raw digit strings, so those were two different numbers — Canary answered nobody and the only evidence was a `sender_not_allowed` log line. The leading NANP `1` is now optional on both sides, and only when exactly ten digits remain, so no other country code can collide. | `apps/api/src/imessage/router.ts` |
+| `10bf7e4` | Documentation audited against the code, file by file. The repo was quoting six different test counts and two different values of `h`, and README claimed a block was "verbatim" from `npm run verify` while a figure in it disagreed. Also corrected: two FALSE safety claims in `AGENT_BEHAVIOR.md` (alert rules 3 and 4 are enforced, resolved incidents are not alerted on), the false "nothing in `packages/shared` was edited", five "the live Rho API is not used" lines, and two commit hashes in this file that were pre-rebase and unresolvable. | all docs |
+| `b182e44` | **The partial-week bug, where it actually hurt.** `09423b4` fixed burn; CUSUM and the contributor decomposition were still averaging the week in progress. One day into a week the deployed card read "+$2,611/wk, AWS +$2,248/wk, +$11,315/mo" against a true "+$3,971/wk, AWS +$3,144/wk, +$17,206/mo" — a 34% understatement of the demo's headline, healing itself every Sunday, and read aloud by the agent. Demo output byte-identical. | `packages/pipeline/src/run.ts` |
 
 ---
 
@@ -135,7 +138,7 @@ on every one of these days, and on weekly samples across the entire generated
 span — `packages/pipeline/src/as-of-projection.test.ts`.
 
 **Every per-week average is now flat WITHIN a week and steps only at a real week
-boundary.** That is the `09423b4` fix, extended in `1f5e6b4` from burn to the
+boundary.** That is the `09423b4` fix, extended in `b182e44` from burn to the
 CUSUM series and the contributor decomposition — which is where it mattered
 most. Measured on the deployed site one day into a week, the incident card read
 "+$2,611/wk, AWS +$2,248/wk, +$11,315/mo" against a true "+$3,971/wk, AWS
