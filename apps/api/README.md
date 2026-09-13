@@ -100,10 +100,7 @@ export interface DataProvider {
 }
 ```
 
-The three view methods need the full `Ledger` (transactions included), which `runPipeline` does not
-return yet, so `PipelineDataProvider` throws `not wired` for them — `MockDataProvider` serves
-simplified projections of the weekly buckets (`src/data/mock-views.ts`) until the engine functions
-land. `/api/calendar` merges whatever `getCalendarEvents` returns with busy blocks from the feed.
+The engine view functions (`pivotLedger`, `pivotCell`, `projectRecurring`, `buildCashCalendarEvents`) are wired into `PipelineDataProvider`; `MockDataProvider` serves small deterministic projections for tests and `VITE_USE_MOCK` dev.
 
 `withD1Overlay(provider, db)` is applied by the app itself, so incident status, `last_notified`, and
 vendor enrichments persist regardless of which provider is injected. Sandbox bank transactions come

@@ -419,15 +419,19 @@ Names only. They live in `apps/api/.dev.vars` (gitignored) and as Cloudflare Wor
 | Category proposals (OpenAI) | `OPENAI_API_KEY` |
 | Vendor corroboration (Tavily) | `TAVILY_API_KEY` |
 | Voice notes (ElevenLabs) | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` |
-| Founder calendar | `CALENDAR_ICS_URL`, `CALENDAR_SHOW_TITLES` |
+| Founder calendar (Google OAuth, one account) | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `CALENDAR_TIMEZONE`, `FOUNDER_EMAIL`; iCal fallback `CALENDAR_ICS_URL`, `CALENDAR_SHOW_TITLES` |
+| Conversational iMessage | `OPENAI_API_KEY` (shared with classification), optional `OPENAI_MODEL` |
 | Operator / routing | `WEBHOOK_SECRET`, `FOUNDER_PHONE`, `ALLOWED_PHONES`, `PUBLIC_BASE_URL` |
 
 `WEBHOOK_SECRET` is both the inbound Sendblue Global Secret (header `sb-signing-secret`) and the operator secret for privileged routes (header `x-canary-secret`).
 
-### In progress / not built
+### Calendar and conversation
 
-- **Google Calendar OAuth** is in progress on a separate branch. What ships today is the fallback: one private iCal feed (`CALENDAR_ICS_URL`, Google Calendar's "Secret address in iCal format") read by a small RFC 5545 parser, cached per isolate for five minutes. `GET /api/availability` reports busy state; with no URL configured Canary has no availability signal and never defers an alert. Meeting titles stay inside that module unless `CALENDAR_SHOW_TITLES=1` — the calendar view renders "Busy".
-- **Conversational iMessage** (free-form natural language instead of keywords) is in progress on a separate branch. What ships today is the keyword router: `WHY`, `SHOW ME`, `SOURCES`, `HELP`.
+- **Google Calendar (real OAuth, one founder account).** Connect once at `/oauth/google/start?secret=<WEBHOOK_SECRET>`; the refresh token is stored AES-GCM-encrypted in D1 and tokens are refreshed with plain `fetch`. Canary reads live free/busy from the primary calendar for the notification policy and the calendar page's busy blocks, and can **book a 15-minute review** in the next free business-hours slot (`POST /api/incidents/:id/schedule-review`, or reply `SCHEDULE` in iMessage). The OAuth app runs in Google's *Testing* mode (refresh tokens expire after 7 days — reconnect before a demo). Fallback when Google is not connected: one private iCal feed (`CALENDAR_ICS_URL`) read by a small RFC 5545 parser. With neither configured Canary has no availability signal and never defers an alert. Meeting titles are hidden unless `CALENDAR_SHOW_TITLES=1`.
+- **Conversational iMessage.** Anything that isn't a keyword is answered by OpenAI tool-calling over Canary's deterministic tools (`get_health_summary`, `get_incident`, `simulate_cost_change`, `get_evidence`, `get_vendor_spend`, `create_app_link`), with per-phone memory in D1 and figure-free rolling compaction for long threads. Every money/percent/month figure in a generated reply must appear in that turn's tool results or the whole reply is replaced by the deterministic `WHY` text; URLs not from `create_app_link` are stripped; "pay / transfer / cancel" requests get a fixed refusal. Keywords (`WHY`, `SHOW ME`, `SOURCES`, `SCHEDULE`, `HELP`) still take the deterministic path first.
+
+### Not built
+
 - **The embedded "Ask Canary" web voice agent is not built.** The four agent tool endpoints exist and are tested (`get_health_summary`, `get_incident`, `simulate_cost_change`, `create_app_link`), and the incident page can play its voice note — but there is no in-browser conversational agent.
 - **No auth.** Fictional company, synthetic data, hackathon environment. Production would need workspace authorization, verified phone ownership and signed links.
 
