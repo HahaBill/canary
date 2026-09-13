@@ -11,9 +11,9 @@ export const INTRO_STORAGE_KEY = "canary.intro.seen";
  */
 export const INTRO_SAMPLE_BUBBLES = [
   "🐤 Canary",
-  "Your company’s spending pattern changed.",
+  "I detected a sustained increase in variable spending.",
   "Cloud infrastructure is the biggest driver.",
-  "Runway impact detected.",
+  "Reply WHY or SHOW ME.",
 ] as const;
 
 /** Speech-contract alert shape, with every figure line omitted (Rule 0). */

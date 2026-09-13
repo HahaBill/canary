@@ -169,6 +169,9 @@ export function WhatIfPanel({ burn, defaultEntity }: { burn: BurnSummary; defaul
             />
           </dl>
 
+          {result.no_change_reason ? (
+            <p className="text-sm text-neutral-600">{result.no_change_reason}</p>
+          ) : null}
           <p className="text-xs font-medium text-neutral-500">{result.label}</p>
         </>
       ) : null}

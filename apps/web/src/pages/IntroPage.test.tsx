@@ -21,28 +21,26 @@ describe("IntroPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("names Canary, explains the coal-mine origin, and waits for Start", () => {
+  it("presents Canary's product promise, iMessage alert, and demo entry points", () => {
     const { container } = renderApp("/");
 
-    expect(screen.getByRole("img", { name: "Canary" })).toHaveAttribute("src", "/canary-lockup.png");
     expect(
-      screen.getByRole("heading", { name: /Your early warning system for startup finances/ }),
+      screen.getByRole("heading", { name: /Your startup’s cash should never surprise you/ }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Canaries warned miners about toxic gas/)).toBeInTheDocument();
-    expect(screen.getByText(/dangerous shifts/)).toBeInTheDocument();
-    expect(screen.getByText(/what it means for your runway/)).toBeInTheDocument();
-    expect(screen.queryByText(/when the air changed/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/The product is the text/)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Start" })).toBeInTheDocument();
-    expect(screen.getByText(/or press Enter/)).toBeInTheDocument();
+    expect(screen.getByText(/reconciles financial activity/)).toBeInTheDocument();
+    expect(screen.getByText("Deterministic money math")).toBeInTheDocument();
+    expect(screen.getByText("Reports, never decides")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Explore the live demo/ })).toBeInTheDocument();
+    expect(screen.getByText("Enter")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Reconcile first. Detect second/ })).toBeInTheDocument();
 
-    const imessage = screen.getByLabelText("Sample iMessage from Canary");
+    const imessage = screen.getByLabelText("Sample iMessage conversation with Canary");
     for (const line of INTRO_SAMPLE_BUBBLES) {
       expect(imessage).toHaveTextContent(line);
     }
-    expect(imessage).not.toHaveTextContent("I detected a sustained increase in variable spending.");
-    expect(imessage).not.toHaveTextContent("SHOW ME");
-    expect(container.querySelectorAll(".intro-imessage-bubble")).toHaveLength(4);
+    expect(screen.getByLabelText("Sample Canary voice note")).toBeInTheDocument();
+    expect(imessage).toHaveTextContent("WHY");
+    expect(container.querySelectorAll(".canary-landing__bubble--incoming")).toHaveLength(4);
 
     expect(container.textContent).not.toMatch(/\$/);
     expect(container.textContent).not.toMatch(/Tavily/i);
@@ -54,12 +52,12 @@ describe("IntroPage", () => {
   it("enters the dashboard on Start and remembers it for this tab", async () => {
     renderApp("/");
 
-    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    fireEvent.click(screen.getByRole("button", { name: /Explore the live demo/ }));
 
     expect(await screen.findByRole("heading", { name: "Home" })).toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "Main navigation" })).toBeInTheDocument();
     expect(window.sessionStorage.getItem(INTRO_STORAGE_KEY)).toBe("1");
-    expect(screen.queryByRole("button", { name: "Start" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Explore the live demo/ })).not.toBeInTheDocument();
   });
 
   it("enters the dashboard when Enter is pressed", async () => {
@@ -76,15 +74,15 @@ describe("IntroPage", () => {
     renderApp("/");
 
     expect(await screen.findByRole("heading", { name: "Home" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Start" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Explore the live demo/ })).not.toBeInTheDocument();
   });
 
   it("opens /home without the intro", async () => {
     renderApp("/home");
 
     expect(await screen.findByRole("heading", { name: "Home" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Start" })).not.toBeInTheDocument();
-    expect(screen.queryByText(/Canaries warned miners/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Explore the live demo/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Your startup’s cash should never surprise you/)).not.toBeInTheDocument();
   });
 
   it.each([
@@ -95,7 +93,7 @@ describe("IntroPage", () => {
     renderApp(path);
 
     expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Start" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Explore the live demo/ })).not.toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "Main navigation" })).toBeInTheDocument();
   });
 
@@ -104,7 +102,7 @@ describe("IntroPage", () => {
     renderApp(`/incidents/${incident.id}`);
 
     expect(await screen.findByRole("heading", { name: incident.title })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Start" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Explore the live demo/ })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "← Dashboard" })).toHaveAttribute("href", "/home");
   });
 });

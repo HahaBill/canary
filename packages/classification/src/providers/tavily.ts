@@ -64,7 +64,7 @@ export function scoutRefreshErrorFrom(error: unknown): ScoutRefreshError {
 }
 
 /**
- * One Tavily Search call. Body `api_key` first; retries once with Bearer on 401.
+ * One Tavily Search call using Tavily's documented Bearer authentication.
  * Shared by vendor corroboration and Scout so the two workflows cannot drift
  * on auth, and so Scout writes never go through `enrichVendor`.
  */
@@ -94,23 +94,11 @@ export async function tavilySearch(
   try {
     response = await fetchImpl(url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ api_key: apiKey, ...base }),
+      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(base),
     });
   } catch {
     throw new TavilyRequestError("TAVILY_UNREACHABLE", 0, `${name} request failed: network`);
-  }
-
-  if (response.status === 401) {
-    try {
-      response = await fetchImpl(url, {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify(base),
-      });
-    } catch {
-      throw new TavilyRequestError("TAVILY_UNREACHABLE", 0, `${name} request failed: network`);
-    }
   }
 
   const raw = await response.text();
@@ -220,9 +208,8 @@ export function pickCitation(results: TavilyResult[], merchantNormalized: string
 }
 
 /**
- * `ResearchProvider` over Tavily search. Sends the documented `api_key` body
- * form first and retries once with `Authorization: Bearer` if that is rejected
- * with 401 (both forms are accepted by the API).
+ * `ResearchProvider` over Tavily search. Authentication stays in the documented
+ * `Authorization: Bearer` header rather than in the JSON request body.
  */
 export function TavilyProvider(apiKey: string, fetchImpl?: FetchLike, options: TavilyProviderOptions = {}): ResearchProvider {
   const doFetch = fetchImpl ?? defaultFetch();

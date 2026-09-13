@@ -96,6 +96,21 @@ let demoRequest: Promise<Loaded<DemoResponse>> | null = null;
 const incidentRequests = new Map<string, Promise<Loaded<IncidentDetailResponse | null>>>();
 /** One entry per resource key (granularity, date range, cell coordinates, …). */
 const viewRequests = new Map<string, Promise<Loaded<unknown>>>();
+/**
+ * A two-second heartbeat must not supersede a request that is still loading.
+ * Doing so repeatedly can starve the UI on a slow connection: each effect is
+ * cleaned up before its response is allowed to commit, so the old figures stay
+ * on screen forever. Count rather than use a boolean because the shell and the
+ * current page can legitimately load different resources together.
+ */
+let cachedLoadsInFlight = 0;
+
+function trackCachedLoad<T>(request: Promise<T>): Promise<T> {
+  cachedLoadsInFlight += 1;
+  return request.finally(() => {
+    cachedLoadsInFlight = Math.max(0, cachedLoadsInFlight - 1);
+  });
+}
 
 /** Bumped on every cache clear so all mounted hooks re-run, not just the caller. */
 let cacheVersion = 0;
@@ -273,9 +288,15 @@ function useAsyncResource<T>(key: string, load: () => Promise<Loaded<T>>): Async
  * Started once from main.tsx. Never started by tests, which is the point of it
  * living behind an explicit call instead of a module side effect.
  */
-export function startLiveRefresh(intervalMs = 2_000): () => void {
+export function startLiveRefresh(
+  intervalMs = 2_000,
+  ready: () => boolean = () => cachedLoadsInFlight === 0,
+): () => void {
   const tick = () => {
     if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+    // Keep the current request alive long enough to update the mounted hooks.
+    // The next interval retries immediately after it settles.
+    if (!ready()) return;
     clearApiCache();
   };
   const handle = setInterval(tick, intervalMs);
@@ -285,7 +306,7 @@ export function startLiveRefresh(intervalMs = 2_000): () => void {
 /** The whole derived demo object: provenance, company, cash, burn, incidents. */
 export function useDerived(): AsyncResource<DemoResponse> {
   return useAsyncResource("demo", () => {
-    demoRequest ??= loadDemo().catch((err: unknown) => {
+    demoRequest ??= trackCachedLoad(loadDemo()).catch((err: unknown) => {
       demoRequest = null;
       throw err;
     });
@@ -298,7 +319,7 @@ export function useIncidentDetail(id: string): AsyncResource<IncidentDetailRespo
   return useAsyncResource(`incident:${id}`, () => {
     let pending = incidentRequests.get(id);
     if (!pending) {
-      pending = loadIncident(id).catch((err: unknown) => {
+      pending = trackCachedLoad(loadIncident(id)).catch((err: unknown) => {
         incidentRequests.delete(id);
         throw err;
       });
@@ -339,7 +360,7 @@ function useView<T>(key: string, fetchLive: () => Promise<T>, buildMock: () => T
   return useAsyncResource(key, () => {
     let pending = viewRequests.get(key) as Promise<Loaded<T>> | undefined;
     if (!pending) {
-      pending = loadView(fetchLive, buildMock).catch((err: unknown) => {
+      pending = trackCachedLoad(loadView(fetchLive, buildMock)).catch((err: unknown) => {
         viewRequests.delete(key);
         throw err;
       });

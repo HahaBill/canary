@@ -25,7 +25,7 @@ import { driverEntity, positiveContributors, primaryIncident, variableSpendRates
 import { assembleEvidence } from "../evidence.ts";
 import { displayName, formatDateShort } from "../format.ts";
 import { createLink, getHealthSummary, simulateCostChange, PERCENTAGE_MAX, PERCENTAGE_MIN } from "../tools.ts";
-import { resolveEntity } from "./entities.ts";
+import { categoryOf, resolveEntity } from "./entities.ts";
 import type { LlmClient, ToolSchema } from "./openai.ts";
 
 export const TOOL_NAMES = AGENT_TOOL_NAMES;
@@ -326,7 +326,9 @@ async function whatIf(ctx: ToolContext, rawEntity: string, percentage: number): 
     current_modeled_runway: formatMonths(result.current_runway_months),
     scenario_modeled_runway: formatMonths(result.scenario_runway_months),
     changes_nothing: result.delta_monthly_cents === 0,
+    ...(result.no_change_reason ? { no_change_reason: result.no_change_reason } : {}),
     label: result.label,
+    speech: result.speech,
   };
 }
 
@@ -379,7 +381,18 @@ async function vendorSpend(ctx: ToolContext, rawEntity: string): Promise<ToolRes
     };
   }
 
-  const weekly = derived.burn.weekly_variable_by_entity[resolved.entity] ?? 0;
+  const weekly = derived.burn.weekly_variable_by_entity[resolved.entity];
+  if (weekly === undefined) {
+    const category = categoryOf(derived, resolved.entity);
+    return {
+      known: true,
+      vendor: resolved.display_name,
+      entity_key: resolved.entity,
+      monitored_variable_spend: false,
+      ...(category ? { category } : {}),
+      detail: `${resolved.display_name} is not in the monitored variable-spend summary. Use list_transactions for its posted charges.`,
+    };
+  }
   const payload: ToolResult = {
     known: true,
     vendor: resolved.display_name,

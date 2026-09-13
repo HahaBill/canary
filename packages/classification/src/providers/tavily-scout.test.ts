@@ -156,7 +156,6 @@ describe("searchScoutVendor", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]!.url).toBe(TAVILY_SEARCH_URL);
     expect(calls[0]!.body).toMatchObject({
-      api_key: "tvly-test",
       topic: "news",
       include_answer: false,
       start_date: WINDOW_START,

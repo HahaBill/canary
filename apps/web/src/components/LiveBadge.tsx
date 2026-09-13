@@ -37,7 +37,7 @@ export interface LiveState {
  * Fold one new reading into the running comparison.
  *
  * THE WRAP CASE IS THE WHOLE REASON THIS IS A FUNCTION. The demo clock runs a
- * ten-minute cycle and then returns to the end of history, so the simulated date
+ * bounded cycle and then returns to the start of its history slice, so the simulated date
  * jumps backwards and cash jumps back up with it. Measured naively that reads as
  * the company earning a week's spend every ten minutes. Treating a backwards
  * date as a new baseline reports the truth instead: the clock restarted, and

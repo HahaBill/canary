@@ -154,12 +154,12 @@ describe("TavilyProvider", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]!.url).toBe(TAVILY_SEARCH_URL);
     expect(calls[0]!.body).toEqual({
-      api_key: "tvly-test",
       query: "Ashby ASHBYHQ company what does it do",
       search_depth: "basic",
       include_answer: true,
       max_results: 5,
     });
+    expect(calls[0]!.init.headers["authorization"]).toBe("Bearer tvly-test");
     expect(enrichment).toEqual({
       vendor_name: "Ashby",
       merchant_normalized: "ashby",
@@ -200,21 +200,6 @@ describe("TavilyProvider", () => {
     expect(enrichment?.mapped_category).toBe("NEEDS_REVIEW");
   });
 
-  it("retries once with the Authorization header when the body api_key is rejected", async () => {
-    const { fetch, calls } = fakeFetch([
-      { status: 401, body: { detail: "unauthorized" } },
-      { body: { answer: "Recruiting software.", results: [{ title: "T", url: "https://t.example.com/a", content: "c" }] } },
-    ]);
-
-    const enrichment = await TavilyProvider("tvly-test", fetch, { now: () => NOW }).enrichVendor(tavilyInput);
-
-    expect(calls).toHaveLength(2);
-    expect(calls[0]!.body["api_key"]).toBe("tvly-test");
-    expect(calls[1]!.body["api_key"]).toBeUndefined();
-    expect(calls[1]!.init.headers["authorization"]).toBe("Bearer tvly-test");
-    expect(enrichment?.mapped_category).toBe("RECRUITING");
-  });
-
   it("surfaces non-401 HTTP failures", async () => {
     const { fetch } = fakeFetch([{ status: 500, body: "boom" }]);
     await expect(TavilyProvider("tvly-test", fetch, { now: () => NOW }).enrichVendor(tavilyInput)).rejects.toThrow(/500/);
@@ -240,7 +225,7 @@ describe("tavilySearch", () => {
   });
 
   it("classifies 401, 429, and a dropped connection", async () => {
-    const unauthorized = fakeFetch([{ status: 401, body: { detail: "unauthorized" } }, { status: 401, body: { detail: "unauthorized" } }]);
+    const unauthorized = fakeFetch([{ status: 401, body: { detail: "unauthorized" } }]);
     await expect(tavilySearch("tvly-test", unauthorized.fetch, { query: "q" })).rejects.toMatchObject({
       name: "TavilyRequestError",
       code: "TAVILY_UNAUTHORIZED",

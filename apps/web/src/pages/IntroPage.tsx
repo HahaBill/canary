@@ -1,12 +1,14 @@
 /**
- * Five-second door: the lockup, why it's called Canary, Start / Enter.
- * Deep links never mount this page. No figures, no vendor-research names.
+ * Five-second door: Canary's promise, an iMessage-shaped product demo, Start / Enter.
+ * Deep links never mount this page. The sample intentionally contains no financial figures.
  */
 import { useCallback, useEffect } from "react";
+import { ArrowRight, AudioLines, ChevronLeft, Info } from "lucide-react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { APP_HOME_PATH } from "@canary/shared";
 import { Button } from "@/components/ui/button.tsx";
 import { INTRO_SAMPLE_BUBBLES, hasSeenIntro, markIntroSeen } from "@/lib/intro.ts";
+import "./IntroPage.css";
 
 export function IntroPage() {
   if (hasSeenIntro()) {
@@ -36,72 +38,164 @@ function IntroLanding() {
   }, [enter]);
 
   return (
-    <div className="intro-page min-h-dvh bg-[#f3efe6] text-[#1c1914]">
-      <div className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col justify-center gap-12 px-6 py-12 lg:flex-row lg:items-center lg:gap-20 lg:px-10">
-        <div className="max-w-md">
-          <img
-            src="/canary-lockup.png"
-            alt="Canary"
-            width={634}
-            height={652}
-            className="intro-lockup h-auto w-[11.25rem] sm:w-[13rem]"
-          />
-          <h1 className="mt-8 text-3xl font-semibold tracking-tight text-pretty sm:text-4xl">
-            Your early warning system for startup finances.
-          </h1>
-          <p className="mt-5 text-lg leading-relaxed text-[#3f3a32] text-pretty">
-            Canaries warned miners about toxic gas before they could detect it themselves.
-          </p>
-          <p className="mt-3 text-base leading-relaxed text-[#3f3a32] text-pretty">
-            Canary watches your company’s spending for dangerous shifts — and tells you when
-            something changes.
-          </p>
-          <p className="mt-3 text-base leading-relaxed text-[#6b6458] text-pretty">
-            See what changed, what’s driving it, and what it means for your runway.
-          </p>
-          <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-2">
-            <Button
-              type="button"
-              size="lg"
-              onClick={enter}
-              className="rounded-full bg-[#1c1914] px-7 text-base text-[#f3efe6] hover:bg-[#2a261f]"
-            >
-              Start
-            </Button>
-            <p className="text-sm text-[#6b6458]">or press Enter</p>
-          </div>
-        </div>
+    <div className="canary-landing">
+      <a className="canary-landing__skip" href="#landing-main">
+        Skip to main content
+      </a>
 
-        <IntroIMessage />
-      </div>
+      <header className="canary-landing__header" aria-label="Landing navigation">
+        <a className="canary-landing__brand" href="/" aria-label="Canary home">
+          <span className="canary-landing__brand-mark" aria-hidden="true">🐤</span>
+          <span>Canary</span>
+        </a>
+
+        <nav className="canary-landing__nav" aria-label="Landing page">
+          <a href="#how-it-works">How it works</a>
+          <Button type="button" size="md" onClick={enter} className="canary-landing__nav-cta">
+            Open demo
+          </Button>
+        </nav>
+      </header>
+
+      <main id="landing-main">
+        <section className="canary-landing__hero" aria-labelledby="intro-heading">
+          <div className="canary-landing__copy">
+            <p className="canary-landing__eyebrow">
+              <span aria-hidden="true" />
+              Early warning for startup cash
+            </p>
+            <h1 id="intro-heading">
+              Your startup’s cash should never <em>surprise you.</em>
+            </h1>
+            <p className="canary-landing__lede">
+              Canary reconciles financial activity, detects meaningful spending shifts, and texts
+              the founder when the pattern changes.
+            </p>
+
+            <div className="canary-landing__actions">
+              <Button type="button" size="lg" onClick={enter} className="canary-landing__primary-cta">
+                Explore the live demo
+                <ArrowRight aria-hidden="true" />
+              </Button>
+              <span className="canary-landing__key-hint">or press <kbd>Enter</kbd></span>
+            </div>
+
+            <ul className="canary-landing__principles" aria-label="Canary principles">
+              <li>Deterministic money math</li>
+              <li>Evidence you can inspect</li>
+              <li>Reports, never decides</li>
+            </ul>
+          </div>
+
+          <div className="canary-landing__device-stage">
+            <span className="canary-landing__sticker canary-landing__sticker--signal" aria-hidden="true">
+              Signal found
+            </span>
+            <span className="canary-landing__sticker canary-landing__sticker--taxonomy" aria-hidden="true">
+              Observed → Detected
+            </span>
+            <span className="canary-landing__orbit canary-landing__orbit--one" aria-hidden="true" />
+            <span className="canary-landing__orbit canary-landing__orbit--two" aria-hidden="true" />
+            <IntroIPhone />
+          </div>
+        </section>
+
+        <section id="how-it-works" className="canary-landing__how" aria-labelledby="how-heading">
+          <div className="canary-landing__how-heading">
+            <p>How Canary works</p>
+            <h2 id="how-heading">Reconcile first. Detect second. Explain everything.</h2>
+          </div>
+
+          <div className="canary-landing__steps">
+            <article>
+              <span aria-hidden="true">01</span>
+              <h3>Start with clean cash activity</h3>
+              <p>Transfers, settlements, financing, and unknown categories are handled before burn is modeled.</p>
+            </article>
+            <article>
+              <span aria-hidden="true">02</span>
+              <h3>Watch for real changes</h3>
+              <p>One-off shocks and sustained spending shifts use separate, deterministic rules.</p>
+            </article>
+            <article>
+              <span aria-hidden="true">03</span>
+              <h3>Show the trail</h3>
+              <p>Every explanation leads back to observed ledger activity, detector output, and cited evidence.</p>
+            </article>
+          </div>
+
+          <div className="canary-landing__closing">
+            <div>
+              <p>Built for the moment a spreadsheet is too late.</p>
+              <h2>See the alert. Follow the evidence.</h2>
+            </div>
+            <Button type="button" size="lg" onClick={enter} className="canary-landing__closing-cta">
+              Open Canary
+              <ArrowRight aria-hidden="true" />
+            </Button>
+          </div>
+
+          <footer>
+            <span>Canary</span>
+            <p>Fictional company · synthetic, deterministic demo data</p>
+          </footer>
+        </section>
+      </main>
     </div>
   );
 }
 
-function IntroIMessage() {
+function IntroIPhone() {
   return (
-    <figure className="intro-imessage mx-auto w-full max-w-[280px] shrink-0" aria-label="Sample iMessage from Canary">
-      <div className="rounded-[2rem] border-[10px] border-[#1c1914] bg-[#f7f7f7] shadow-[0_24px_60px_rgb(28_25_20/0.18)]">
-        <div className="border-b border-black/5 px-4 pb-3 pt-3 text-center">
-          <p className="text-[11px] font-semibold text-[#1c1914]">Canary</p>
-          <p className="text-[10px] text-[#8e8e93]">iMessage</p>
-        </div>
-        <div className="intro-imessage-thread relative min-h-[16.25rem] space-y-2 px-3 py-4">
-          <div className="intro-imessage-typing" aria-hidden="true">
-            <span />
-            <span />
-            <span />
+    <figure className="canary-landing__phone-figure" aria-label="Sample iMessage conversation with Canary">
+      <div className="canary-landing__phone">
+        <div className="canary-landing__phone-screen">
+          <div className="canary-landing__dynamic-island" aria-hidden="true" />
+          <div className="canary-landing__status" aria-hidden="true">
+            <span>9:41</span>
+            <span className="canary-landing__status-icons">● ᴡɪꜰɪ ▰</span>
           </div>
-          {INTRO_SAMPLE_BUBBLES.map((line, index) => (
-            <p key={line} className={`intro-imessage-bubble intro-imessage-bubble-${index + 1}`}>
-              {line}
-            </p>
-          ))}
+
+          <div className="canary-landing__contact">
+            <ChevronLeft aria-hidden="true" />
+            <div className="canary-landing__contact-identity">
+              <span aria-hidden="true">🐤</span>
+              <strong>Canary</strong>
+              <small>iMessage</small>
+            </div>
+            <Info aria-hidden="true" />
+          </div>
+
+          <div className="canary-landing__thread">
+            <p className="canary-landing__message-time">Now</p>
+            <div className="canary-landing__typing" aria-hidden="true"><i /><i /><i /></div>
+            {INTRO_SAMPLE_BUBBLES.map((line, index) => (
+              <p
+                key={line}
+                className={`canary-landing__bubble canary-landing__bubble--incoming canary-landing__bubble--${index + 1}`}
+              >
+                {line}
+              </p>
+            ))}
+            <div className="canary-landing__voice-note" aria-label="Sample Canary voice note">
+              <span className="canary-landing__play" aria-hidden="true">▶</span>
+              <AudioLines aria-hidden="true" />
+              <span>Voice note</span>
+              <small>0:15</small>
+            </div>
+            <p className="canary-landing__bubble canary-landing__bubble--outgoing">WHY</p>
+            <p className="canary-landing__delivered">Delivered</p>
+          </div>
+
+          <div className="canary-landing__composer" aria-hidden="true">
+            <span>＋</span>
+            <div>iMessage</div>
+            <span>🎙</span>
+          </div>
+          <div className="canary-landing__home-indicator" aria-hidden="true" />
         </div>
       </div>
-      <figcaption className="mt-3 text-center text-[11px] leading-relaxed text-[#8a8376]">
-        Sample shape — no figures. Live numbers come from the ledger.
-      </figcaption>
+      <figcaption>Illustrative conversation · live figures come from the reconciled ledger</figcaption>
     </figure>
   );
 }

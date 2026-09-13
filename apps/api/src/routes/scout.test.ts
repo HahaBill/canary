@@ -227,7 +227,7 @@ describe("POST /api/scout/refresh", () => {
     expect(rejected.body.never_searched).toBe(true);
     expect(rejected.body.tavily_calls).toBe(0);
     expect(rejected.body.vendors.every((v) => !v.searched && v.findings.length === 0)).toBe(true);
-    expect(unauthorized.calls.filter((c) => c.url === TAVILY_SEARCH_URL).length).toBe(2);
+    expect(unauthorized.calls.filter((c) => c.url === TAVILY_SEARCH_URL).length).toBe(1);
 
     const quota = createHarness({
       env: { TAVILY_API_KEY: "tvly-test" },

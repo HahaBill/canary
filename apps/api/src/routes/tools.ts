@@ -8,8 +8,7 @@ import { AGENT_TOOL_NAMES, type AgentToolName } from "@canary/shared";
 import { isToolName, runTool } from "../conversation/tools.ts";
 import { baseUrl, jsonError, readJson, type CanaryApp, type CanaryContext } from "../context.ts";
 import type { DataProvider } from "../data/provider.ts";
-import { noChangeExplanation, whatIfSpeech } from "../speech.ts";
-import { getHealthSummary, getIncidentTool, simulateCostChange } from "../tools.ts";
+import { getHealthSummary, getIncidentTool } from "../tools.ts";
 import { unwrapToolArgs } from "./tool-args.ts";
 
 /** Names a voice prompt may still use; they dispatch to the real tools. */
@@ -39,7 +38,7 @@ async function handleTool(c: CanaryContext, requested: string): Promise<Response
 
   const args = unwrapToolArgs(raw);
   const outcome = await runTool({ provider: c.get("provider"), baseUrl: baseUrl(c), llm: c.get("llm") }, name, args);
-  const result = await withSpeech(c.get("provider"), name, args, outcome.result);
+  const result = await withSpeech(c.get("provider"), name, outcome.result);
   return c.json(result);
 }
 
@@ -55,7 +54,6 @@ async function readToolRequest(c: CanaryContext): Promise<Record<string, unknown
 async function withSpeech(
   provider: DataProvider,
   name: AgentToolName,
-  args: Record<string, unknown>,
   result: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   if (name === "get_health_summary") {
@@ -65,14 +63,6 @@ async function withSpeech(
   if (name === "get_incident" && typeof result.id === "string") {
     const detail = await getIncidentTool(provider, result.id);
     if (detail) return { ...result, speech: detail.speech };
-  }
-  if (name === "simulate_cost_change" && result.known === true && typeof result.entity_key === "string") {
-    const percentage = typeof result.percentage === "number" ? result.percentage : Number(args.percentage);
-    if (Number.isFinite(percentage)) {
-      const derived = await provider.getDerived();
-      const simulated = await simulateCostChange(provider, { entity: result.entity_key, percentage });
-      return { ...result, speech: whatIfSpeech(simulated, noChangeExplanation(derived, result.entity_key, percentage)) };
-    }
   }
   return result;
 }

@@ -93,6 +93,7 @@ export function registerDataRoutes(app: CanaryApp): void {
   });
 
   app.get("/api/bank/accounts", async (c) => {
+    c.header("Cache-Control", "no-store");
     const bank = c.get("bank");
     const [accounts, closing] = await Promise.all([bank.getAccounts(), bank.getClosingBalance()]);
     const body: BankAccountsResponse = {
@@ -105,6 +106,9 @@ export function registerDataRoutes(app: CanaryApp): void {
   });
 
   app.get("/api/bank/transactions", async (c) => {
+    // Home's recent-activity feed is the row-level proof that the clock moved.
+    // It must advance with `/api/demo`, not reuse a cached date window.
+    c.header("Cache-Control", "no-store");
     const { from, to, account_id } = c.req.query();
     const body: BankTransactionsResponse = {
       transactions: await c.get("bank").getTransactions({

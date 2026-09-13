@@ -101,6 +101,16 @@ describe("mapping Rho's transaction types onto reconciliation", () => {
     const mapped = TRANSACTIONS.map((t) => mapTransaction(t, early)).filter(Boolean);
     expect(mapped.every((t) => t!.date <= early)).toBe(true);
   });
+
+  it("builds a unique Canary row id when Rho movement entries share an id", () => {
+    const base = TRANSACTIONS.find((t) => t.status === "settled")!;
+    const first = mapTransaction({ ...base, id: "shared-movement", account_id: "checking-a" }, ASOF)!;
+    const second = mapTransaction({ ...base, id: "shared-movement", account_id: "savings-b" }, ASOF)!;
+
+    expect(first.id).toBe("shared-movement:checking-a");
+    expect(second.id).toBe("shared-movement:savings-b");
+    expect(first.id).not.toBe(second.id);
+  });
 });
 
 describe("vendor identity", () => {
@@ -149,6 +159,38 @@ describe("accounts", () => {
 });
 
 describe("RhoBankClient.getLedger", () => {
+  it("walks Rho cursors using page_token from the prior next_page_token", async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (input: Parameters<FetchLike>[0]) => {
+      const url = new URL(String(input));
+      urls.push(url.toString());
+      const cursor = url.searchParams.get("page_token");
+      const body = cursor
+        ? { transactions: [], page: { next_page_token: null } }
+        : { transactions: [TRANSACTIONS[0]], page: { next_page_token: "cursor-2" } };
+      return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    }) as unknown as FetchLike;
+
+    await new RhoBankClient({ baseUrl: "https://rho.test/api/v1", fetchImpl }).getTransactions();
+
+    expect(urls).toHaveLength(2);
+    expect(new URL(urls[0]!).searchParams.has("page_token")).toBe(false);
+    expect(new URL(urls[1]!).searchParams.get("page_token")).toBe("cursor-2");
+    expect(new URL(urls[1]!).searchParams.has("next_page_token")).toBe(false);
+  });
+
+  it("fails instead of returning a silently truncated ledger when a cursor never ends", async () => {
+    const fetchImpl = (async () =>
+      new Response(JSON.stringify({ transactions: [], page: { next_page_token: "repeated" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })) as unknown as FetchLike;
+
+    await expect(
+      new RhoBankClient({ baseUrl: "https://rho.test/api/v1", fetchImpl }).getTransactions(),
+    ).rejects.toThrow(/pagination exceeded/);
+  });
+
   it("returns Canary shapes, in date order, and says what it skipped", async () => {
     const { fetchImpl, urls } = stubFetch();
     const ledger = await new RhoBankClient({ fetchImpl }).getLedger(ASOF);

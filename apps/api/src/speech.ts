@@ -48,7 +48,10 @@ function categoryPhrase(category: Category): string {
   return category.toLowerCase().replace(/_/g, " ");
 }
 
-export function whatIfSpeech(result: WhatIfResult, noChangeReason?: string | null): WhatIfResult["speech"] {
+export function whatIfSpeech(
+  result: WhatIfResult,
+  noChangeReason: string | null | undefined = result.no_change_reason,
+): WhatIfResult["speech"] {
   const entity = displayName(result.entity);
   const delta = result.delta_monthly_cents;
   const deltaMonthly =

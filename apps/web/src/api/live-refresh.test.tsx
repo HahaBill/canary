@@ -1,7 +1,7 @@
 /**
  * The live heartbeat and the stale-while-revalidate contract behind it.
  *
- * The backend's demo clock moves a simulated day per real minute; the SPA picks
+ * The backend's demo clock moves a simulated day at demo speed; the SPA picks
  * that up by clearing its response cache on an interval. What these tests pin
  * is the part a viewer would notice: a refresh swaps numbers IN PLACE. The
  * dashboard must never collapse to skeletons or an error page because time
@@ -96,5 +96,23 @@ describe("startLiveRefresh", () => {
       stop();
       unsubscribe();
     });
+  });
+
+  it("does not supersede a refresh that is still in flight", async () => {
+    const listener = vi.fn();
+    const { subscribeToCacheForTests } = await import("./useDerived.ts");
+    const unsubscribe = subscribeToCacheForTests(listener);
+    let ready = false;
+
+    const stop = startLiveRefresh(1_000, () => ready);
+    vi.advanceTimersByTime(3_100);
+    expect(listener).not.toHaveBeenCalled();
+
+    ready = true;
+    vi.advanceTimersByTime(1_100);
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    stop();
+    unsubscribe();
   });
 });

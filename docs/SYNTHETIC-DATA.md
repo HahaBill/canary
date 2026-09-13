@@ -108,13 +108,15 @@ much faster than real time or a demo shows nothing moving. Running monotonically
 from a fixed epoch would sprint through the horizon within hours and then sit
 clamped months in the future, showing a cash position nobody recognises.
 
-The cycle walks the last ten days of history and ends on the last day the company has, so the account is never even one day past
-"today". That bound is the point, and I found it by deploying a three-hour cycle
-first: the live dashboard drifted to 2026-12-26, three months past the documented
-"today". Everything still reconciled, but the demo script, the figures in these
-docs and Bill's calendar all disagreed about what day it was. Ten days keeps
-every surface inside the same week while still posting a transaction every minute
-or two, which is what makes the page look alive.
+The cycle walks a bounded final segment of history and ends on the last day the
+company has, so the account is never even one day past "today". The current
+defaults reveal one simulated day every two seconds and replay the final thirty
+days in one minute; `DEFAULT_MINUTES_PER_DAY` and `CYCLE_DAYS` in
+`apps/api/src/clock.ts` are the source of truth. That bound is the point. An
+earlier deployment ran into the generated horizon: everything still reconciled,
+but the demo script, the figures in these docs, and the calendar disagreed about
+what day it was. The bounded replay keeps the page visibly alive without claiming
+future bank activity.
 
 `minutesPerDay: 0` freezes it at the end of history, which is precisely how
 Canary behaved before the clock existed. That is the setting for a screenshot or

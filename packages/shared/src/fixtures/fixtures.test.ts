@@ -20,4 +20,20 @@ describe("fixtures", () => {
     expect(w.delta_monthly_cents).toBeLessThan(0);
     expect((w.scenario_runway_months ?? 0) > (w.current_runway_months ?? 0)).toBe(true);
   });
+
+  it("mock what-if explains no-change cases without scaling a credit balance", () => {
+    const d = buildMockDerived();
+    const credited = {
+      ...d,
+      burn: {
+        ...d.burn,
+        weekly_variable_by_entity: { ...d.burn.weekly_variable_by_entity, linear: -50_000 },
+      },
+    };
+    const result = mockWhatIf(credited, "linear", -20);
+
+    expect(result.hypothetical_weekly_cents).toBe(result.current_weekly_cents);
+    expect(result.delta_monthly_cents).toBe(0);
+    expect(result.no_change_reason).toContain("no net spend left to change");
+  });
 });

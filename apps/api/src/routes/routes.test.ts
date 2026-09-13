@@ -87,8 +87,11 @@ describe("GET /api/health-summary", () => {
 describe("GET /api/demo", () => {
   it("returns the derived object without fixture metadata", async () => {
     const h = createHarness();
-    const { status, body } = await h.json<DemoResponse & { fixture?: unknown }>("/api/demo");
+    const response = await h.app.request("/api/demo");
+    const status = response.status;
+    const body = (await response.json()) as DemoResponse & { fixture?: unknown };
     expect(status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
     expect(body.fixture).toBeUndefined();
     expect(body.weeks).toHaveLength(h.derived.weeks.length);
     expect(body.incidents).toHaveLength(h.derived.incidents.length);
@@ -188,6 +191,7 @@ describe("POST /api/simulate", () => {
     expect(status).toBe(200);
     expect(body.current_weekly_cents).toBe(0);
     expect(body.delta_monthly_cents).toBe(0);
+    expect(body.no_change_reason).toContain("no spending on record");
   });
 
   const invalidBodies: Array<{ label: string; payload: Record<string, unknown>; error: string }> = [

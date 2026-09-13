@@ -45,7 +45,7 @@ describe("advanceLive", () => {
   });
 
   it("re-baselines when the demo clock wraps, instead of reporting a windfall", () => {
-    // THE BUG THIS PREVENTS: the clock runs a ten-minute cycle and then returns
+    // THE BUG THIS PREVENTS: the clock runs a bounded cycle and then returns
     // to the end of history. Cash jumps back up by whatever the cycle spent.
     // Measured naively the badge would announce the company earning a week's
     // burn every ten minutes.

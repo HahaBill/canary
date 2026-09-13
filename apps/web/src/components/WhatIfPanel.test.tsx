@@ -117,6 +117,17 @@ describe("WhatIfPanel", () => {
     await waitFor(() => expect(grid()).toHaveAttribute("aria-busy", "false"));
   });
 
+  it("renders the backend reason when a scenario changes nothing", async () => {
+    const derived = buildMockDerived();
+    const entity = derived.primary_incident!.entity;
+
+    render(<WhatIfPanel burn={derived.burn} defaultEntity={entity} />);
+    await screen.findByText(SCENARIO_LABEL);
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "0" } });
+
+    expect(await screen.findByText(/zero percent change/i)).toBeInTheDocument();
+  });
+
   describe("runwayDeltaCaption", () => {
     const base = mockWhatIf(buildMockDerived(), "aws", -20);
 

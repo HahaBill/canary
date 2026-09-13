@@ -11,11 +11,15 @@ export function registerCoreRoutes(app: CanaryApp): void {
   });
 
   app.get("/api/health-summary", async (c) => {
+    c.header("Cache-Control", "no-store");
     const body: HealthSummaryResponse = await getHealthSummary(c.get("provider"));
     return c.json(body);
   });
 
   app.get("/api/demo", async (c) => {
+    // This object advances with the injected demo clock. Intermediary or
+    // browser caching would make the SPA's live refresh return the same day.
+    c.header("Cache-Control", "no-store");
     const body: DemoResponse = stripFixture(await c.get("provider").getDerived());
     return c.json(body);
   });

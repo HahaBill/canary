@@ -23,30 +23,47 @@ import { cn } from "@/lib/utils.ts";
 const SHOWN = 7;
 
 function orderNewestFirst(transactions: Transaction[]): Transaction[] {
+  // The bank endpoint deliberately returns raw activity, including pending
+  // authorisations. Once the same response contains the settled replacement,
+  // keep only that replacement in this compact feed; showing both reads as two
+  // charges even though the reconciled ledger counts them once.
+  const supersededPendingIds = new Set(
+    transactions.flatMap((tx) => (tx.status === "settled" && tx.pending_of ? [tx.pending_of] : [])),
+  );
   return [...transactions]
+    .filter((tx) => !supersededPendingIds.has(tx.id))
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.id < b.id ? 1 : -1))
     .slice(0, SHOWN);
 }
 
 /**
- * Ids seen on a previous render, so a genuinely new row can be highlighted.
+ * Ids shown on the previous render, so a genuinely new row can be highlighted.
  * The FIRST batch is not "new" — everything would flash at once and mean
- * nothing — so the initial load seeds the set without marking anything.
+ * nothing — so the initial load seeds the set without marking anything. Keep
+ * only the previous batch: the demo clock replays its bounded history, and an
+ * forever-growing set would make rows stop highlighting after the first loop.
  */
 function useArrivals(rows: Transaction[]): Set<string> {
   const seen = useRef<Set<string> | null>(null);
   const [arrived, setArrived] = useState<Set<string>>(new Set());
+  const rowIds = rows.map((row) => row.id).join("\u0000");
 
   useEffect(() => {
     if (rows.length === 0) return;
+    const current = new Set(rows.map((r) => r.id));
     if (seen.current === null) {
-      seen.current = new Set(rows.map((r) => r.id));
+      seen.current = current;
       return;
     }
     const fresh = rows.filter((r) => !seen.current!.has(r.id)).map((r) => r.id);
-    for (const id of rows.map((r) => r.id)) seen.current.add(id);
-    if (fresh.length > 0) setArrived(new Set(fresh));
-  }, [rows]);
+    seen.current = current;
+    setArrived((previous) => {
+      if (fresh.length === 0) return previous.size === 0 ? previous : new Set();
+      const next = new Set(fresh);
+      if (previous.size === next.size && [...previous].every((id) => next.has(id))) return previous;
+      return next;
+    });
+  }, [rowIds]);
 
   return arrived;
 }

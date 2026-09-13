@@ -27,6 +27,12 @@ describe("knownEntities", () => {
   it("is every vendor with spend in the burn window, plus the incident contributors", () => {
     expect(knownEntities(derived)).toEqual(expect.arrayContaining(["aws", "datadog", "ashby", "upwork"]));
   });
+
+  it("includes classified fixed vendors even though they are outside monitored variable spend", () => {
+    const classified = withClassifications(derived, { gusto_payroll: "PAYROLL" });
+    expect(classified.burn.weekly_variable_by_entity["gusto_payroll"]).toBeUndefined();
+    expect(knownEntities(classified)).toContain("gusto_payroll");
+  });
 });
 
 describe("resolveEntity", () => {
@@ -40,6 +46,15 @@ describe("resolveEntity", () => {
     for (const name of ["Amazon", "amazon web services", "Amazon Web Services"]) {
       expect(resolveEntity(derived, name)).toMatchObject({ known: true, entity: "aws" });
     }
+  });
+
+  it("resolves payroll to its classified fixed vendor", () => {
+    const classified = withClassifications(derived, { gusto_payroll: "PAYROLL" });
+    expect(resolveEntity(classified, "payroll")).toMatchObject({
+      known: true,
+      entity: "gusto_payroll",
+      display_name: "Gusto payroll",
+    });
   });
 
   it("picks the vendor out of a sentence", () => {

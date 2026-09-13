@@ -127,6 +127,7 @@ describe("simulateCostChange — speech", () => {
     expect(result.runway_delta_months).toBe(0);
     expect(result.speech.summary).toContain("monthly burn would not change");
     expect(result.speech.summary).toContain("runway would stay at");
+    expect(result.no_change_reason).toContain("zero percent change");
   });
 
   it("handles a scenario that stops the burn entirely", () => {
@@ -158,6 +159,7 @@ describe("simulateCostChange — unknown entity", () => {
     expect(result.scenario_runway_months).toBe(BURN.runway_months);
     expect(result.runway_delta_months).toBe(0);
     expect(result.speech.summary).toContain("monthly burn would not change");
+    expect(result.no_change_reason).toContain("not part of the variable spend Canary monitors");
   });
 });
 
@@ -215,6 +217,7 @@ describe("simulateCostChange — saying why nothing changed", () => {
     expect(result.hypothetical_weekly_cents).toBe(-50_000);
     expect(result.delta_monthly_cents).toBe(0);
     expect(whatIfNoChangeReason(credited, "linear", -20)).toBe("NO_SPEND_TO_CHANGE");
+    expect(result.no_change_reason).toContain("no net spend left to change");
     expect(result.speech.summary).toContain("no net spend left to change");
   });
 
@@ -222,5 +225,6 @@ describe("simulateCostChange — saying why nothing changed", () => {
     const result = simulateCostChange(BURN, { entity: "aws", percentage: -20 });
     expect(result.hypothetical_weekly_cents).toBeLessThan(result.current_weekly_cents);
     expect(result.delta_monthly_cents).toBeLessThan(0);
+    expect(result.no_change_reason).toBeNull();
   });
 });

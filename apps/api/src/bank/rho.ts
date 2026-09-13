@@ -56,6 +56,11 @@ export interface RhoAccount {
 }
 
 export interface RhoTransaction {
+  /**
+   * Stable across re-fetches, but Rho does not guarantee row uniqueness: the
+   * entries of one money movement may share this value. Canary therefore
+   * combines it with `account_id` when building its own transaction id.
+   */
   id: string;
   /** Rho's id for the movement of money; shared by both legs of a transfer. */
   money_movement_id?: string;
@@ -225,7 +230,11 @@ export function mapTransaction(tx: RhoTransaction, asOf: ISODate): Transaction |
   const description = tx.memo?.trim() || tx.note?.trim() || tx.card_name?.trim() || "";
 
   const mapped: Transaction = {
-    id: tx.id,
+    // Rho's v1 ingestion guidance explicitly says `id` alone is not a unique
+    // row key. Account id is the documented discriminator for entries of the
+    // same movement, and keeps the key stable when a pending row settles in
+    // place. Without this, a Map/D1 primary key can silently drop one leg.
+    id: `${tx.id}:${tx.account_id}`,
     account_id: tx.account_id,
     date,
     amount_cents: tx.amount.amount as Cents,
@@ -357,7 +366,9 @@ export class RhoBankClient {
       const url = new URL(`${this.baseUrl}${path}`);
       url.searchParams.set("page_size", String(PAGE_SIZE));
       for (const [k, v] of Object.entries(params)) if (v) url.searchParams.set(k, v);
-      if (nextPageToken) url.searchParams.set("next_page_token", nextPageToken);
+      // Responses call this `next_page_token`; requests send it back as
+      // `page_token` (Rho v1 cursor contract).
+      if (nextPageToken) url.searchParams.set("page_token", nextPageToken);
 
       const res = await doFetch(url.toString(), {
         headers: { authorization: `Bearer ${this.token}`, accept: "application/json" },
@@ -369,9 +380,12 @@ export class RhoBankClient {
       const rows = body[key];
       if (Array.isArray(rows)) out.push(...(rows as T[]));
       nextPageToken = body.page?.next_page_token;
-      if (!nextPageToken) break;
+      if (!nextPageToken) return out;
     }
-    return out;
+    // A partial bank history must never masquerade as a complete one. The cap
+    // prevents a malformed/repeated cursor from spinning forever; reaching it
+    // is an upstream failure, not a valid truncated ledger.
+    throw new Error(`Rho ${path} pagination exceeded ${MAX_PAGES} pages`);
   }
 
   async getAccounts(): Promise<RhoAccount[]> {

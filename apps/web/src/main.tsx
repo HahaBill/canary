@@ -6,7 +6,7 @@ import { startLiveRefresh } from "./api/useDerived.ts";
 import { ErrorBoundary } from "./components/ErrorBoundary.tsx";
 import "./index.css";
 
-// The backend's demo clock advances a simulated day every real minute. This
+// The backend's demo clock advances a simulated day at demo speed. This
 // heartbeat re-fetches so the day appears on screen without anyone reloading —
 // the dashboard is a live account, not a screenshot of one.
 startLiveRefresh();

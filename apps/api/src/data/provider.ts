@@ -23,7 +23,7 @@ import type {
   WhatIfResult,
 } from "@canary/shared";
 import { buildMockDerived, mockWhatIf } from "@canary/shared/fixtures";
-import { whatIfSpeech } from "../speech.ts";
+import { noChangeExplanation, whatIfSpeech } from "../speech.ts";
 import { D1Store, type SqlDatabase } from "./d1.ts";
 import { mockCalendarEvents, mockLedgerPivot, mockPivotCell, needsReviewItems } from "./mock-views.ts";
 import { listFromWeeklyBuckets, selectTransactions, type TransactionListQuery, type TransactionSelection } from "./transactions.ts";
@@ -122,7 +122,12 @@ export class MockDataProvider implements DataProvider {
     const derived = await this.getDerived();
     const result = mockWhatIf(derived, req.entity, req.percentage) as WhatIfResult;
     // The fixture ships placeholder speech; render it from shared helpers instead.
-    return { ...result, speech: whatIfSpeech(result) };
+    const noChangeReason = noChangeExplanation(derived, req.entity, req.percentage);
+    return {
+      ...result,
+      no_change_reason: noChangeReason,
+      speech: whatIfSpeech(result, noChangeReason),
+    };
   }
 
   async getLedgerPivot(granularity: PivotGranularity): Promise<LedgerPivot> {

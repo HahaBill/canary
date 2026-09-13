@@ -88,6 +88,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     response = await fetch(path, {
       ...init,
+      // Every API surface is a current view of the ledger. In particular,
+      // `/api/demo` changes as the injected demo clock advances, so allowing
+      // the browser's HTTP cache to reuse a prior GET makes the Home page look
+      // frozen even though the heartbeat is fetching on schedule.
+      cache: init?.cache ?? "no-store",
       headers: { Accept: "application/json", ...(init?.body ? { "Content-Type": "application/json" } : {}), ...init?.headers },
     });
   } catch (cause) {

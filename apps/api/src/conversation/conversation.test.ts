@@ -6,7 +6,7 @@
  * Every expected figure is derived from the fixture with the shared formatters:
  * no financial number is hand-typed here either (AGENTS.md rule 1).
  */
-import { formatMonths, formatUsd, formatUsdWhole } from "@canary/shared";
+import { formatMonths, formatUsd, formatUsdWhole, type Classification, type DerivedDemoObject } from "@canary/shared";
 import { buildMockDerived, mockWhatIf } from "@canary/shared/fixtures";
 import { describe, expect, it } from "vitest";
 import { D1Store } from "../data/d1.ts";
@@ -25,6 +25,19 @@ const SENDER = TEST_ENV.FOUNDER_PHONE!;
 const NOW = "2026-09-14T12:00:00.000Z";
 
 const derived = buildMockDerived();
+
+function withPayrollClassification(base: DerivedDemoObject): DerivedDemoObject {
+  const payroll: Classification = {
+    transaction_id: "txn_gusto",
+    merchant_normalized: "gusto_payroll",
+    category: "PAYROLL",
+    method: "RULE",
+    reason: "test fixture",
+    supporting_signals: [],
+    confidence_level: "HIGH",
+  };
+  return { ...base, classifications: { ...base.classifications, [payroll.transaction_id]: payroll } };
+}
 /** Exactly what `simulate_cost_change` hands the model, per percentage. */
 const at = (percentage: number) => {
   const s = mockWhatIf(derived, "aws", percentage);
@@ -126,6 +139,47 @@ describe("what-if over tool calling", () => {
     const { body } = await h.authed<SendblueWebhookResponse>(WEBHOOK, say("how much is Amazon costing us?"));
     expect(body.reply).toContain(FIG.weekly);
     expect(body.reason).toBeUndefined();
+  });
+
+  it("gives iMessage and the HTTP tool the same deterministic payroll no-change reason", async () => {
+    const payrollDerived = withPayrollClassification(derived);
+    const provider = new MockDataProvider(payrollDerived);
+    const expectedReason =
+      "Gusto payroll is payroll, which Canary treats as fixed rather than variable spend, so this scenario does not move modeled burn";
+    const h = scripted(
+      [
+        { tool_calls: [{ name: "simulate_cost_change", arguments: { entity: "payroll", percentage: -20 } }] },
+        { content: `${expectedReason}.\nScenario estimate — not guaranteed savings.` },
+      ],
+      { provider },
+    );
+
+    const { body } = await h.authed<SendblueWebhookResponse>(WEBHOOK, say("what if payroll were 20% lower?"));
+    expect(body.reply).toContain(expectedReason);
+    expect(body.reason).toBeUndefined();
+
+    const toolMessage = [...h.openai.requests[1]!.messages].reverse().find((message) => message.role === "tool");
+    const iMessageTool = JSON.parse(toolMessage!.content!) as {
+      known: boolean;
+      entity_key: string;
+      changes_nothing: boolean;
+      no_change_reason: string;
+      speech: { summary: string };
+    };
+    const httpTool = await h.post<typeof iMessageTool>("/api/tools/simulate_cost_change", {
+      entity: "payroll",
+      percentage: -20,
+    });
+
+    expect(iMessageTool).toMatchObject({
+      known: true,
+      entity_key: "gusto_payroll",
+      changes_nothing: true,
+      no_change_reason: expectedReason,
+    });
+    expect(iMessageTool.speech.summary).toContain(expectedReason);
+    expect(httpTool.body.no_change_reason).toBe(iMessageTool.no_change_reason);
+    expect(httpTool.body.speech).toEqual(iMessageTool.speech);
   });
 });
 

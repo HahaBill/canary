@@ -104,7 +104,8 @@ export const simulateCostChange: SimulateCostChange = (
     deltaMonthly === 0 ? "monthly burn would not change" : `monthly burn would ${deltaMonthly < 0 ? "fall" : "rise"} by ${deltaSpeech}`;
   // The reason is its own sentence. Threading it through the middle of the
   // clause produces a run-on nobody can follow, least of all spoken aloud.
-  const why = noChange ? ` ${sentenceCase(noChangeClause(noChange, entity))}.` : "";
+  const noChangeReason = noChange ? sentenceCase(noChangeClause(noChange, entity)) : null;
+  const why = noChangeReason ? ` ${noChangeReason}.` : "";
 
   return {
     label: SCENARIO_LABEL,
@@ -121,6 +122,7 @@ export const simulateCostChange: SimulateCostChange = (
     current_runway_months: currentRunway,
     scenario_runway_months: scenarioRunway,
     runway_delta_months: runwayDelta,
+    no_change_reason: noChangeReason,
     speech: {
       delta_monthly: deltaSpeech,
       scenario_runway: speakMonths(scenarioRunway),

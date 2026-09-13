@@ -119,7 +119,12 @@ export class PipelineDataProvider implements DataProvider {
   async simulate(req: WhatIfRequest): Promise<WhatIfResult> {
     const derived = await this.getDerived();
     const result = simulateCostChange(derived.burn, req);
-    return { ...result, speech: whatIfSpeech(result, noChangeExplanation(derived, req.entity, req.percentage)) };
+    const noChangeReason = noChangeExplanation(derived, req.entity, req.percentage);
+    return {
+      ...result,
+      no_change_reason: noChangeReason,
+      speech: whatIfSpeech(result, noChangeReason),
+    };
   }
 
   // ---------------------------------------------------------------------------

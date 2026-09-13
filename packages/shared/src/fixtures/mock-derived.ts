@@ -225,11 +225,22 @@ export function buildMockDerived(): DerivedDemoObject {
 /** Handy for what-if mocks in the web app before the API exists. */
 export function mockWhatIf(derived: DerivedDemoObject, entity: string, percentage: number) {
   const b = derived.burn;
+  const isMonitored = Object.prototype.hasOwnProperty.call(b.weekly_variable_by_entity, entity);
   const cur = b.weekly_variable_by_entity[entity] ?? 0;
-  const hyp = Math.round(cur * (1 + percentage / 100));
+  // Match the engine: a zero/negative net vendor balance has no spend to cut,
+  // so scaling it must not invert a reduction into higher modeled burn.
+  const hyp = cur <= 0 ? cur : Math.round(cur * (1 + percentage / 100));
   const deltaWeekly = hyp - cur;
   const scenarioMonthly = b.monthly_net_burn_cents + weeklyToMonthly(deltaWeekly);
   const scenarioRunway = runwayMonths(b.available_operating_cash_cents, scenarioMonthly);
+  const name = entity.charAt(0).toUpperCase() + entity.slice(1);
+  const noChangeReason = !isMonitored
+    ? `${name} is not part of the variable spend Canary monitors, so changing it does not move modeled burn`
+    : cur <= 0
+      ? `${name} has no net spend left to change over the current burn window`
+      : percentage === 0
+        ? `A zero percent change to ${entity} leaves everything where it is`
+        : null;
   return {
     label: SCENARIO_LABEL,
     entity,
@@ -245,6 +256,7 @@ export function mockWhatIf(derived: DerivedDemoObject, entity: string, percentag
     current_runway_months: b.runway_months,
     scenario_runway_months: scenarioRunway,
     runway_delta_months: b.runway_months !== null && scenarioRunway !== null ? Math.round((scenarioRunway - b.runway_months) * 10) / 10 : null,
+    no_change_reason: noChangeReason,
     speech: { delta_monthly: "mock", scenario_runway: "mock", summary: "mock" },
   };
 }

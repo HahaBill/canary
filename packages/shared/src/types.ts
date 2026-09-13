@@ -505,6 +505,8 @@ export interface WhatIfResult {
   current_runway_months: number | null;
   scenario_runway_months: number | null;
   runway_delta_months: number | null;
+  /** Why the scenario changed nothing, already phrased for a reader. Null when it did. */
+  no_change_reason?: string | null;
   /** Pre-rendered for voice. Produced by shared/money.ts helpers, never by an LLM. */
   speech: {
     delta_monthly: string;

@@ -59,6 +59,13 @@ describe("MockDataProvider", () => {
     expect(result.speech.delta_monthly).toContain("lower per month");
     expect(result.speech.summary).not.toContain("mock");
   });
+
+  it("carries the deterministic no-change reason beside the spoken scenario", async () => {
+    const provider = new MockDataProvider();
+    const result = await provider.simulate({ entity: "not_a_vendor", percentage: -20 });
+    expect(result.no_change_reason).toContain("no spending on record");
+    expect(result.speech.summary).toContain(result.no_change_reason!);
+  });
 });
 
 describe("withD1Overlay", () => {

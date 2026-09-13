@@ -7,7 +7,7 @@
  * and an unresolved name must come back as a question ("which vendor?"), not as
  * a silently-zero scenario (docs/AGENT_BEHAVIOR.md §5).
  */
-import type { Category, DerivedDemoObject } from "@canary/shared";
+import { FIXED_CATEGORIES, VARIABLE_CATEGORIES, type Category, type DerivedDemoObject } from "@canary/shared";
 import { DISPLAY_NAMES, displayName } from "../format.ts";
 
 export type EntityResolution =
@@ -55,9 +55,24 @@ function normalize(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-/** Every entity key Canary has spend for, plus the incident contributors. */
+/**
+ * Every operating-spend entity Canary knows about.
+ *
+ * The burn summary only carries monitored variable spend. Fixed vendors such
+ * as payroll still need to resolve so a what-if can explain why they do not
+ * move the variable-spend model. Classifications are transaction-keyed, so a
+ * Set keeps repeated payments deterministic and duplicate-free.
+ */
 export function knownEntities(derived: DerivedDemoObject): string[] {
   const keys = new Set<string>(Object.keys(derived.burn.weekly_variable_by_entity));
+  for (const classification of Object.values(derived.classifications)) {
+    if (
+      FIXED_CATEGORIES.includes(classification.category) ||
+      VARIABLE_CATEGORIES.includes(classification.category)
+    ) {
+      keys.add(classification.merchant_normalized);
+    }
+  }
   for (const incident of derived.incidents) {
     if (incident.entity) keys.add(incident.entity);
     for (const contributor of incident.contributors) keys.add(contributor.entity);

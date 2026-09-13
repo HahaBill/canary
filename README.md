@@ -248,7 +248,7 @@ weekly variable      14428 16620 15765 15177 16749 15944 15116 14140 14231 16757
 incidents            inc_5b393334:BURN_RATE_SHIFT:aws:HIGH, inc_40e99e9c:ONE_OFF_VENDOR_PAYMENT:figma:MEDIUM
 ```
 
-`npm test` runs **1,333 tests** (4 skipped: live-provider tests that need real API keys), entirely offline. The ledger is a full year — 52 weeks, 626 transactions — and the demo clock walks its final ten days, a day every thirty seconds, ending on the last day the company actually has. Reconciliation is exact to the cent at every instant, and no surface ever names a day that has not happened.
+`npm test` runs entirely offline by default; live-provider tests opt in only when their credentials or explicit live flags are present. The ledger is a full year, and the demo clock walks a bounded final segment of that history at demo speed, ending on the last day the company actually has. Reconciliation is exact to the cent at every instant, and no surface ever names a day that has not happened.
 
 ---
 
@@ -327,7 +327,8 @@ React SPA, built by Vite into `apps/api/public` and served by the Worker as stat
 
 | Surface | What's on it |
 | --- | --- |
-| **Home** (`/`) | Cash, current burn (with its window), runway; the open incident with a sparkline; the standalone one-off signal; a conversation strip replaying the real iMessage log from D1; the reconciliation data-quality strip |
+| **Landing** (`/`) | Product introduction and a responsive iPhone/iMessage demonstration; Enter opens the live product |
+| **Home** (`/home`) | Cash, current burn, operating inflow and runway; live weekly operating cash; newly posted transactions; the open incident and standalone one-off signal |
 | **Incidents** (`/incidents`) | Every incident with status and severity |
 | **Incident** (`/incidents/:id`) | Tabs `overview` / `drivers` / `evidence` / `whatif`, deep-linkable via `?tab=`. Overview has the weekly variable-spend chart with the change point marked and the CUSUM statistic against `h`; Drivers has the contributor decomposition; Evidence has the taxonomy plus "why Canary flagged this" (baseline, σ, k, h); What-if has the simulator. Plus **Acknowledge** and **Listen** (the incident's voice note, streamed from `/api/incidents/:id/voice`) |
 | **Ledger** (`/ledger`) | Hierarchical pivot — Revenue / Variable / Fixed / One-offs & renewals / Net burn / Financing & transfers / Cash at period end. Weekly·Monthly toggle, run-rate column, post-change tint, cell drill-down to the transactions behind any figure, CSV export |
@@ -385,6 +386,54 @@ curl -X POST https://canary.bill-nguyentonhoang.workers.dev/api/alerts/send \
 | Bank | `BankProvider` → `SandboxBankProvider`, plus `RhoBankClient` | The seam a real bank API slots into without touching engine, detectors or UI — and `RhoBankClient` does, live, at `GET /api/bank/rho` |
 | Determinism | `now` and `seed` injected everywhere | The Worker bundle stays free of `node:` imports — the Worker imports `@canary/classification/core`, not the package root |
 | Testing | Vitest, offline | The Worker is tested with `app.request()` and injected fakes, no workerd; live provider tests skip themselves without keys |
+
+---
+
+## Rho integration readiness
+
+Canary used Rho's public v1 sandbox to validate the bank boundary against a
+schema and ledger that were not generated for Canary. `RhoBankClient` reads the
+official Accounts and Transactions endpoints, follows cursor pagination,
+preserves Rho's signed integer minor units, and maps the feed into the same
+`BankProvider`/engine path used by the demo. `GET /api/bank/rho` is the runnable
+proof: it fetches the sandbox, builds Canary's ledger, and reports reconciliation
+coverage instead of pretending every relationship was available.
+
+| Rho v1 field or behavior | Canary handling |
+| --- | --- |
+| `amount.amount` + `amount.currency` | Preserved as signed integer cents and ISO currency; no decimal conversion |
+| `id` may be shared by entries in one movement | Canonical row id is `id + account_id`, following Rho's idempotent-ingestion guidance |
+| `money_movement_id` | Mapped directly to `transfer_pair_id`, so two-sided internal transfers can be verified |
+| `status`, `posted_at`, `initiated_at` | Failed/awaiting-approval rows are excluded; settled and pending rows retain their actual lifecycle state and date |
+| `transaction_type` | Explicit flow-type table; a new or ambiguous type is reported and reaches Needs Review rather than being guessed |
+| `page.next_page_token` | Returned as the next request's `page_token`; filters remain stable across pages |
+
+For one company, production is a base-URL/token switch using a Rho API Access
+Token with `accounts:read` and `transactions:read`. A multi-customer product
+would add Rho Partner OAuth in front of the same client; the engine, detectors,
+API contracts, and UI do not change. See Rho's official
+[getting-started](https://docs.rho.co/docs/v1/getting-started),
+[transactions](https://docs.rho.co/docs/v1/transactions), and
+[partner-authentication](https://docs.rho.co/docs/v1/partner-auth) guides.
+
+Two feed relationships remain deliberately marked as incomplete before calling
+the adapter production-complete:
+
+- Confirm on a real account whether settlement updates a pending transaction in
+  place or emits a second row. The former is already safe; the latter needs an
+  explicit pending-to-settled correlation rule.
+- Rho transactions do not identify which card purchases a repayment covers, so
+  Canary excludes repayments from burn correctly but labels settlement coverage
+  unavailable. Wiring Rho Statements would add an independent period-opening /
+  period-closing reconciliation anchor.
+
+Verify the adapter offline with:
+
+```bash
+npm test -w @canary/api -- --run src/bank/rho.test.ts src/bank/rho-brain.test.ts
+```
+
+Add `RHO_LIVE=1` to include the credential-free public sandbox probe.
 
 ---
 
