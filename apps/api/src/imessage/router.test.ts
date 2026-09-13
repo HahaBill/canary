@@ -2,8 +2,9 @@
 import { IMESSAGE_COMMANDS, type ErrorResponse } from "@canary/shared";
 import { describe, expect, it } from "vitest";
 import { formatDateShort } from "../format.ts";
+import { replyVoiceScript } from "../messages.ts";
 import type { SendblueWebhookResponse } from "../routes/webhooks.ts";
-import { createHarness, inbound, TEST_ENV } from "../test/harness.ts";
+import { createHarness, fakeTts, inbound, TEST_ENV } from "../test/harness.ts";
 import { matchCommand, replyTarget, shouldIgnoreInbound } from "./router.ts";
 
 const WEBHOOK = "/webhooks/sendblue";
@@ -196,6 +197,34 @@ describe("webhook keyword replies", () => {
     expect(rows.every((r) => r.phone === SENDER)).toBe(true);
     expect(rows[0]!.body).toBe("WHY");
     expect(rows[1]!.provider_message_id).toBe("msg_test_handle");
+  });
+
+  it("follows the text with an ElevenLabs voice memo of the same reply", async () => {
+    const tts = fakeTts();
+    const h = createHarness({ tts });
+    const { body } = await h.authed<SendblueWebhookResponse>(WEBHOOK, inbound("WHY"));
+    expect(body.reply_sent).toBe(true);
+    expect(body.voice).toMatchObject({ sent: true, seconds: 1, transcript: replyVoiceScript(body.reply!) });
+    expect(tts.spoken).toEqual([body.voice!.transcript]);
+    expect(h.calls.map((c) => c.url)).toEqual([
+      "https://api.sendblue.co/api/send-message",
+      "https://api.sendblue.com/api/upload-file",
+      "https://api.sendblue.co/api/send-message",
+    ]);
+    expect(h.calls[2]!.body).toMatchObject({ media_url: body.voice!.media_url, number: SENDER });
+    expect(h.calls[2]!.body).not.toHaveProperty("content");
+    expect(h.db.rows("imessage_log").map((r) => r.direction)).toEqual(["inbound", "outbound", "outbound"]);
+    expect(String(h.db.rows("imessage_log")[2]!.body)).toContain("[voice note");
+  });
+
+  it("keeps the text reply delivered when TTS fails", async () => {
+    const h = createHarness({ tts: fakeTts({ pcm: () => ({ ok: false, sampleRate: 24_000, status: 500, error: "boom" }) }) });
+    const { status, body } = await h.authed<SendblueWebhookResponse>(WEBHOOK, inbound("HELP"));
+    expect(status).toBe(200);
+    expect(body.reply_sent).toBe(true);
+    expect(body.voice?.sent).toBe(false);
+    expect(body.voice?.error).toBe("tts: boom");
+    expect(h.calls).toHaveLength(1);
   });
 
   it("still answers 200 (with reply_sent false) when Sendblue is down", async () => {

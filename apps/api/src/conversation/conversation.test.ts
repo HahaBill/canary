@@ -11,9 +11,10 @@ import { buildMockDerived, mockWhatIf } from "@canary/shared/fixtures";
 import { describe, expect, it } from "vitest";
 import { D1Store } from "../data/d1.ts";
 import { MockDataProvider } from "../data/provider.ts";
-import { healthLineMessage, helpMessage, refusalMessage, whyMessage } from "../messages.ts";
+import { formatDateShort } from "../format.ts";
+import { healthLineMessage, helpMessage, refusalMessage, replyVoiceScript, whyMessage } from "../messages.ts";
 import type { SendblueWebhookResponse } from "../routes/webhooks.ts";
-import { createHarness, inbound, TEST_ENV, type Harness, type HarnessOptions } from "../test/harness.ts";
+import { createHarness, fakeTts, inbound, TEST_ENV, type Harness, type HarnessOptions } from "../test/harness.ts";
 import { fakeOpenAi, type FakeOpenAi, type ScriptedTurn } from "../test/fake-openai.ts";
 import { CONVERSATION } from "./config.ts";
 import { openAiClient } from "./openai.ts";
@@ -95,6 +96,20 @@ describe("what-if over tool calling", () => {
     expect(h.messages[0]!.content).toBe(body.reply);
   });
 
+  it("accompanies the text with an ElevenLabs voice memo of the same reply", async () => {
+    const tts = fakeTts();
+    const h = scripted(script, { tts });
+    const { body } = await h.authed<SendblueWebhookResponse>(WEBHOOK, say("what if AWS were 30% lower?"));
+
+    expect(body.reply_sent).toBe(true);
+    expect(body.voice).toMatchObject({ sent: true, transcript: replyVoiceScript(body.reply!) });
+    expect(body.voice!.transcript).toContain(FIG.weekly);
+    expect(body.voice!.transcript).not.toMatch(/https?:\/\//);
+    expect(tts.spoken).toEqual([body.voice!.transcript]);
+    expect(h.calls.some((c) => c.url.endsWith("/api/upload-file"))).toBe(true);
+    expect(h.calls.filter((c) => c.url.endsWith("/api/send-message"))).toHaveLength(2);
+  });
+
   it("persists the tools behind the reply on the outbound log row", async () => {
     const h = scripted(script);
     await h.authed<SendblueWebhookResponse>(WEBHOOK, say("what if AWS were 30% lower?"));
@@ -131,14 +146,22 @@ describe("the number guard", () => {
 
   it("strips a URL the model invented and keeps the one create_app_link returned", async () => {
     const link = `${TEST_ENV.PUBLIC_BASE_URL}/incidents/${derived.primary_incident!.id}`;
-    const h = scripted([
-      { tool_calls: [{ name: "create_app_link", arguments: { destination: "incident", id: derived.primary_incident!.id } }] },
-      { content: `Here's the incident page: ${link}\nBackground: https://aws.amazon.com/blogs/whats-new` },
-    ]);
+    const tts = fakeTts();
+    const h = scripted(
+      [
+        { tool_calls: [{ name: "create_app_link", arguments: { destination: "incident", id: derived.primary_incident!.id } }] },
+        { content: `Here's the incident page: ${link}\nBackground: https://aws.amazon.com/blogs/whats-new` },
+      ],
+      { tts },
+    );
     const { body } = await h.authed<SendblueWebhookResponse>(WEBHOOK, say("send me the incident page"));
 
     expect(body.reply).toContain(link);
     expect(body.reply).not.toContain("aws.amazon.com");
+    expect(body.voice!.transcript).toContain("Here's the incident page");
+    expect(body.voice!.transcript).toContain("The link is in the text.");
+    expect(body.voice!.transcript).not.toMatch(/https?:\/\//);
+    expect(tts.spoken).toEqual([body.voice!.transcript]);
   });
 
   it("falls back to the WHY message when the model returns nothing and something is flagged", async () => {
@@ -186,9 +209,26 @@ describe("refusals", () => {
   });
 
   it("says what it CAN answer in every refusal (AGENT_BEHAVIOR §4)", () => {
-    for (const kind of ["MOVE_MONEY", "OPERATIONAL", "ADVICE", "PREDICTION"] as const) {
+    for (const kind of ["MOVE_MONEY", "OPERATIONAL", "ADVICE", "PREDICTION", "OFF_TOPIC"] as const) {
       expect(refusalMessage(kind)).toMatch(/I can (show|tell|give)/);
     }
+  });
+
+  it("refuses off-topic chatter without calling the model", async () => {
+    const h = scripted([{ content: "the model should never be asked" }]);
+    const { body } = await h.authed<SendblueWebhookResponse>(WEBHOOK, say("what's the weather in New York?"));
+
+    expect(body).toMatchObject({ mode: "conversation", refused: true, tool_calls: [] });
+    expect(body.reply).toBe(refusalMessage("OFF_TOPIC"));
+    expect(h.openai.requests).toHaveLength(0);
+  });
+
+  it("still answers a cash question that happens to mention an off-topic word", async () => {
+    const h = scripted(CASH_ANSWER);
+    const { body } = await h.authed<SendblueWebhookResponse>(WEBHOOK, say("how's our cash looking given the weather?"));
+    expect(body.refused).toBeUndefined();
+    expect(body.reply).toContain(FIG.cash);
+    expect(h.openai.requests.length).toBeGreaterThan(0);
   });
 
   it("pre-filters imperatives about cash, not questions about past payments", () => {
@@ -198,6 +238,38 @@ describe("refusals", () => {
     for (const text of ["how much did we pay the contractors last month?", "what if AWS were 30% lower?", "cancel Datadog", "why did payroll go up", "send me the incident page"]) {
       expect(preFilterRefusal(text)).toBeNull();
     }
+    expect(preFilterRefusal("tell me a joke")).toBe("OFF_TOPIC");
+    expect(preFilterRefusal("what's the weather")).toBe("OFF_TOPIC");
+    expect(preFilterRefusal("how's AWS spend looking given the weather")).toBeNull();
+  });
+});
+
+describe("transactions over iMessage", () => {
+  const lastAws = [...derived.weeks].reverse().find((week) => (week.variable_by_entity.aws ?? 0) > 0)!;
+  const awsAmount = formatUsdWhole(lastAws.variable_by_entity.aws!);
+  const awsDate = formatDateShort(lastAws.week_start);
+
+  it("lists recent vendor charges from the ledger, not from memory", async () => {
+    const h = scripted([
+      { tool_calls: [{ name: "list_transactions", arguments: { entity: "AWS" } }] },
+      { content: `Newest AWS charges: ${awsDate} ${awsAmount} outflow.` },
+    ]);
+    const { body } = await h.authed<SendblueWebhookResponse>(WEBHOOK, say("what were the recent AWS transactions?"));
+
+    expect(body).toMatchObject({ mode: "conversation", reply_sent: true, tool_calls: ["list_transactions"] });
+    expect(body.reply).toContain(awsAmount);
+    expect(body.reply).toContain(awsDate);
+    expect(h.openai.requests[0]!.tools?.some((t) => t.function.name === "list_transactions")).toBe(true);
+  });
+
+  it("asks which vendor when the name is not on the ledger", async () => {
+    const h = scripted([
+      { tool_calls: [{ name: "list_transactions", arguments: { entity: "Snowflake" } }] },
+      { content: "I don't have any transactions on record under Snowflake.\nDid you mean AWS, Datadog or Ashby?" },
+    ]);
+    const { body } = await h.authed<SendblueWebhookResponse>(WEBHOOK, say("show me the Snowflake transactions"));
+    expect(body.reply).toMatch(/which|did you mean/i);
+    expect(body.reason).toBeUndefined();
   });
 });
 
@@ -256,6 +328,17 @@ describe("memory", () => {
     await h.authed<SendblueWebhookResponse>(WEBHOOK, inbound("anything there?", { from_number: "+15559998888", number: "+15559998888" }));
 
     expect(h.openai.textOf(1)).not.toContain("remember this");
+  });
+
+  it("does not feed prior off-topic chatter back to the model", async () => {
+    const h = scripted([...CASH_ANSWER]);
+    await h.authed<SendblueWebhookResponse>(WEBHOOK, say("what's the weather?"));
+    await h.authed<SendblueWebhookResponse>(WEBHOOK, say("what's our runway?"));
+
+    const shown = h.openai.textOf(0);
+    expect(shown).toContain("what's our runway?");
+    expect(shown).not.toContain("what's the weather?");
+    expect(shown).toMatch(/SCOPE|OFF_TOPIC|this company's cash/i);
   });
 
   it("compacts the thread after the reply is sent, not before", async () => {

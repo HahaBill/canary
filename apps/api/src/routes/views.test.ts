@@ -5,6 +5,7 @@ import type {
   ClassificationOverrideResponse,
   ErrorResponse,
   LedgerCellResponse,
+  LedgerFilterQueryResponse,
   LedgerResponse,
   NeedsReviewResponse,
 } from "@canary/shared";
@@ -103,6 +104,29 @@ describe("GET /api/ledger", () => {
     const { status, body } = await h.json<ErrorResponse>("/api/ledger?granularity=day");
     expect(status).toBe(400);
     expect(body.error).toBe("invalid_granularity");
+  });
+});
+
+describe("POST /api/ledger/query", () => {
+  it("parses a vendor + change-point filter without calling a model", async () => {
+    const h = createHarness();
+    const { status, body } = await h.post<LedgerFilterQueryResponse>("/api/ledger/query", {
+      q: "Amazon after the change",
+      granularity: "month",
+    });
+    expect(status).toBe(200);
+    expect(body.source).toBe("rules");
+    expect(body.spec.entities).toEqual(["aws"]);
+    expect(body.spec.post_change_only).toBe(true);
+    expect(body.chips.map((chip) => chip.toLowerCase())).toContain("aws");
+    expect(body.chips).toContain("after the change");
+  });
+
+  it("400s when q is missing", async () => {
+    const h = createHarness();
+    const { status, body } = await h.post<ErrorResponse>("/api/ledger/query", { granularity: "month" });
+    expect(status).toBe(400);
+    expect(body.error).toBe("invalid_query");
   });
 });
 

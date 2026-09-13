@@ -26,6 +26,7 @@ import { buildMockDerived, mockWhatIf } from "@canary/shared/fixtures";
 import { whatIfSpeech } from "../speech.ts";
 import { D1Store, type SqlDatabase } from "./d1.ts";
 import { mockCalendarEvents, mockLedgerPivot, mockPivotCell, needsReviewItems } from "./mock-views.ts";
+import { listFromWeeklyBuckets, selectTransactions, type TransactionListQuery, type TransactionSelection } from "./transactions.ts";
 
 export interface DataProvider {
   getDerived(): Promise<DerivedDemoObject>;
@@ -44,6 +45,8 @@ export interface DataProvider {
   getNeedsReview(): Promise<NeedsReviewResponse["items"]>;
   /** Applies a reviewer's decision and returns the remaining Needs Review count. */
   applyClassificationOverride(o: ClassificationOverride): Promise<{ needs_review_count: number }>;
+  /** Newest matching ledger rows. Capped — never the whole history. */
+  listTransactions(query?: TransactionListQuery): Promise<TransactionSelection>;
 }
 
 interface StatusOverlay {
@@ -144,6 +147,10 @@ export class MockDataProvider implements DataProvider {
     if (o.apply_to_merchant && o.merchant_normalized) this.reviewedMerchants.add(o.merchant_normalized);
     return { needs_review_count: (await this.getNeedsReview()).length };
   }
+
+  async listTransactions(query: TransactionListQuery = {}): Promise<TransactionSelection> {
+    return selectTransactions(listFromWeeklyBuckets(await this.getDerived()), query);
+  }
 }
 
 /**
@@ -222,5 +229,6 @@ export function withD1Overlay(provider: DataProvider, db: SqlDatabase): DataProv
     getCalendarEvents: (from, to) => provider.getCalendarEvents(from, to),
     getNeedsReview: () => provider.getNeedsReview(),
     applyClassificationOverride: (o) => provider.applyClassificationOverride(o),
+    listTransactions: (query) => provider.listTransactions(query),
   };
 }

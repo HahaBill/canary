@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { LedgerPivot, PivotCell, PivotPeriod, PivotRow } from "@canary/shared";
 import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -30,29 +30,42 @@ export function periodLabel(pivot: LedgerPivot, period: PivotPeriod): string {
   return pivot.granularity === "week" ? formatWeekLabel(period.start) : formatMonthShort(period.key);
 }
 
+function defaultCollapsed(pivot: LedgerPivot, revealRowIds: readonly string[]): Set<string> {
+  const closed = new Set(pivot.rows.filter((row) => row.level === 1).map((row) => row.id));
+  const byId = new Map(pivot.rows.map((row) => [row.id, row]));
+  for (const id of revealRowIds) {
+    let ancestor = byId.get(id)?.parent_id;
+    while (ancestor) {
+      closed.delete(ancestor);
+      ancestor = byId.get(ancestor)?.parent_id;
+    }
+  }
+  return closed;
+}
+
 export function LedgerTable({
   pivot,
   focusRowId,
+  revealRowIds,
   onCellSelect,
 }: {
   pivot: LedgerPivot;
   /** Row to reveal and highlight, e.g. from a `?focus=vendor:aws` deep link. */
   focusRowId?: string | undefined;
+  /** Extra rows whose ancestors should stay open (agentic filter matches). */
+  revealRowIds?: readonly string[] | undefined;
   /** Vendor × period cells are drillable; the page owns the detail sheet. */
   onCellSelect: (coordinates: CellCoordinates) => void;
 }) {
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => {
-    // Sections open, categories closed: the sheet should read as a summary
-    // until someone asks for vendors.
-    const closed = new Set(pivot.rows.filter((row) => row.level === 1).map((row) => row.id));
-    // …except along the path to a row someone linked straight to.
-    let ancestor = pivot.rows.find((row) => row.id === focusRowId)?.parent_id;
-    while (ancestor) {
-      closed.delete(ancestor);
-      ancestor = pivot.rows.find((row) => row.id === ancestor)?.parent_id;
-    }
-    return closed;
-  });
+  const reveal = useMemo(() => [...(revealRowIds ?? []), ...(focusRowId ? [focusRowId] : [])], [revealRowIds, focusRowId]);
+  const revealKey = reveal.join("|");
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => defaultCollapsed(pivot, reveal));
+
+  useEffect(() => {
+    setCollapsed(defaultCollapsed(pivot, reveal));
+    // Only when the filter (or deep link) changes what must be visible.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealKey, pivot.granularity, pivot.rows.length]);
 
   const childCount = useMemo(() => {
     const counts = new Map<string, number>();

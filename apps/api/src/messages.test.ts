@@ -4,7 +4,7 @@ import { buildMockDerived } from "@canary/shared/fixtures";
 import { describe, expect, it } from "vitest";
 import { positiveContributors, variableSpendRates } from "./derive.ts";
 import { displayName, formatDateShort } from "./format.ts";
-import { alertMessage, alertVoiceScript, renderAlert, dashboardMessage, helpMessage, showMeMessage, sourcesMessage, whyMessage } from "./messages.ts";
+import { alertMessage, alertVoiceScript, dashboardMessage, helpMessage, renderAlert, replyVoiceScript, showMeMessage, sourcesMessage, whyMessage } from "./messages.ts";
 
 const derived = buildMockDerived();
 const incident = derived.primary_incident!;
@@ -159,6 +159,22 @@ describe("sourcesMessage", () => {
     const empty = buildMockDerived();
     empty.vendor_enrichments = [];
     expect(sourcesMessage(empty, empty.primary_incident)).toBe("No external sources yet.");
+  });
+});
+
+describe("replyVoiceScript", () => {
+  it("speaks the same words and leaves URLs in the text", () => {
+    const text = showMeMessage(incident, BASE);
+    const spoken = replyVoiceScript(text);
+    expect(spoken).toContain("Here's the full AWS incident");
+    expect(spoken).toContain("The link is in the text.");
+    expect(spoken).not.toMatch(/https?:\/\//);
+    expect(text).toContain(`${BASE}/incidents/${incident.id}`);
+  });
+
+  it("does not invent a link line when the reply had none", () => {
+    expect(replyVoiceScript(helpMessage())).not.toMatch(/link/i);
+    expect(replyVoiceScript(helpMessage())).not.toContain("🐤");
   });
 });
 

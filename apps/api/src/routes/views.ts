@@ -14,10 +14,13 @@ import {
   type ClassificationOverrideResponse,
   type ISODate,
   type LedgerCellResponse,
+  type LedgerFilterQueryRequest,
+  type LedgerFilterQueryResponse,
   type LedgerResponse,
   type NeedsReviewResponse,
   type PivotGranularity,
 } from "@canary/shared";
+import { interpretLedgerQuery } from "../ledger/interpret.ts";
 import { buildCashCalendar, MAX_CALENDAR_SPAN_DAYS } from "../calendar/cash-calendar.ts";
 import { reviewCalendarEvents } from "../calendar/review-events.ts";
 import { jsonError, readJson, type CanaryApp, type CanaryContext } from "../context.ts";
@@ -61,6 +64,16 @@ export function registerViewRoutes(app: CanaryApp): void {
     if (!detail) return jsonError(c, 404, "cell_not_found", `No ${granularity} cell for row ${rowId} in period ${periodKey}.`);
     const body: LedgerCellResponse = { detail };
     return c.json(body);
+  });
+
+  app.post("/api/ledger/query", async (c) => {
+    const body = (await readJson(c)) as LedgerFilterQueryRequest | null;
+    if (!body || typeof body.q !== "string") return jsonError(c, 400, "invalid_query", "`q` must be a string.");
+    const granularity = parseGranularity(typeof body.granularity === "string" ? body.granularity : undefined);
+    if (!granularity) return jsonError(c, 400, "invalid_granularity", `\`granularity\` must be one of: ${PIVOT_GRANULARITIES.join(", ")}.`);
+    const pivot = await c.get("provider").getLedgerPivot(granularity);
+    const response: LedgerFilterQueryResponse = await interpretLedgerQuery(body.q, pivot, c.get("llm"));
+    return c.json(response);
   });
 
   app.get("/api/calendar", async (c) => {

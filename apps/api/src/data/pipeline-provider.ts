@@ -28,6 +28,7 @@ import { addDays } from "@canary/shared";
 import type { Ledger, RecurringSeries } from "@canary/shared";
 import { noChangeExplanation, whatIfSpeech } from "../speech.ts";
 import { MockDataProvider, type DataProvider } from "./provider.ts";
+import { listFromPostedTransactions, selectTransactions, type TransactionListQuery, type TransactionSelection } from "./transactions.ts";
 
 export class PipelineDataProvider implements DataProvider {
   private inner: Promise<{ provider: MockDataProvider; transactions: Transaction[]; ledger: Ledger; recurring: RecurringSeries[] }> | null = null;
@@ -121,5 +122,11 @@ export class PipelineDataProvider implements DataProvider {
 
   async applyClassificationOverride(o: ClassificationOverride): Promise<{ needs_review_count: number }> {
     return (await this.ready()).applyClassificationOverride(o);
+  }
+
+  async listTransactions(query: TransactionListQuery = {}): Promise<TransactionSelection> {
+    const { transactions } = await this.load();
+    const derived = await this.getDerived();
+    return selectTransactions(listFromPostedTransactions(transactions, derived.classifications), query);
   }
 }

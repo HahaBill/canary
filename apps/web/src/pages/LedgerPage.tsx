@@ -1,10 +1,11 @@
-import { useState } from "react";
-import type { PivotGranularity } from "@canary/shared";
+import { useMemo, useState } from "react";
+import { isEmptyLedgerFilter, type LedgerFilterSpec, type LedgerPivot, type PivotGranularity } from "@canary/shared";
 import { Download } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { useLedger } from "@/api/useDerived.ts";
 import { FlagLegend } from "@/components/ledger/CellFlags.tsx";
 import { LedgerCellSheet } from "@/components/ledger/LedgerCellSheet.tsx";
+import { LedgerSearch } from "@/components/ledger/LedgerSearch.tsx";
 import { LedgerTable, periodLabel, type CellCoordinates } from "@/components/ledger/LedgerTable.tsx";
 import { buildLedgerCsv, downloadCsv, ledgerCsvFilename } from "@/components/ledger/csv.ts";
 import { ErrorState, PanelSkeleton } from "@/components/States.tsx";
@@ -21,10 +22,16 @@ export function LedgerPage() {
   // Monthly reads like a finance summary; weekly is the unit the detectors use.
   const [granularity, setGranularity] = useState<PivotGranularity>("month");
   const [selected, setSelected] = useState<CellCoordinates | null>(null);
+  const [filter, setFilter] = useState<{ spec: LedgerFilterSpec; view: LedgerPivot } | null>(null);
   const { data: pivot, loading, error, reload } = useLedger(granularity);
   // Deep link from the cash calendar: `/ledger?focus=vendor:aws`.
   const [searchParams] = useSearchParams();
   const focusRowId = searchParams.get("focus") ?? undefined;
+  const sheet = pivot && filter?.view && filter.view.granularity === pivot.granularity ? filter.view : pivot;
+  const revealRowIds = useMemo(() => {
+    if (!sheet || !filter || isEmptyLedgerFilter(filter.spec)) return undefined;
+    return sheet.rows.filter((row) => row.level === 2).map((row) => row.id);
+  }, [sheet, filter]);
 
   return (
     <div className="space-y-5">
@@ -50,7 +57,7 @@ export function LedgerPage() {
             size="sm"
             disabled={!pivot}
             onClick={() => {
-              if (pivot) downloadCsv(ledgerCsvFilename(pivot), buildLedgerCsv(pivot));
+              if (sheet) downloadCsv(ledgerCsvFilename(sheet), buildLedgerCsv(sheet));
             }}
           >
             <Download className="h-3.5 w-3.5" aria-hidden="true" />
@@ -63,9 +70,14 @@ export function LedgerPage() {
 
       {!error && (loading || !pivot) ? <PanelSkeleton className="h-96" /> : null}
 
-      {!error && pivot ? (
+      {!error && pivot && sheet ? (
         <>
-          <LedgerTable pivot={pivot} focusRowId={focusRowId} onCellSelect={setSelected} />
+          <LedgerSearch
+            pivot={pivot}
+            granularity={granularity}
+            onFiltered={(view, spec) => setFilter({ view, spec })}
+          />
+          <LedgerTable pivot={sheet} focusRowId={focusRowId} revealRowIds={revealRowIds} onCellSelect={setSelected} />
 
           <div className="space-y-2">
             <FlagLegend />
@@ -84,7 +96,7 @@ export function LedgerPage() {
           <LedgerCellSheet
             coordinates={selected}
             granularity={granularity}
-            periodLabel={selected ? periodLabel(pivot, selected.period) : ""}
+            periodLabel={selected ? periodLabel(sheet, selected.period) : ""}
             onClose={() => setSelected(null)}
           />
         </>

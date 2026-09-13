@@ -6,3 +6,4 @@ export * from "./money.ts";
 export * from "./contracts.ts";
 export * from "./views.ts";
 export * from "./api.ts";
+export * from "./ledger-filter.ts";

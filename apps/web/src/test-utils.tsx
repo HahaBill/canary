@@ -9,7 +9,7 @@
 import { render, type RenderResult } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
-import type { PivotGranularity } from "@canary/shared";
+import { describeLedgerFilter, parseLedgerQuery, type PivotGranularity } from "@canary/shared";
 import App from "@/App.tsx";
 import {
   mockAvailability,
@@ -80,6 +80,14 @@ export function installApiStub(): { requests: RecordedRequest[] } {
     }
     if (url.pathname === "/api/ledger") {
       return Promise.resolve(jsonResponse({ pivot: mockLedger(granularity) }));
+    }
+    if (url.pathname === "/api/ledger/query") {
+      const payload = body as { q?: string; granularity?: string } | undefined;
+      const q = typeof payload?.q === "string" ? payload.q : "";
+      const grain = (typeof payload?.granularity === "string" ? payload.granularity : granularity) as PivotGranularity;
+      const pivot = mockLedger(grain);
+      const spec = parseLedgerQuery(q, pivot);
+      return Promise.resolve(jsonResponse({ spec, chips: describeLedgerFilter(spec, pivot), source: "rules" }));
     }
     if (url.pathname === "/api/ledger/cell") {
       const detail = mockLedgerCell(

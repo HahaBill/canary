@@ -23,6 +23,7 @@ import { checkFigures, stripUnknownUrls } from "./guard.ts";
 import type { Thread } from "./memory.ts";
 import type { ChatMessage, ChatToolCall, LlmClient } from "./openai.ts";
 import { buildSystemPrompt } from "./prompt.ts";
+import { isOffTopic } from "./scope.ts";
 import { isToolName, runTool, TOOL_SCHEMAS, type ToolResult } from "./tools.ts";
 
 /** Prefixed to HELP when there is no model configured, so the founder knows why. */
@@ -80,11 +81,12 @@ const MONEY_PHRASE_RE = /\b(?:pay (?:off|down)|wire (?:them |him |her |us )?(?:m
 export function preFilterRefusal(text: string): RefusalKind | null {
   const imperative = text.replace(LEAD_IN_RE, "");
   const moved = MONEY_VERB_RE.test(imperative) || QUALIFIED_VERB_RE.test(imperative) || MONEY_PHRASE_RE.test(text);
-  return moved ? "MOVE_MONEY" : null;
+  if (moved) return "MOVE_MONEY";
+  return isOffTopic(text) ? "OFF_TOPIC" : null;
 }
 
 function isRefusalKind(value: string): value is RefusalKind {
-  return value === "MOVE_MONEY" || value === "OPERATIONAL" || value === "ADVICE" || value === "PREDICTION";
+  return value === "MOVE_MONEY" || value === "OPERATIONAL" || value === "ADVICE" || value === "PREDICTION" || value === "OFF_TOPIC";
 }
 
 function threadMessages(thread: Thread): ChatMessage[] {
@@ -95,7 +97,9 @@ function threadMessages(thread: Thread): ChatMessage[] {
       content: `Earlier in this thread (compacted memory — it deliberately contains no figures; re-fetch any number from a tool): ${thread.summary}`,
     });
   }
+  // Prior off-topic founder turns stay out of the prompt so they cannot steer the answer.
   for (const turn of thread.turns) {
+    if (turn.role === "founder" && isOffTopic(turn.text)) continue;
     messages.push({ role: turn.role === "founder" ? "user" : "assistant", content: turn.text });
   }
   return messages;

@@ -5,6 +5,7 @@
  * All routes are unauthenticated in the hackathon build (PRD §31), except the
  * inbound Sendblue webhook which checks a shared secret.
  */
+import type { LedgerFilterSpec } from "./ledger-filter.ts";
 import type {
   AlertHistoryItem,
   AvailabilityResponse,
@@ -58,6 +59,8 @@ export const API_ROUTES = {
   // Views (ledger sheet, calendar) and notification policy
   ledger: "GET /api/ledger",
   ledgerCell: "GET /api/ledger/cell",
+  /** Natural-language filter for the ledger sheet. Returns a spec, never new amounts. */
+  ledgerQuery: "POST /api/ledger/query",
   calendar: "GET /api/calendar",
   availability: "GET /api/availability",
   alertHistory: "GET /api/alerts/history",
@@ -182,6 +185,18 @@ export interface LedgerCellQuery {
   granularity?: PivotGranularity;
 }
 export type LedgerCellResponse = { detail: PivotCellDetail };
+
+export interface LedgerFilterQueryRequest {
+  q: string;
+  granularity?: PivotGranularity;
+}
+export interface LedgerFilterQueryResponse {
+  spec: LedgerFilterSpec;
+  /** Non-numeric chips describing the filter. */
+  chips: string[];
+  /** `rules` is the deterministic parser; `model` means OpenAI refined the spec. */
+  source: "rules" | "model";
+}
 
 export interface CalendarQuery {
   /** Inclusive, `YYYY-MM-DD`. Defaults to the month containing history_end. */

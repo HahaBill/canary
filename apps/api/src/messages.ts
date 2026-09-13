@@ -208,7 +208,7 @@ export function helpMessage(): string {
  * *can* answer." Fixed text, never model-written, so a refusal cannot be
  * negotiated one message at a time.
  */
-export type RefusalKind = "MOVE_MONEY" | "OPERATIONAL" | "ADVICE" | "PREDICTION";
+export type RefusalKind = "MOVE_MONEY" | "OPERATIONAL" | "ADVICE" | "PREDICTION" | "OFF_TOPIC";
 
 const REFUSALS: Record<RefusalKind, string[]> = {
   MOVE_MONEY: [
@@ -226,6 +226,10 @@ const REFUSALS: Record<RefusalKind, string[]> = {
   PREDICTION: [
     "I don't forecast. Modeled runway is a present-tense ratio of cash to current burn, not a prediction of when you run out.",
     "I can give you the current figures, the window they're measured over, and a what-if scenario.",
+  ],
+  OFF_TOPIC: [
+    "I only answer questions about this company's cash, spend, incidents and runway.",
+    "I can show you a vendor's charges, a transaction on the ledger, or a what-if scenario.",
   ],
 };
 
@@ -248,4 +252,31 @@ export function healthLineMessage(derived: DerivedDemoObject): string {
 /** Reply when the founder asks about an incident and Canary has none. */
 export function noIncidentMessage(): string {
   return [CANARY, "Nothing is flagged right now — spending is tracking with its baseline.", "Reply HELP for what I can do."].join("\n");
+}
+
+const HTTP_URL = /https?:\/\/[^\s]+/gi;
+
+/**
+ * Spoken companion to a keyword or conversational reply. Same words as the
+ * text (so they cannot disagree); URLs stay in the bubble — voice never
+ * reads a link (docs/AGENT_BEHAVIOR.md §3, PRD §26a).
+ */
+export function replyVoiceScript(text: string): string {
+  const hadUrl = HTTP_URL.test(text);
+  HTTP_URL.lastIndex = 0;
+  let spoken = text
+    .replace(HTTP_URL, "")
+    .replace(/🐤\s*/g, "")
+    .replace(/^[•·]\s*/gm, "")
+    .replace(/\s*[—–]\s*/g, ". ")
+    .replace(/\s*\n+\s*/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .replace(/[:.—–-]\s*$/g, "")
+    .trim();
+  if (hadUrl && spoken && !/\blink\b/i.test(spoken)) {
+    if (!/[.!?]$/.test(spoken)) spoken += ".";
+    spoken += " The link is in the text.";
+  }
+  return spoken;
 }

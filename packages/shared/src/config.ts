@@ -138,6 +138,8 @@ export const CONVERSATION = {
   HISTORY_FETCH_LIMIT: 60,
   /** iMessage is a chat window, not a report. */
   MAX_REPLY_LINES: 4,
+  /** Newest ledger rows a single `list_transactions` call may return. */
+  MAX_LISTED_TRANSACTIONS: 8,
   /** Per-OpenAI-request wall clock. Four rounds of this is the worst-case webhook latency. */
   REQUEST_TIMEOUT_MS: 15_000,
   MAX_TOKENS: 350,

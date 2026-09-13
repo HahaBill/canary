@@ -32,6 +32,7 @@ export type CompactionOutcome =
 const SYSTEM_PROMPT = [
   "You compact a text-message thread between a founder and Canary, a startup cash-monitoring tool, into a short memory note.",
   "Record: what the founder asked about, which vendors and incidents came up, what they acknowledged or dismissed, and any question left open.",
+  "Ignore greetings, jokes, weather, news, and anything else that is not about this company's cash. Do not record off-topic chatter.",
   "HARD RULE: never include a dollar amount, a percentage, a month count, a date, or any other number. Figures are re-fetched from tools every turn and must never be carried forward. Refer to them as 'the weekly rate' or 'the runway figure' instead.",
   "Do not include URLs or internal ids. Do not add anything the thread does not say.",
   'Respond with JSON only: {"summary": "<at most four sentences>"}.',

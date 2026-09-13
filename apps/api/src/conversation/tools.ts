@@ -32,6 +32,7 @@ export const TOOL_NAMES = [
   "get_evidence",
   "create_app_link",
   "get_vendor_spend",
+  "list_transactions",
   "refuse",
 ] as const;
 export type ToolName = (typeof TOOL_NAMES)[number];
@@ -132,10 +133,23 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   {
     type: "function",
     function: {
+      name: "list_transactions",
+      description: "Newest matching ledger rows: a vendor, a date range (YYYY-MM-DD), and/or Needs Review. Use for 'what was that charge', 'recent AWS transactions', 'anything in Needs Review'. Returns a short newest-first list — never the whole ledger.",
+      parameters: OBJECT({
+        entity: { type: "string", description: "Vendor name as the founder said it. Omit to search every vendor." },
+        from: { type: "string", description: "Inclusive start date, YYYY-MM-DD." },
+        to: { type: "string", description: "Inclusive end date, YYYY-MM-DD." },
+        needs_review: { type: "boolean", description: "True to return only Needs Review rows." },
+      }),
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "refuse",
-      description: "Decline the request. Use for moving money, operational orders (cancel/downgrade/switch/fire), 'should I' advice, and predictions about the future.",
+      description: "Decline the request. Use for moving money, operational orders (cancel/downgrade/switch/fire), 'should I' advice, predictions, and anything outside this company's cash/ledger/incidents.",
       parameters: OBJECT(
-        { reason: { type: "string", enum: ["MOVE_MONEY", "OPERATIONAL", "ADVICE", "PREDICTION"] } },
+        { reason: { type: "string", enum: ["MOVE_MONEY", "OPERATIONAL", "ADVICE", "PREDICTION", "OFF_TOPIC"] } },
         ["reason"],
       ),
     },
@@ -163,6 +177,8 @@ export async function runTool(ctx: ToolContext, name: string, args: Record<strin
       return appLink(ctx, args);
     case "get_vendor_spend":
       return plain(await vendorSpend(ctx, str(args.entity) ?? ""));
+    case "list_transactions":
+      return plain(await listedTransactions(ctx, args));
     case "refuse": {
       const reason = str(args.reason) ?? "ADVICE";
       return { result: { refused: true, reason }, refusal: { reason }, urls: [] };
@@ -387,4 +403,58 @@ async function vendorSpend(ctx: ToolContext, rawEntity: string): Promise<ToolRes
     break;
   }
   return payload;
+}
+
+function displayCategory(category: string): string {
+  return category
+    .toLowerCase()
+    .split("_")
+    .map((word) => (word === "saas" ? "SaaS" : word.charAt(0).toUpperCase() + word.slice(1)))
+    .join(" ");
+}
+
+async function listedTransactions(ctx: ToolContext, args: Record<string, unknown>): Promise<ToolResult> {
+  const derived = await ctx.provider.getDerived();
+  const rawEntity = str(args.entity);
+  let entity: string | undefined;
+  if (rawEntity) {
+    const resolved = resolveEntity(derived, rawEntity);
+    if (!resolved.known) {
+      return {
+        known: false,
+        requested: rawEntity,
+        candidates: resolved.candidates,
+        detail: "Canary has no transactions on record under that name. Ask which vendor the founder means; do not answer with figures.",
+      };
+    }
+    entity = resolved.entity;
+  }
+
+  const selection = await ctx.provider.listTransactions({
+    ...(entity ? { entity } : {}),
+    ...(str(args.from) ? { from: str(args.from) } : {}),
+    ...(str(args.to) ? { to: str(args.to) } : {}),
+    ...(args.needs_review === true ? { needs_review: true } : {}),
+  });
+
+  return {
+    known: true,
+    ...(entity ? { vendor: displayName(entity) } : {}),
+    grain: derived.provenance.history_source === "mock" ? "weekly_vendor_totals" : "posted_transactions",
+    matched: selection.matched,
+    shown: selection.items.length,
+    newest_first: true,
+    transactions: selection.items.map((row) => ({
+      date: formatDateShort(row.date),
+      vendor: displayName(row.entity),
+      amount: formatUsdWhole(Math.abs(row.amount_cents)),
+      direction: row.amount_cents < 0 ? "outflow" : "inflow",
+      ...(row.category ? { category: displayCategory(row.category) } : {}),
+      needs_review: row.needs_review,
+      ...(row.needs_review ? { note: "Needs Review — the amount still counts in cash and burn." } : {}),
+    })),
+    ...(selection.matched > selection.items.length
+      ? { detail: `Showing the newest ${selection.items.length} of ${selection.matched} matching rows. Ask for a vendor or a date range to narrow it.` }
+      : {}),
+  };
 }

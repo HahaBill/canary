@@ -116,6 +116,44 @@ describe("LedgerPage", () => {
     await waitFor(() => expect(screen.getByText("change point")).toBeInTheDocument());
   });
 
+  it("filters the sheet from a natural-language query and opens the matching vendors", async () => {
+    renderApp("/ledger");
+    const table = await screen.findByRole("table", { name: /Ledger by month/ });
+    expect(within(table).queryByRole("rowheader", { name: /AWS/ })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("searchbox", { name: /Filter the ledger/ }), { target: { value: "AWS" } });
+
+    expect(within(table).getByRole("rowheader", { name: /AWS/ })).toBeInTheDocument();
+    expect(within(table).queryByRole("rowheader", { name: /Revenue/ })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("rowheader", { name: /Datadog/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("search")).toHaveTextContent("AWS");
+  });
+
+  it("narrows period columns when the query is about the change point", async () => {
+    renderApp("/ledger");
+    const table = await screen.findByRole("table", { name: /Ledger by month/ });
+    const before = within(table).getAllByRole("columnheader").length;
+
+    fireEvent.change(screen.getByRole("searchbox", { name: /Filter the ledger/ }), {
+      target: { value: "after the change" },
+    });
+
+    expect(within(table).getAllByRole("columnheader").length).toBeLessThan(before);
+    expect(screen.getByText("after the change")).toBeInTheDocument();
+  });
+
+  it("clears the filter and restores the full sheet", async () => {
+    renderApp("/ledger");
+    const table = await screen.findByRole("table", { name: /Ledger by month/ });
+    fireEvent.change(screen.getByRole("searchbox", { name: /Filter the ledger/ }), { target: { value: "AWS" } });
+    expect(within(table).queryByRole("rowheader", { name: /Revenue/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear ledger filter" }));
+
+    expect(within(table).getByRole("rowheader", { name: /Revenue/ })).toBeInTheDocument();
+    expect(within(table).queryByRole("rowheader", { name: /AWS/ })).not.toBeInTheDocument();
+  });
+
   it("surfaces an error with a retry when the ledger route rejects the request", async () => {
     // A 4xx is a real answer, so the app must show it rather than quietly
     // falling back to fixtures the way it does for an unreachable API.

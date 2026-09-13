@@ -21,6 +21,7 @@ import {
   type IncidentsResponse,
   type ISODate,
   type LedgerCellResponse,
+  type LedgerFilterQueryResponse,
   type LedgerResponse,
   type LedgerPivot,
   type NeedsReviewResponse,
@@ -201,6 +202,13 @@ export function getLedgerCell(
     granularity,
   });
   return request<LedgerCellResponse>(path, signal ? { signal } : undefined).then((r) => r.detail);
+}
+
+export function queryLedgerFilter(q: string, granularity: PivotGranularity): Promise<LedgerFilterQueryResponse> {
+  return request<LedgerFilterQueryResponse>(routePath(API_ROUTES.ledgerQuery), {
+    method: "POST",
+    body: JSON.stringify({ q, granularity }),
+  });
 }
 
 export function getCalendar(from: ISODate, to: ISODate, signal?: AbortSignal): Promise<CashCalendar> {

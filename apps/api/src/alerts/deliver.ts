@@ -15,9 +15,7 @@ import type { Variables } from "../context.ts";
 import { VOICE_LOG_PREFIX } from "../data/d1.ts";
 import { publicBaseUrl } from "../env.ts";
 import { renderAlert } from "../messages.ts";
-import { normalizePcm16, pcmDurationSeconds, pcmToCaf } from "../voice/caf.ts";
-
-export const VOICE_NOTE_FILENAME = "CanaryAlert.caf";
+import { sendVoiceNote } from "../voice/send.ts";
 
 /** Everything sending an alert needs, and nothing else. Satisfied by the Hono context and by the cron. */
 export type AlertRuntime = Pick<Variables, "provider" | "sendblue" | "tts" | "store" | "now" | "appEnv">;
@@ -35,28 +33,6 @@ export interface DeliverAlertOutcome {
   provider_message_id?: string;
   error?: string;
   voice?: SendAlertVoiceResult;
-}
-
-async function sendVoiceNote(runtime: AlertRuntime, to: string, script: string): Promise<SendAlertVoiceResult> {
-  const { tts, sendblue } = runtime;
-  if (!tts.configured) return { sent: false, transcript: script, error: "ELEVENLABS_NOT_CONFIGURED" };
-
-  const synth = await tts.synthesizePcm(script);
-  if (!synth.ok || !synth.pcm) return { sent: false, transcript: script, error: `tts: ${synth.error ?? synth.status}` };
-
-  // TTS output is quiet as a voice memo — bring the peak up to just under full scale.
-  const { pcm } = normalizePcm16(synth.pcm);
-  const caf = pcmToCaf(pcm, synth.sampleRate);
-  const seconds = Math.round(pcmDurationSeconds(pcm.length, synth.sampleRate) * 10) / 10;
-
-  const upload = await sendblue.uploadFile({ bytes: caf, filename: VOICE_NOTE_FILENAME, contentType: "audio/x-caf" });
-  if (!upload.ok || !upload.media_url) return { sent: false, transcript: script, seconds, error: `upload: ${upload.error ?? upload.status}` };
-
-  const sent = await sendblue.sendMessage({ to, media_url: upload.media_url });
-  const result: SendAlertVoiceResult = { sent: sent.sent, transcript: script, media_url: upload.media_url, seconds };
-  if (sent.provider_message_id) result.provider_message_id = sent.provider_message_id;
-  if (!sent.sent) result.error = `send: ${sent.error ?? sent.status}`;
-  return result;
 }
 
 /**

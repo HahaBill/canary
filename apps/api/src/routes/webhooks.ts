@@ -13,19 +13,24 @@
  *     and it behaves exactly as it did before conversation existed.
  *   - `matchCommand` misses → `src/conversation`: OpenAI tool-calling over
  *     Canary's deterministic tools, with per-phone memory in D1.
+ *
+ * Both paths send the text, then a best-effort ElevenLabs voice memo of the
+ * same reply (URLs stripped). A failed voice note never undoes the text.
  */
-import type { IMessageCommand } from "@canary/shared";
-import { CONVERSATION } from "../conversation/config.ts";
+import type { IMessageCommand, SendAlertVoiceResult } from "@canary/shared";
+import { scheduleReviewReply } from "../calendar/schedule-command.ts";
 import { compactIfNeeded } from "../conversation/compaction.ts";
+import { CONVERSATION } from "../conversation/config.ts";
 import { countRecentConversationalReplies, loadThread } from "../conversation/memory.ts";
 import { answerConversationally, isHelpFallback, type ConversationReply } from "../conversation/router.ts";
 import { baseUrl, jsonError, type CanaryApp, type CanaryContext } from "../context.ts";
+import { VOICE_LOG_PREFIX } from "../data/d1.ts";
 import { primaryIncident } from "../derive.ts";
 import { isAllowedSender, matchCommand, replyFor, replyTarget, shouldIgnoreInbound } from "../imessage/router.ts";
-import { scheduleReviewReply } from "../calendar/schedule-command.ts";
-import { helpMessage } from "../messages.ts";
+import { helpMessage, replyVoiceScript } from "../messages.ts";
 import type { SendblueInboundPayload } from "../sendblue/client.ts";
 import { requestAuthorized } from "../security.ts";
+import { REPLY_VOICE_NOTE_FILENAME, sendVoiceNote } from "../voice/send.ts";
 
 export interface SendblueWebhookResponse {
   ok: boolean;
@@ -39,6 +44,8 @@ export interface SendblueWebhookResponse {
   refused?: boolean;
   reply?: string;
   reply_sent?: boolean;
+  /** Best-effort ElevenLabs voice memo that follows the text. */
+  voice?: SendAlertVoiceResult;
   error?: string;
 }
 
@@ -52,6 +59,47 @@ function oneHourBefore(now: string): string {
  * Hono only exposes `executionCtx` on a real Workers request; in tests (and in
  * `app.request()`) it throws, so we await instead.
  */
+/**
+ * Text first, then the voice note of the same reply (URLs stripped). `sent`
+ * is the text: a failed voice memo never undoes a delivered bubble.
+ */
+async function deliverReply(
+  c: CanaryContext,
+  to: string,
+  reply: string,
+  extras: { command: IMessageCommand | null; tool_calls?: string[] },
+): Promise<{ sent: boolean; error?: string; voice?: SendAlertVoiceResult }> {
+  const sendblue = c.get("sendblue");
+  const result = await sendblue.sendMessage({ to, content: reply });
+  if (!result.sent) return { sent: false, ...(result.error ? { error: result.error } : {}) };
+
+  const now = c.get("now")();
+  const store = c.get("store");
+  await store?.logMessage({
+    direction: "outbound",
+    phone: to,
+    body: reply,
+    created_at: now,
+    command: extras.command,
+    provider_message_id: result.provider_message_id ?? null,
+    ...(extras.tool_calls ? { tool_calls: extras.tool_calls } : {}),
+  });
+
+  const voice = await sendVoiceNote({ tts: c.get("tts"), sendblue }, to, replyVoiceScript(reply), REPLY_VOICE_NOTE_FILENAME);
+  if (voice.sent) {
+    await store?.logMessage({
+      direction: "outbound",
+      phone: to,
+      body: `${VOICE_LOG_PREFIX} ${voice.seconds ?? "?"}s] ${voice.transcript}`,
+      created_at: now,
+      command: extras.command,
+      provider_message_id: voice.provider_message_id ?? null,
+    });
+  }
+
+  return { sent: true, voice };
+}
+
 function afterReply(c: CanaryContext, work: Promise<unknown>): Promise<unknown> {
   try {
     c.executionCtx.waitUntil(work);
@@ -119,20 +167,10 @@ export function registerWebhookRoutes(app: CanaryApp): void {
           return scheduleReviewReply({ provider: calendarProvider, calendar: google, incident, baseUrl: baseUrl(c), now, reviews: c.get("reviews") });
         },
       });
-      const result = await c.get("sendblue").sendMessage({ to, content: reply });
-
-      if (result.sent) {
-        await store?.logMessage({
-          direction: "outbound",
-          phone: to,
-          body: reply,
-          created_at: now,
-          command,
-          provider_message_id: result.provider_message_id ?? null,
-        });
-      }
+      const result = await deliverReply(c, to, reply, { command });
 
       const body: SendblueWebhookResponse = { ok: true, mode: "keyword", command, reply, reply_sent: result.sent };
+      if (result.voice) body.voice = result.voice;
       if (!result.sent && result.error) body.error = result.error;
       return c.json(body);
     }
@@ -155,23 +193,12 @@ export function registerWebhookRoutes(app: CanaryApp): void {
           now,
         });
 
-    const result = await c.get("sendblue").sendMessage({ to, content: answer.reply });
+    const result = await deliverReply(c, to, answer.reply, { command: null, tool_calls: answer.tool_calls });
 
-    if (result.sent) {
-      await store?.logMessage({
-        direction: "outbound",
-        phone: to,
-        body: answer.reply,
-        created_at: now,
-        command: null,
-        provider_message_id: result.provider_message_id ?? null,
-        tool_calls: answer.tool_calls,
-      });
+    if (result.sent && !isHelpFallback(answer.fallback)) {
       // No point spending an OpenAI call compacting a thread whose last turn
       // never reached OpenAI (unconfigured, errored, or rate-limited).
-      if (!isHelpFallback(answer.fallback)) {
-        await afterReply(c, compactIfNeeded({ store, llm: c.get("llm"), now: c.get("now") }, to));
-      }
+      await afterReply(c, compactIfNeeded({ store, llm: c.get("llm"), now: c.get("now") }, to));
     }
 
     const body: SendblueWebhookResponse = {
@@ -181,6 +208,7 @@ export function registerWebhookRoutes(app: CanaryApp): void {
       reply: answer.reply,
       reply_sent: result.sent,
     };
+    if (result.voice) body.voice = result.voice;
     // The degraded replies ARE the HELP message, so they report as the HELP
     // command — an unrecognised message without a model behind it behaves
     // exactly as it did before this path existed.
