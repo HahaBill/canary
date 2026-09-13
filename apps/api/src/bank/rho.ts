@@ -255,6 +255,39 @@ export interface RhoClientOptions {
   timeoutMs?: number;
 }
 
+/**
+ * What Canary could actually VERIFY on this feed, as opposed to assume.
+ *
+ * A bank feed is rows; a ledger is rows plus the relationships between them.
+ * Canary supplies those relationships, and where a feed cannot support one, the
+ * honest move is to say so rather than let "assumed correct" and "checked
+ * correct" look identical on screen. Same principle as Needs Review: the
+ * uncertainty is the product, not an embarrassment to hide.
+ */
+export interface ReconciliationCoverage {
+  /** Both legs of a transfer present and netting to zero. */
+  transfers_paired: "verified" | "partial" | "unavailable";
+  /**
+   * Whether a card repayment could be checked against the purchases it covers.
+   * `unavailable` on Rho: the feed carries no link from purchase to repayment,
+   * and the amounts cannot be reconstructed from dates either — tested against
+   * the sandbox, where a day's repayment does not equal that day's purchases.
+   * Correctness is unaffected (a purchase is burn, a repayment is not, by flow
+   * type), but the cross-check genuinely is not possible.
+   */
+  settlement_coverage: "verified" | "unavailable";
+  /**
+   * Whether a settled row can be tied to the pending row it replaces.
+   * `unknown` until real data shows whether Rho flips a row's status in place
+   * or emits a second row. In-place is safe; a second row would need `pending_of`
+   * or burn is overstated by every pending charge.
+   */
+  pending_supersession: "verified" | "not_applicable" | "unknown";
+  /** Categories never come from a bank. Canary's classifier supplies them. */
+  categories: "canary_supplied";
+  notes: string[];
+}
+
 export interface RhoLedger {
   accounts: BankAccount[];
   transactions: Transaction[];
@@ -262,7 +295,38 @@ export interface RhoLedger {
   skipped: number;
   /** Types with no entry in the mapping table, so a new Rho type is visible. */
   unmapped: string[];
+  /** Which reconciliation checks this feed could actually support. */
+  coverage: ReconciliationCoverage;
   base_url: string;
+}
+
+/** Reads the feed and reports which checks it can support, without guessing. */
+export function assessCoverage(transactions: readonly Transaction[]): ReconciliationCoverage {
+  const notes: string[] = [];
+
+  const legs = new Map<string, number>();
+  for (const tx of transactions) {
+    if (tx.transfer_pair_id) legs.set(tx.transfer_pair_id, (legs.get(tx.transfer_pair_id) ?? 0) + 1);
+  }
+  const orphans = [...legs.values()].filter((n) => n < 2).length;
+  const transfers_paired = legs.size === 0 ? "unavailable" : orphans > 0 ? "partial" : "verified";
+  if (orphans > 0) {
+    notes.push(`${orphans} transfer(s) arrived with one leg; the other account is outside this feed. Counted and warned, never assumed.`);
+  }
+
+  const pending = transactions.filter((tx) => tx.status === "pending").length;
+  const pending_supersession = transactions.some((tx) => tx.pending_of)
+    ? "verified"
+    : pending === 0
+      ? "not_applicable"
+      : "unknown";
+  if (pending_supersession === "unknown") {
+    notes.push(`${pending} pending row(s) with no link to a settled twin. Safe if Rho settles a row in place; needs pending_of if it emits a second row.`);
+  }
+
+  notes.push("Card repayments cannot be checked against the purchases they cover: the feed carries no link and the daily amounts do not reconstruct it.");
+
+  return { transfers_paired, settlement_coverage: "unavailable", pending_supersession, categories: "canary_supplied", notes };
 }
 
 export class RhoBankClient {
@@ -334,6 +398,7 @@ export class RhoBankClient {
       transactions,
       skipped,
       unmapped: [...unmapped].sort(),
+      coverage: assessCoverage(transactions),
       base_url: this.baseUrl,
     };
   }

@@ -201,3 +201,32 @@ describe("Rho's schema against Canary's ledger", () => {
     expect("category" in sample).toBe(false);
   });
 });
+
+describe("reconciliation coverage — saying what was checked", () => {
+  it("reports transfers as partially verified, because some arrive one-sided", async () => {
+    const { rho } = await rhoStack();
+    expect(rho.coverage.transfers_paired).toBe("partial");
+    expect(rho.coverage.notes.some((n) => n.includes("one leg"))).toBe(true);
+  });
+
+  it("reports settlement coverage as unavailable rather than guessing it", async () => {
+    const { rho } = await rhoStack();
+    // Reconstruction was tested against this data and does not hold: a day's
+    // repayment is not the sum of that day's purchases. A cross-check that is
+    // wrong is worse than one that is absent, because it raises false alarms on
+    // a real customer's books.
+    expect(rho.coverage.settlement_coverage).toBe("unavailable");
+  });
+
+  it("says pending supersession is unknown instead of assuming the safe case", async () => {
+    const { rho } = await rhoStack();
+    expect(rho.coverage.pending_supersession).toBe("unknown");
+  });
+
+  it("claims categories as Canary's own contribution", async () => {
+    const { rho } = await rhoStack();
+    // The one thing no bank sends, and the reason the classification package
+    // exists: rules, then OpenAI, then Tavily corroboration.
+    expect(rho.coverage.categories).toBe("canary_supplied");
+  });
+});

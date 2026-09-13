@@ -62,6 +62,10 @@ export function registerDataRoutes(app: CanaryApp): void {
           skipped_not_posted: rho.skipped,
           unmapped_types: rho.unmapped,
         },
+        // What Canary could VERIFY here, versus what it can only assume. A feed
+        // is rows; a ledger is rows plus relationships, and where the feed
+        // cannot support one, saying so is the product rather than a gap.
+        coverage: rho.coverage,
         reconciliation: ledger.reconciliation,
         weeks: ledger.weeks.length,
         transactions: ledger.transactions.slice(-25).map((t) => ({
