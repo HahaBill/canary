@@ -24,11 +24,17 @@ import type { ISODate } from "@canary/shared";
 export const DEFAULT_MINUTES_PER_DAY = 1;
 
 /**
- * How long the clock runs before returning to the end of history. Three hours
- * at the default speed is 180 simulated days, just inside the horizon, so the
- * clock reaches the end of the generated future without ever falling off it.
+ * How long the clock runs before returning to the end of history.
+ *
+ * Ten minutes at the default speed means the account is never more than ten days
+ * past "today". That bound is the point. A longer cycle drifts months ahead, and
+ * then the dashboard, the demo script and the calendar all disagree about what
+ * day it is — the calendar opens on a month nobody expected and the documented
+ * figures match nothing on screen. Ten days keeps every surface in the same week
+ * while still posting a transaction every minute or two, which is what makes the
+ * page look alive.
  */
-export const CYCLE_MINUTES = 180;
+export const CYCLE_MINUTES = 10;
 
 const MS_PER_MINUTE = 60_000;
 

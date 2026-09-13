@@ -103,14 +103,18 @@ five months, `discrepancy_cents` is 0 at every one.
 function: the same instant always gives the same day, so two Worker isolates
 agree and the pipeline stays deterministic in its own `asOf` parameter.
 
-**Why the clock cycles.** Simulated time has to run much faster than real time
-or a demo shows nothing moving. Running monotonically from a fixed epoch would
-sprint through the horizon within hours and then sit clamped months in the
-future, showing a cash position nobody recognises. Anchoring to the top of each
-three-hour cycle keeps the picture recent: the clock always starts at the end of
-history, advances one simulated day per real minute, and never runs past the
-generated horizon. Whenever anyone opens the page, they see today and then watch
-it move.
+**Why the clock cycles, and why the cycle is short.** Simulated time has to run
+much faster than real time or a demo shows nothing moving. Running monotonically
+from a fixed epoch would sprint through the horizon within hours and then sit
+clamped months in the future, showing a cash position nobody recognises.
+
+The cycle is ten minutes, so the account is never more than ten days past
+"today". That bound is the point, and I found it by deploying a three-hour cycle
+first: the live dashboard drifted to 2026-12-26, three months past the documented
+"today". Everything still reconciled, but the demo script, the figures in these
+docs and Bill's calendar all disagreed about what day it was. Ten days keeps
+every surface inside the same week while still posting a transaction every minute
+or two, which is what makes the page look alive.
 
 `minutesPerDay: 0` freezes it at the end of history, which is precisely how
 Canary behaved before the clock existed. That is the setting for a screenshot or
