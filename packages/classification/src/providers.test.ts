@@ -9,7 +9,15 @@ import {
   OpenAiProvider,
   buildOpenAiSystemPrompt,
 } from "./providers/openai.ts";
-import { TAVILY_SEARCH_URL, TavilyProvider, buildTavilyQuery, prettyVendorName } from "./providers/tavily.ts";
+import {
+  TAVILY_SEARCH_URL,
+  TavilyProvider,
+  TavilyRequestError,
+  buildTavilyQuery,
+  prettyVendorName,
+  scoutRefreshErrorFrom,
+  tavilySearch,
+} from "./providers/tavily.ts";
 
 interface Call {
   url: string;
@@ -211,7 +219,55 @@ describe("TavilyProvider", () => {
     const { fetch } = fakeFetch([{ status: 500, body: "boom" }]);
     await expect(TavilyProvider("tvly-test", fetch, { now: () => NOW }).enrichVendor(tavilyInput)).rejects.toThrow(/500/);
   });
+});
 
+describe("tavilySearch", () => {
+  it("omits days when an absolute date window is set", async () => {
+    const { fetch, calls } = fakeFetch([{ body: { results: [] } }]);
+    await tavilySearch("tvly-test", fetch, {
+      query: "AWS pricing change",
+      topic: "news",
+      days: 90,
+      start_date: "2026-06-16",
+      end_date: "2026-09-14",
+    });
+    expect(calls[0]!.body).toMatchObject({
+      start_date: "2026-06-16",
+      end_date: "2026-09-14",
+      topic: "news",
+    });
+    expect(calls[0]!.body).not.toHaveProperty("days");
+  });
+
+  it("classifies 401, 429, and a dropped connection", async () => {
+    const unauthorized = fakeFetch([{ status: 401, body: { detail: "unauthorized" } }, { status: 401, body: { detail: "unauthorized" } }]);
+    await expect(tavilySearch("tvly-test", unauthorized.fetch, { query: "q" })).rejects.toMatchObject({
+      name: "TavilyRequestError",
+      code: "TAVILY_UNAUTHORIZED",
+      status: 401,
+    });
+
+    const quota = fakeFetch([{ status: 429, body: { detail: "rate limited" } }]);
+    await expect(tavilySearch("tvly-test", quota.fetch, { query: "q" })).rejects.toMatchObject({
+      code: "TAVILY_QUOTA",
+      status: 429,
+    });
+
+    const dropped: FetchLike = async () => {
+      throw new Error("socket hang up");
+    };
+    const unreachable = await tavilySearch("tvly-test", dropped, { query: "q" }).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(unreachable).toMatchObject({ code: "TAVILY_UNREACHABLE", status: 0 });
+    expect(scoutRefreshErrorFrom(unreachable)).toBe("TAVILY_UNREACHABLE");
+    expect(scoutRefreshErrorFrom(new Error("boom"))).toBe("TAVILY_FAILED");
+    expect(new TavilyRequestError("TAVILY_FAILED", 400, "x")).toBeInstanceOf(Error);
+  });
+});
+
+describe("buildTavilyQuery", () => {
   it("builds the query from the display name, falling back to the raw descriptor", () => {
     expect(buildTavilyQuery(tavilyInput)).toBe("Ashby ASHBYHQ company what does it do");
     expect(buildTavilyQuery({ merchant_raw: "ACME WIDGETS", merchant_normalized: "acme_widgets" })).toBe(

@@ -9,6 +9,7 @@ import {
   type ISODateTime,
   type ScoutCacheFile,
   type ScoutPage,
+  type ScoutRefreshError,
 } from "@canary/shared";
 import { loadDemoScoutCache } from "@canary/pipeline";
 import type { D1Store } from "../data/d1.ts";
@@ -31,7 +32,7 @@ export async function loadScoutCache(store: D1Store | null, now: ISODateTime): P
 export function scoutPageFrom(derived: DerivedDemoObject, cache: ScoutCacheFile, extras: {
   now: ISODateTime;
   tavilyCalls?: number;
-  refreshError?: string;
+  refreshError?: ScoutRefreshError;
   freshEntities?: readonly string[];
 }): ScoutPage {
   return assembleScoutPage({

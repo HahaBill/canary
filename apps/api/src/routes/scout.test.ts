@@ -96,6 +96,12 @@ describe("POST /api/scout/refresh", () => {
     expect(tavily.length).toBeLessThanOrEqual(SCOUT.MAX_TAVILY_CALLS_PER_RUN);
     expect(tavily.length).toBe(selectScoutVendors(h.derived.burn.weekly_variable_by_entity).length);
     expect(tavily.every((c) => c.body && (c.body as { include_answer?: boolean }).include_answer === false)).toBe(true);
+    expect(
+      tavily.every((c) => {
+        const body = c.body as { days?: unknown; start_date?: string; end_date?: string };
+        return body.days === undefined && Boolean(body.start_date) && Boolean(body.end_date);
+      }),
+    ).toBe(true);
     expect(tavily.every((c) => !JSON.stringify(c.body).match(/cheaper|alternative|switch|cancel/i))).toBe(true);
 
     const aws = body.vendors.find((v) => v.entity === "aws");
@@ -194,8 +200,98 @@ describe("POST /api/scout/refresh", () => {
     const { status, body } = await h.post<ScoutResponse>("/api/scout/refresh");
     expect(status).toBe(200);
     expect(body.refresh_error).toBe("TAVILY_NOT_CONFIGURED");
+    expect(body.never_searched).toBe(true);
     expect(body.tavily_calls).toBe(0);
+    expect(body.vendors.every((v) => v.findings.length === 0)).toBe(true);
     expect(h.calls.filter((c) => c.url === TAVILY_SEARCH_URL)).toEqual([]);
+  });
+
+  it("treats a whitespace-only key as missing", async () => {
+    const h = createHarness({ env: { TAVILY_API_KEY: "   " } });
+    const { body } = await h.post<ScoutResponse>("/api/scout/refresh");
+    expect(body.refresh_error).toBe("TAVILY_NOT_CONFIGURED");
+    expect(h.calls.filter((c) => c.url === TAVILY_SEARCH_URL)).toEqual([]);
+  });
+
+  it("classifies a rejected key, quota, and a dropped connection without inventing sources", async () => {
+    const unauthorized = createHarness({
+      env: { TAVILY_API_KEY: "tvly-test" },
+      fetchHandler: (input) => {
+        if (String(input) !== TAVILY_SEARCH_URL) return null;
+        return new Response(JSON.stringify({ detail: "unauthorized" }), { status: 401 });
+      },
+    });
+    const rejected = await unauthorized.post<ScoutResponse>("/api/scout/refresh");
+    expect(rejected.status).toBe(200);
+    expect(rejected.body.refresh_error).toBe("TAVILY_UNAUTHORIZED");
+    expect(rejected.body.never_searched).toBe(true);
+    expect(rejected.body.tavily_calls).toBe(0);
+    expect(rejected.body.vendors.every((v) => !v.searched && v.findings.length === 0)).toBe(true);
+    expect(unauthorized.calls.filter((c) => c.url === TAVILY_SEARCH_URL).length).toBe(2);
+
+    const quota = createHarness({
+      env: { TAVILY_API_KEY: "tvly-test" },
+      fetchHandler: (input) => {
+        if (String(input) !== TAVILY_SEARCH_URL) return null;
+        return new Response(JSON.stringify({ detail: "rate limited" }), { status: 429 });
+      },
+    });
+    const limited = await quota.post<ScoutResponse>("/api/scout/refresh");
+    expect(limited.body.refresh_error).toBe("TAVILY_QUOTA");
+    expect(limited.body.never_searched).toBe(true);
+    expect(quota.calls.filter((c) => c.url === TAVILY_SEARCH_URL).length).toBe(1);
+
+    const dropped = createHarness({
+      env: { TAVILY_API_KEY: "tvly-test" },
+      fetchHandler: (input) => {
+        if (String(input) === TAVILY_SEARCH_URL) throw new Error("socket hang up");
+        return null;
+      },
+    });
+    const unreachable = await dropped.post<ScoutResponse>("/api/scout/refresh");
+    expect(unreachable.body.refresh_error).toBe("TAVILY_UNREACHABLE");
+    expect(unreachable.body.never_searched).toBe(true);
+  });
+
+  it("keeps last retrieved findings when Tavily returns a request error", async () => {
+    const db = new FakeD1();
+    const store = new D1Store(db);
+    await store.saveScoutBrief(
+      {
+        entity: "aws",
+        findings: [
+          {
+            kind: "EVIDENCE",
+            claim: "AWS announced a new plan.",
+            source_url: "https://aws.amazon.com/blogs/aws/new-plan",
+            source_title: "AWS announced a new plan",
+            published_at: "2026-08-01",
+            retrieved_at: "2026-08-01T00:00:00.000Z",
+            cached: true,
+          },
+        ],
+        empty_window: false,
+        retrieved_at: "2026-08-01T00:00:00.000Z",
+      },
+      "AWS",
+    );
+
+    const h = createHarness({
+      db,
+      env: { TAVILY_API_KEY: "tvly-test" },
+      fetchHandler: (input) => {
+        if (String(input) !== TAVILY_SEARCH_URL) return null;
+        return new Response(JSON.stringify({ detail: { error: "When days is set, start_date or end_date cannot be set" } }), {
+          status: 400,
+        });
+      },
+    });
+    const { body } = await h.post<ScoutResponse>("/api/scout/refresh");
+    expect(body.refresh_error).toBe("TAVILY_FAILED");
+    expect(body.never_searched).toBe(false);
+    expect(body.vendors.find((v) => v.entity === "aws")?.findings[0]?.source_url).toBe(
+      "https://aws.amazon.com/blogs/aws/new-plan",
+    );
   });
 
   it("does not fall back to generic optimization copy when nothing is dated", async () => {

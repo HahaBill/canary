@@ -8,7 +8,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Bird,
-  CalendarDays,
   ChevronsLeft,
   ChevronsRight,
   Home,
@@ -37,11 +36,12 @@ interface NavEntry {
   badge?: boolean;
 }
 
+// Calendar stays at `/calendar` (and its API) but is omitted from chrome so it
+// is not on the walkthrough. Hide-only — do not rip the route out.
 const NAV: readonly NavEntry[] = [
   { to: "/", label: "Home", icon: Home },
   { to: "/incidents", label: "Incidents", icon: TriangleAlert },
   { to: "/ledger", label: "Ledger", icon: Table2 },
-  { to: "/calendar", label: "Calendar", icon: CalendarDays },
   { to: "/needs-review", label: "Needs Review", icon: Inbox, badge: true },
   { to: "/scout", label: "Scout", icon: Radar },
 ];

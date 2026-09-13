@@ -43,8 +43,8 @@ describe("NeedsReviewPage", () => {
     await screen.findByText(item.merchant_raw);
 
     expect(screen.getByText("OpenAI → Professional services")).toBeInTheDocument();
-    const tavily = screen.getByText("Tavily → SaaS software ↗");
-    expect(tavily.closest("a")).toHaveAttribute("href", derived.vendor_enrichments[0]!.source_url);
+    const research = screen.getByText("Research → SaaS software ↗");
+    expect(research.closest("a")).toHaveAttribute("href", derived.vendor_enrichments[0]!.source_url);
   });
 
   it("asks for the operator secret before it will save anything", async () => {

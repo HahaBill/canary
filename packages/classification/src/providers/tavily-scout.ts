@@ -129,7 +129,7 @@ export async function searchScoutVendor(
       include_answer: false,
       max_results: SCOUT.MAX_RESULTS_PER_VENDOR,
       topic: SCOUT_TOPIC,
-      days: lookback,
+      // Dates only — Tavily 400s if `days` is sent with start_date/end_date.
       start_date: windowStart,
       end_date: windowEnd,
     },

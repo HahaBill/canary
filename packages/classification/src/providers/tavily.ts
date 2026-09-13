@@ -8,7 +8,7 @@
  *
  * Plain `fetch`, no SDK. `now()` is injected so runs stay deterministic.
  */
-import type { ISODateTime, ResearchProvider, VendorEnrichment } from "@canary/shared";
+import type { ISODateTime, ResearchProvider, ScoutRefreshError, VendorEnrichment } from "@canary/shared";
 import { mapBusinessTypeToCategory } from "../business-type.ts";
 import { asRecord, defaultFetch, isHttpUrl, parseJsonSafe, truncate, type FetchLike } from "../http.ts";
 
@@ -39,6 +39,30 @@ export interface TavilySearchRequest {
   end_date?: string;
 }
 
+/** HTTP / network failure from `tavilySearch`. Codes match `ScoutPage.refresh_error`. */
+export class TavilyRequestError extends Error {
+  readonly code: ScoutRefreshError;
+  readonly status: number;
+
+  constructor(code: ScoutRefreshError, status: number, message: string) {
+    super(message);
+    this.name = "TavilyRequestError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
+export function tavilyErrorCodeFromStatus(status: number): ScoutRefreshError {
+  if (status === 401 || status === 403) return "TAVILY_UNAUTHORIZED";
+  if (status === 429 || status === 432) return "TAVILY_QUOTA";
+  return "TAVILY_FAILED";
+}
+
+export function scoutRefreshErrorFrom(error: unknown): ScoutRefreshError {
+  if (error instanceof TavilyRequestError) return error.code;
+  return "TAVILY_FAILED";
+}
+
 /**
  * One Tavily Search call. Body `api_key` first; retries once with Bearer on 401.
  * Shared by vendor corroboration and Scout so the two workflows cannot drift
@@ -59,27 +83,43 @@ export async function tavilySearch(
     max_results: request.max_results ?? TAVILY_MAX_RESULTS,
   };
   if (request.topic) base["topic"] = request.topic;
-  if (request.days !== undefined) base["days"] = request.days;
+  // Tavily 400s: "When days is set, start_date or end_date cannot be set".
+  // Absolute dates win — they follow the injected clock, not Tavily's wall clock.
+  const hasAbsoluteWindow = Boolean(request.start_date || request.end_date);
+  if (!hasAbsoluteWindow && request.days !== undefined) base["days"] = request.days;
   if (request.start_date) base["start_date"] = request.start_date;
   if (request.end_date) base["end_date"] = request.end_date;
 
-  let response = await fetchImpl(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ api_key: apiKey, ...base }),
-  });
-
-  if (response.status === 401) {
+  let response: Awaited<ReturnType<FetchLike>>;
+  try {
     response = await fetchImpl(url, {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify(base),
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: apiKey, ...base }),
     });
+  } catch {
+    throw new TavilyRequestError("TAVILY_UNREACHABLE", 0, `${name} request failed: network`);
+  }
+
+  if (response.status === 401) {
+    try {
+      response = await fetchImpl(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify(base),
+      });
+    } catch {
+      throw new TavilyRequestError("TAVILY_UNREACHABLE", 0, `${name} request failed: network`);
+    }
   }
 
   const raw = await response.text();
   if (!response.ok) {
-    throw new Error(`${name} request failed with status ${response.status}: ${truncate(raw, 200)}`);
+    throw new TavilyRequestError(
+      tavilyErrorCodeFromStatus(response.status),
+      response.status,
+      `${name} request failed with status ${response.status}: ${truncate(raw, 200)}`,
+    );
   }
   return asRecord(parseJsonSafe(raw));
 }

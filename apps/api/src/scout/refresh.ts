@@ -5,7 +5,7 @@
  * create incidents, set materiality, send a message, or overwrite a
  * corroboration row (`ashby` stays `ashby`).
  */
-import { searchScoutVendor, type FetchLike as ClassificationFetch } from "@canary/classification/core";
+import { scoutRefreshErrorFrom, searchScoutVendor, type FetchLike as ClassificationFetch } from "@canary/classification/core";
 import {
   SCOUT,
   markScoutFindingsCached,
@@ -16,6 +16,7 @@ import {
   type ISODateTime,
   type ScoutCacheFile,
   type ScoutPage,
+  type ScoutRefreshError,
   type ScoutVendorCache,
 } from "@canary/shared";
 import type { D1Store } from "../data/d1.ts";
@@ -39,14 +40,15 @@ export async function refreshScoutPage(input: {
 }): Promise<ScoutPage> {
   const cache = await loadScoutCache(input.store, input.now);
   const entities = selectScoutVendors(input.derived.burn.weekly_variable_by_entity);
+  const tavilyKey = input.tavilyKey?.trim();
 
-  if (!input.tavilyKey) {
+  if (!tavilyKey) {
     return scoutPageFrom(input.derived, cache, { now: input.now, tavilyCalls: 0, refreshError: "TAVILY_NOT_CONFIGURED" });
   }
 
   const overlay: ScoutCacheFile = { kind: "scout", lookback_days: SCOUT.LOOKBACK_DAYS, retrieved_at: input.now, vendors: {} };
   let calls = 0;
-  let refreshError: string | undefined;
+  let refreshError: ScoutRefreshError | undefined;
   const freshEntities: string[] = [];
 
   for (const entity of entities) {
@@ -62,7 +64,7 @@ export async function refreshScoutPage(input: {
 
     try {
       const brief: ScoutVendorCache = await searchScoutVendor(
-        input.tavilyKey,
+        tavilyKey,
         { merchant_raw: displayName(entity), merchant_normalized: entity, display_name: displayName(entity) },
         asClassificationFetch(input.fetchImpl),
         { now: () => input.now },
@@ -79,8 +81,9 @@ export async function refreshScoutPage(input: {
         }
       }
     } catch (error) {
-      refreshError = error instanceof Error ? error.message : "TAVILY_FAILED";
+      refreshError = scoutRefreshErrorFrom(error);
       if (existing) overlay.vendors[entity] = existing;
+      if (refreshError === "TAVILY_UNAUTHORIZED" || refreshError === "TAVILY_QUOTA") break;
     }
   }
 

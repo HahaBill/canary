@@ -173,7 +173,7 @@ function Queue({
       <RecentOverrides overrides={data.overrides} />
 
       <p className="text-[11px] leading-relaxed text-neutral-400">
-        Categories proposed by OpenAI and corroborated by Tavily are shown as signals only. A
+        Categories proposed by OpenAI and corroborated by live search are shown as signals only. A
         transaction lands here when those signals disagree or are insufficient; assigning a category
         records an override and re-runs classification for that merchant.
       </p>
@@ -219,6 +219,7 @@ function Proposals({ item }: { item: Item }) {
 /** `OPENAI` → `OpenAI`; anything else is title-cased by the shared helper. */
 function sourceLabel(source: string): string {
   if (source.toUpperCase() === "OPENAI") return "OpenAI";
+  if (source.toUpperCase() === "TAVILY") return "Research";
   return entityDisplayName(source);
 }
 

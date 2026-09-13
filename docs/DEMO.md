@@ -20,7 +20,7 @@ All financial values must be read dynamically from the app/generator output. Do 
 - [ ] Verify inbound WHY
 - [ ] Verify inbound SHOW ME
 - [ ] Verify deep link
-- [ ] Verify cached Tavily vendor result
+- [ ] Verify cached vendor research result
 - [ ] Verify what-if simulator
 - [ ] Keep recorded iMessage fallback ready
 - [ ] If ElevenLabs is used, verify microphone and tool call
@@ -125,15 +125,15 @@ Do not spend more than ~10 seconds here.
 
 ---
 
-# 1:30 — Tavily
+# 1:30 — Vendor research
 
 Show the unknown-vendor enrichment/evidence.
 
 Say:
 
-> “For ambiguous vendors, OpenAI proposes a category and Tavily independently identifies what the company does with a cited source. Canary only treats it as corroborated when the signals agree.”
+> “For ambiguous vendors, OpenAI proposes a category and live search independently identifies what the company does with a cited source. Canary only treats it as corroborated when the signals agree.”
 
-This is the core Tavily sponsor beat.
+This is the core vendor-research beat.
 
 ---
 
@@ -196,7 +196,7 @@ If live Sendblue fails:
 1. play the short recorded alert → WHY → SHOW ME clip;
 2. immediately continue live on React from the deep-link destination.
 
-If Tavily fails live:
+If live research fails:
 
 - use the cached result;
 - clearly label the result as previously retrieved external evidence.
@@ -217,7 +217,7 @@ The core demo must never depend on voice.
 
 ## “Is any of this real money?”
 
-> “No. The company, accounts, and transactions are synthetic and deterministic. The only real-world data is the Tavily vendor research, which uses a real indexed vendor name.”
+> “No. The company, accounts, and transactions are synthetic and deterministic. The only real-world data is the vendor research, which uses a real indexed vendor name.”
 
 ## “Why synthetic history?”
 
@@ -235,11 +235,11 @@ The core demo must never depend on voice.
 
 > “It remains in real cash/burn, but because it is already tagged as a one-off it is winsorized out of the CUSUM monitoring series.”
 
-## “What does Tavily do?”
+## “What does the vendor research do?”
 
 > “It independently corroborates unknown vendor identity with a cited source, and optionally monitors major vendors for dated external changes.”
 
-## “Does Tavily know why AWS spend rose?”
+## “Does the research know why AWS spend rose?”
 
 > “No. Bank data doesn't expose workload root cause, so Canary does not claim that.”
 

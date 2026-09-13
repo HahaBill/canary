@@ -75,8 +75,18 @@ export interface ScoutPage {
   /** Live Tavily calls made while assembling this page (0 on GET). */
   tavily_calls: number;
   /** Present when Refresh could not call Tavily; the page still renders from cache. */
-  refresh_error?: string;
+  refresh_error?: ScoutRefreshError;
 }
+
+/** Stable Refresh failure codes. The UI must not invent an outage or "last sources" from these. */
+export const SCOUT_REFRESH_ERRORS = [
+  "TAVILY_NOT_CONFIGURED",
+  "TAVILY_UNAUTHORIZED",
+  "TAVILY_QUOTA",
+  "TAVILY_UNREACHABLE",
+  "TAVILY_FAILED",
+] as const;
+export type ScoutRefreshError = (typeof SCOUT_REFRESH_ERRORS)[number];
 
 /**
  * The Tavily news query for a vendor we already pay. Pricing / plan / credits /
@@ -311,7 +321,7 @@ export function assembleScoutPage(input: {
   now: ISODateTime;
   displayName: (entity: string) => string;
   tavilyCalls?: number;
-  refreshError?: string;
+  refreshError?: ScoutRefreshError;
   /** Entity keys Tavily was asked about on this request. Findings stay uncached. */
   freshEntities?: readonly string[];
 }): ScoutPage {

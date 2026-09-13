@@ -159,10 +159,10 @@ describe("searchScoutVendor", () => {
       api_key: "tvly-test",
       topic: "news",
       include_answer: false,
-      days: SCOUT.LOOKBACK_DAYS,
       start_date: WINDOW_START,
       end_date: "2026-09-14",
     });
+    expect(calls[0]!.body).not.toHaveProperty("days");
     expect(String(calls[0]!.body["query"])).not.toMatch(/company what does it do/);
     expect(brief.empty_window).toBe(false);
     expect(brief.findings).toHaveLength(1);
