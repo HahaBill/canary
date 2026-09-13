@@ -200,6 +200,13 @@ export interface VendorEnrichment {
   source_title: string;
   retrieved_at: ISODateTime;
   snippet?: string;
+  /**
+   * `scout` rows share this table/file shape with corroboration but live
+   * under the `scout:` key namespace. Omit on the P0 unknown-vendor records.
+   */
+  kind?: "scout";
+  /** Required on Scout EVIDENCE; omitted on corroboration. */
+  published_at?: ISODate;
   /** True when served from the on-disk/D1 cache rather than a live call. */
   cached: boolean;
 }
@@ -423,6 +430,8 @@ export interface EvidenceItem {
   source_url?: string;
   source_title?: string;
   retrieved_at?: ISODateTime;
+  /** Publication date of an external source. Required for Scout EVIDENCE. */
+  published_at?: ISODate;
   /** True when served from cache; UI labels "previously retrieved". */
   cached?: boolean;
 }

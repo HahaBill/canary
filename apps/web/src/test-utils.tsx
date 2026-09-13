@@ -9,7 +9,7 @@
 import { render, type RenderResult } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
-import { describeLedgerFilter, parseLedgerQuery, type PivotGranularity } from "@canary/shared";
+import { describeLedgerFilter, parseLedgerQuery, type PivotGranularity, type ScoutPage } from "@canary/shared";
 import App from "@/App.tsx";
 import {
   mockAvailability,
@@ -21,6 +21,7 @@ import {
   mockLedger,
   mockLedgerCell,
   mockNeedsReview,
+  mockScout,
 } from "@/api/mock.ts";
 
 export interface RecordedRequest {
@@ -57,7 +58,7 @@ function headerRecord(init?: RequestInit): Record<string, string> {
  * Installs a `fetch` that serves the view routes from `api/mock.ts` (which owns
  * the session snapshot, so overrides stick). Returns the recorded requests.
  */
-export function installApiStub(): { requests: RecordedRequest[] } {
+export function installApiStub(options: { scout?: ScoutPage } = {}): { requests: RecordedRequest[] } {
   const requests: RecordedRequest[] = [];
 
   vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -106,6 +107,12 @@ export function installApiStub(): { requests: RecordedRequest[] } {
     }
     if (url.pathname === "/api/availability") return Promise.resolve(jsonResponse(mockAvailability()));
     if (url.pathname === "/api/needs-review") return Promise.resolve(jsonResponse(mockNeedsReview()));
+    if (url.pathname === "/api/scout") {
+      return Promise.resolve(jsonResponse(options.scout ?? mockScout()));
+    }
+    if (url.pathname === "/api/scout/refresh") {
+      return Promise.resolve(jsonResponse(options.scout ?? mockScout()));
+    }
     if (url.pathname === "/api/classifications/override") {
       // Same guard the Worker applies, so a missing header fails the test loudly.
       if (!headers["x-canary-secret"]) return Promise.resolve(jsonResponse({ error: "Unauthorized" }, 401));

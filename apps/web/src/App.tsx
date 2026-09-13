@@ -7,6 +7,7 @@ import { IncidentPage } from "@/pages/IncidentPage.tsx";
 import { IncidentsPage } from "@/pages/IncidentsPage.tsx";
 import { LedgerPage } from "@/pages/LedgerPage.tsx";
 import { NeedsReviewPage } from "@/pages/NeedsReviewPage.tsx";
+import { ScoutPage } from "@/pages/ScoutPage.tsx";
 import { NotFound } from "@/pages/NotFound.tsx";
 
 /**
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="ledger" element={<LedgerPage />} />
           <Route path="calendar" element={<CalendarPage />} />
           <Route path="needs-review" element={<NeedsReviewPage />} />
+          <Route path="scout" element={<ScoutPage />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

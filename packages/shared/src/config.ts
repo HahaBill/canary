@@ -194,3 +194,45 @@ export const DEMO = {
     expected_category: "RECRUITING" as Category,
   },
 } as const;
+
+// ---------------------------------------------------------------------------
+// Scout (PRD §11 P1) — dated changes at vendors we already pay
+// ---------------------------------------------------------------------------
+
+export const SCOUT = {
+  /**
+   * How many monitored variable-spend vendors we research in one pass.
+   * Five is enough to cover the cash-moving names (cloud, contractors, the
+   * secondary CUSUM drivers) without turning Refresh into a Tavily spray.
+   */
+  MAX_VENDORS: 5,
+  /**
+   * Floor on trailing weekly variable spend. $500/wk (~$2.2k/mo) is large
+   * enough that a dated pricing change could matter to cash, small enough
+   * that the demo's AWS / Datadog / Ashby still qualify. Meals and small
+   * SaaS stay off the page. Not a hardcoded vendor list — selection is
+   * always "top N above this floor" from the burn window.
+   */
+  MIN_TRAILING_WEEKLY_CENTS: 50_000, // $500/wk
+  /**
+   * Tavily news window. A quarter is long enough for a plan/credit
+   * announcement and short enough that we are not citing last year's blog.
+   * Undated evergreen pages are discarded regardless.
+   */
+  LOOKBACK_DAYS: 90,
+  /** Dated hits kept per vendor after the published-date filter. */
+  MAX_RESULTS_PER_VENDOR: 5,
+  /**
+   * Hard cap on live Tavily calls per Refresh. One search per selected
+   * vendor; this equals MAX_VENDORS so we never queue a second pass.
+   */
+  MAX_TAVILY_CALLS_PER_RUN: 5,
+  /**
+   * Refresh is a no-op (serves the last run) when the cache is younger
+   * than this. Stops a demo double-click from burning the quota. Cron
+   * stays off — live calls are only the explicit Refresh action.
+   */
+  TTL_HOURS: 24,
+  /** One-line claim. Not an essay, and never a place to restate a figure. */
+  CLAIM_MAX_CHARS: 160,
+} as const;

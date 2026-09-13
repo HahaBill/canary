@@ -6,6 +6,7 @@
  * inbound Sendblue webhook which checks a shared secret.
  */
 import type { LedgerFilterSpec } from "./ledger-filter.ts";
+import type { ScoutPage } from "./scout.ts";
 import type {
   AlertHistoryItem,
   AvailabilityResponse,
@@ -69,6 +70,10 @@ export const API_ROUTES = {
   alertsDeliverPending: "POST /api/alerts/deliver-pending",
   needsReview: "GET /api/needs-review",
   classificationOverride: "POST /api/classifications/override",
+  /** Dated changes at vendors we already pay. Cache only — no live Tavily. */
+  scout: "GET /api/scout",
+  /** Explicit Refresh. Live Tavily, capped, TTL-gated. Never writes incidents. */
+  scoutRefresh: "POST /api/scout/refresh",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -232,6 +237,9 @@ export interface ClassificationOverrideRequest {
   note?: string;
 }
 export type ClassificationOverrideResponse = { override: ClassificationOverride; needs_review_count: number };
+
+export type ScoutResponse = ScoutPage;
+export type ScoutRefreshResponse = ScoutPage;
 
 export interface ErrorResponse {
   error: string;

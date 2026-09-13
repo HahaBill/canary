@@ -13,6 +13,7 @@ import {
   ChevronsRight,
   Home,
   Inbox,
+  Radar,
   Sparkles,
   Table2,
   TriangleAlert,
@@ -41,6 +42,7 @@ const NAV: readonly NavEntry[] = [
   { to: "/ledger", label: "Ledger", icon: Table2 },
   { to: "/calendar", label: "Calendar", icon: CalendarDays },
   { to: "/needs-review", label: "Needs Review", icon: Inbox, badge: true },
+  { to: "/scout", label: "Scout", icon: Radar },
 ];
 
 export const SIDEBAR_STORAGE_KEY = "canary.sidebar";

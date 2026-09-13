@@ -25,6 +25,7 @@ import type {
   NeedsReviewResponse,
   PivotCellDetail,
   PivotGranularity,
+  ScoutPage,
   SimulateResponse,
   WhatIfRequest,
 } from "@canary/shared";
@@ -38,7 +39,9 @@ import {
   getLedger,
   getLedgerCell,
   getNeedsReview,
+  getScout,
   postClassificationOverride,
+  refreshScout,
   setIncidentStatus,
   simulate,
 } from "./client.ts";
@@ -52,6 +55,7 @@ import {
   mockLedger,
   mockLedgerCell,
   mockNeedsReview,
+  mockScout,
   mockSetIncidentStatus,
   mockSimulate,
 } from "./mock.ts";
@@ -321,6 +325,15 @@ export function useAvailability(): AsyncResource<AvailabilityResponse> {
 
 export function useNeedsReview(): AsyncResource<NeedsReviewResponse> {
   return useView("needs-review", getNeedsReview, mockNeedsReview);
+}
+
+export function useScout(): AsyncResource<ScoutPage> {
+  return useView("scout", getScout, mockScout);
+}
+
+export async function refreshScoutSources(): Promise<ScoutPage> {
+  if (usingFixtures()) return mockScout();
+  return refreshScout();
 }
 
 /** Routed through the same source resolution as reads. */

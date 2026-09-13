@@ -7,6 +7,8 @@
  * module does no financial arithmetic of its own.
  */
 import {
+  assembleScoutPage,
+  emptyScoutCache,
   EVIDENCE_KINDS,
   formatMonths,
   formatSignedUsd,
@@ -29,11 +31,13 @@ import {
   type NeedsReviewResponse,
   type PivotCellDetail,
   type PivotGranularity,
+  type ScoutPage,
   type SimulateResponse,
   type VendorEnrichment,
   type WhatIfRequest,
 } from "@canary/shared";
 import { buildMockDerived, mockWhatIf } from "@canary/shared/fixtures";
+import { entityDisplayName } from "@/lib/format.ts";
 import {
   buildMockAvailability,
   buildMockCalendar,
@@ -137,6 +141,20 @@ export function mockAvailability(): AvailabilityResponse {
 
 export function mockNeedsReview(): NeedsReviewResponse {
   return buildMockNeedsReview(derived(), mockOverrides);
+}
+
+/** Offline Scout page: selected vendors, empty dated windows. No invented sources. */
+export function mockScout(): ScoutPage {
+  const d = derived();
+  return assembleScoutPage({
+    weeklyVariableByEntity: d.burn.weekly_variable_by_entity,
+    windowStart: d.burn.burn_window_start,
+    windowEnd: d.burn.burn_window_end,
+    whatifIncidentId: d.primary_incident?.id ?? null,
+    cache: emptyScoutCache(d.provenance.generated_at),
+    now: d.provenance.generated_at,
+    displayName: entityDisplayName,
+  });
 }
 
 /**

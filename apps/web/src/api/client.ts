@@ -27,6 +27,8 @@ import {
   type NeedsReviewResponse,
   type PivotCellDetail,
   type PivotGranularity,
+  type ScoutRefreshResponse,
+  type ScoutResponse,
   type SimulateRequest,
   type SimulateResponse,
   type WhatIfRequest,
@@ -222,6 +224,17 @@ export function getAvailability(signal?: AbortSignal): Promise<AvailabilityRespo
 
 export function getNeedsReview(signal?: AbortSignal): Promise<NeedsReviewResponse> {
   return request<NeedsReviewResponse>(routePath(API_ROUTES.needsReview), signal ? { signal } : undefined);
+}
+
+export function getScout(signal?: AbortSignal): Promise<ScoutResponse> {
+  return request<ScoutResponse>(routePath(API_ROUTES.scout), signal ? { signal } : undefined);
+}
+
+export function refreshScout(signal?: AbortSignal): Promise<ScoutRefreshResponse> {
+  return request<ScoutRefreshResponse>(routePath(API_ROUTES.scoutRefresh), {
+    method: "POST",
+    ...(signal ? { signal } : {}),
+  });
 }
 
 /**

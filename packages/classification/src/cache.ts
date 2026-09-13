@@ -7,7 +7,14 @@
  *
  * Runtime-agnostic; the on-disk cache lives in `node.ts`.
  */
-import { CATEGORIES, type Category, type EnrichmentCache, type VendorEnrichment } from "@canary/shared";
+import {
+  CATEGORIES,
+  isScoutEnrichment,
+  isScoutEnrichmentKey,
+  type Category,
+  type EnrichmentCache,
+  type VendorEnrichment,
+} from "@canary/shared";
 
 /** `{ [merchant_normalized]: VendorEnrichment }` — the on-disk/JSON shape. */
 export type EnrichmentRecord = Record<string, VendorEnrichment>;
@@ -42,12 +49,16 @@ export function isPlaceholderEnrichment(enrichment: VendorEnrichment): boolean {
   return enrichment.source_title.startsWith(PLACEHOLDER_MARKER) || enrichment.business_type.startsWith(PLACEHOLDER_MARKER);
 }
 
+function isCorroborationEntry(key: string, entry: VendorEnrichment): boolean {
+  return !isScoutEnrichmentKey(key) && !isScoutEnrichment(entry);
+}
+
 /** Drops anything malformed rather than throwing: a corrupt cache degrades to a cache miss. */
 export function parseEnrichmentRecord(value: unknown): EnrichmentRecord {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
   const out: EnrichmentRecord = {};
   for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-    if (isVendorEnrichment(entry)) out[key] = entry;
+    if (isVendorEnrichment(entry) && isCorroborationEntry(key, entry)) out[key] = entry;
   }
   return out;
 }
@@ -64,19 +75,29 @@ export class MemoryEnrichmentCache implements EnrichmentCache {
 
   constructor(seed?: EnrichmentRecord | readonly VendorEnrichment[]) {
     if (Array.isArray(seed)) {
-      for (const entry of seed) this.#entries.set(entry.merchant_normalized, entry);
+      for (const entry of seed) {
+        if (isCorroborationEntry(entry.merchant_normalized, entry)) {
+          this.#entries.set(entry.merchant_normalized, entry);
+        }
+      }
     } else if (seed) {
-      for (const [key, entry] of Object.entries(seed)) this.#entries.set(key, entry);
+      for (const [key, entry] of Object.entries(seed)) {
+        if (isCorroborationEntry(key, entry)) this.#entries.set(key, entry);
+      }
     }
   }
 
   async get(merchantNormalized: string): Promise<VendorEnrichment | null> {
+    if (isScoutEnrichmentKey(merchantNormalized)) return null;
     const hit = this.#entries.get(merchantNormalized);
-    if (hit === undefined || isPlaceholderEnrichment(hit)) return null;
+    if (hit === undefined || isPlaceholderEnrichment(hit) || isScoutEnrichment(hit)) return null;
     return { ...hit, cached: true };
   }
 
   async set(enrichment: VendorEnrichment): Promise<void> {
+    if (isScoutEnrichment(enrichment) || isScoutEnrichmentKey(enrichment.merchant_normalized)) {
+      throw new Error("refusing to write a Scout row into the corroboration cache");
+    }
     this.#entries.set(enrichment.merchant_normalized, enrichment);
   }
 

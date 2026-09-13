@@ -27,6 +27,63 @@ export interface TavilyProviderOptions {
   name?: string;
 }
 
+/** Body fields Tavily Search accepts. Scout adds `topic` / dates; corroboration does not. */
+export interface TavilySearchRequest {
+  query: string;
+  search_depth?: string;
+  include_answer?: boolean;
+  max_results?: number;
+  topic?: "general" | "news" | "finance";
+  days?: number;
+  start_date?: string;
+  end_date?: string;
+}
+
+/**
+ * One Tavily Search call. Body `api_key` first; retries once with Bearer on 401.
+ * Shared by vendor corroboration and Scout so the two workflows cannot drift
+ * on auth, and so Scout writes never go through `enrichVendor`.
+ */
+export async function tavilySearch(
+  apiKey: string,
+  fetchImpl: FetchLike,
+  request: TavilySearchRequest,
+  options: { url?: string; name?: string } = {},
+): Promise<Record<string, unknown> | null> {
+  const url = options.url ?? TAVILY_SEARCH_URL;
+  const name = options.name ?? "tavily";
+  const base: Record<string, unknown> = {
+    query: request.query,
+    search_depth: request.search_depth ?? TAVILY_SEARCH_DEPTH,
+    include_answer: request.include_answer ?? true,
+    max_results: request.max_results ?? TAVILY_MAX_RESULTS,
+  };
+  if (request.topic) base["topic"] = request.topic;
+  if (request.days !== undefined) base["days"] = request.days;
+  if (request.start_date) base["start_date"] = request.start_date;
+  if (request.end_date) base["end_date"] = request.end_date;
+
+  let response = await fetchImpl(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ api_key: apiKey, ...base }),
+  });
+
+  if (response.status === 401) {
+    response = await fetchImpl(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(base),
+    });
+  }
+
+  const raw = await response.text();
+  if (!response.ok) {
+    throw new Error(`${name} request failed with status ${response.status}: ${truncate(raw, 200)}`);
+  }
+  return asRecord(parseJsonSafe(raw));
+}
+
 export interface TavilyVendorInput {
   merchant_raw: string;
   merchant_normalized: string;
@@ -134,34 +191,15 @@ export function TavilyProvider(apiKey: string, fetchImpl?: FetchLike, options: T
   const name = options.name ?? "tavily";
   const now = options.now ?? (() => new Date().toISOString());
 
-  async function search(query: string): Promise<Record<string, unknown> | null> {
-    const base = { query, search_depth: TAVILY_SEARCH_DEPTH, include_answer: true, max_results: maxResults };
-
-    let response = await doFetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ api_key: apiKey, ...base }),
-    });
-
-    if (response.status === 401) {
-      response = await doFetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify(base),
-      });
-    }
-
-    const raw = await response.text();
-    if (!response.ok) {
-      throw new Error(`${name} request failed with status ${response.status}: ${truncate(raw, 200)}`);
-    }
-    return asRecord(parseJsonSafe(raw));
-  }
-
   return {
     name,
     async enrichVendor(input: TavilyVendorInput): Promise<VendorEnrichment | null> {
-      const body = await search(buildTavilyQuery(input));
+      const body = await tavilySearch(
+        apiKey,
+        doFetch,
+        { query: buildTavilyQuery(input), search_depth: TAVILY_SEARCH_DEPTH, include_answer: true, max_results: maxResults },
+        { url, name },
+      );
       const results = readResults(body);
       if (results.length === 0) return null;
 

@@ -27,6 +27,7 @@ import { registerIncidentRoutes } from "./routes/incidents.ts";
 import { registerOauthRoutes } from "./routes/oauth.ts";
 import { registerScheduleRoutes } from "./routes/schedule.ts";
 import { registerToolRoutes } from "./routes/tools.ts";
+import { registerScoutRoutes } from "./routes/scout.ts";
 import { registerViewRoutes } from "./routes/views.ts";
 import { registerWebhookRoutes } from "./routes/webhooks.ts";
 import { SendblueClient, type FetchLike } from "./sendblue/client.ts";
@@ -135,6 +136,7 @@ export function createApp(deps: AppDeps = {}): CanaryApp {
   registerIncidentRoutes(app);
   registerDataRoutes(app);
   registerViewRoutes(app);
+  registerScoutRoutes(app);
   registerAlertRoutes(app);
   registerWebhookRoutes(app);
   registerToolRoutes(app);

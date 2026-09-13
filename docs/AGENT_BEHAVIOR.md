@@ -132,6 +132,14 @@ naming it.
 When refusing, Canary says what it *can* answer. "I can't tell you why AWS grew
 — bank data doesn't show that. I can show you when it changed and by how much."
 
+**Scout is browse-only.** `/scout` never creates an incident, never sets
+materiality, and never sends a message. Unprompted speech still requires a
+detector + materiality (§1). Cards show OBSERVED spend from the ledger and
+EVIDENCE from dated Tavily results. "Nothing dated in the window" is a complete
+answer. Copy may not rank vendors, name a cheaper alternative, or tell the
+founder to switch, cancel, or downgrade. Prose on this page may not restate a
+figure.
+
 ---
 
 ## 5. Answer shapes

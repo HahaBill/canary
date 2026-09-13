@@ -4,6 +4,11 @@
  * in `0003_pending_alerts_and_overrides.sql`, and the conversation memory in
  * `0004_conversation_memory.sql`).
  *
+ * Scout Refresh reuses `vendor_enrichments` under `scout:` keys — same
+ * record shape, no new table or binding. `getEnrichment` never returns those
+ * rows, so the P0 Ashby corroboration fixture cannot be overwritten or read
+ * as Scout.
+ *
  * Everything here talks to `SqlDatabase`, a structural subset of `D1Database`,
  * so tests can pass an in-memory fake without pulling in miniflare/workerd.
  * Every statement is a single-line `INSERT`/`SELECT` with an explicit column
@@ -16,7 +21,16 @@ import type {
   Incident,
   IncidentStatus,
   ISODateTime,
+  ScoutCacheFile,
+  ScoutVendorCache,
   VendorEnrichment,
+} from "@canary/shared";
+import {
+  briefToEnrichments,
+  enrichmentsToScoutCache,
+  entityFromScoutKey,
+  isScoutEnrichment,
+  isScoutEnrichmentKey,
 } from "@canary/shared";
 
 export interface SqlStatement {
@@ -147,25 +161,80 @@ export class D1Store {
   }
 
   async getEnrichment(merchantNormalized: string): Promise<VendorEnrichment | null> {
+    // P0 corroboration never reads the Scout namespace.
+    if (isScoutEnrichmentKey(merchantNormalized)) return null;
     const row = await this.db
       .prepare("SELECT payload_json FROM vendor_enrichments WHERE merchant_normalized = ?")
       .bind(merchantNormalized)
       .first<{ payload_json: string }>();
     if (!row?.payload_json) return null;
     try {
-      return JSON.parse(row.payload_json) as VendorEnrichment;
+      const parsed = JSON.parse(row.payload_json) as VendorEnrichment;
+      return isScoutEnrichment(parsed) ? null : parsed;
     } catch {
       return null;
     }
   }
 
   async saveEnrichment(enrichment: VendorEnrichment): Promise<void> {
+    if (isScoutEnrichment(enrichment) && !isScoutEnrichmentKey(enrichment.merchant_normalized)) {
+      throw new Error("refusing to write a Scout row without the scout: key prefix");
+    }
     await this.db
       .prepare(
         "INSERT INTO vendor_enrichments (merchant_normalized, payload_json, retrieved_at) VALUES (?, ?, ?) " +
           "ON CONFLICT(merchant_normalized) DO UPDATE SET payload_json = excluded.payload_json, retrieved_at = excluded.retrieved_at",
       )
       .bind(enrichment.merchant_normalized, JSON.stringify(enrichment), enrichment.retrieved_at)
+      .run();
+  }
+
+  /**
+   * Scout rows live in `vendor_enrichments` under `scout:` keys. Same record
+   * shape as corroboration; the prefix is what keeps them from colliding.
+   */
+  async listScoutCache(now: ISODateTime): Promise<ScoutCacheFile> {
+    const { results } = await this.db
+      .prepare("SELECT merchant_normalized, payload_json FROM vendor_enrichments")
+      .all<{ merchant_normalized: string; payload_json: string }>();
+    const rows: VendorEnrichment[] = [];
+    for (const row of results ?? []) {
+      if (!isScoutEnrichmentKey(row.merchant_normalized)) continue;
+      try {
+        const parsed = JSON.parse(row.payload_json) as VendorEnrichment;
+        if (isScoutEnrichment(parsed)) rows.push(parsed);
+      } catch {
+        // A corrupt row is a miss, not a 500.
+      }
+    }
+    return enrichmentsToScoutCache(rows, now);
+  }
+
+  async saveScoutBrief(brief: ScoutVendorCache, displayName: string): Promise<void> {
+    const { results } = await this.db
+      .prepare("SELECT merchant_normalized FROM vendor_enrichments")
+      .all<{ merchant_normalized: string }>();
+    for (const row of results ?? []) {
+      if (entityFromScoutKey(row.merchant_normalized) === brief.entity) {
+        await this.deleteScoutEnrichment(row.merchant_normalized);
+      }
+    }
+    for (const enrichment of briefToEnrichments(brief, displayName)) {
+      if (!isScoutEnrichmentKey(enrichment.merchant_normalized)) {
+        throw new Error("refusing to write a Scout row without the scout: key prefix");
+      }
+      await this.saveEnrichment(enrichment);
+    }
+  }
+
+  /** Only Scout keys. A corroboration row (`ashby`) cannot be deleted from this path. */
+  async deleteScoutEnrichment(merchantNormalized: string): Promise<void> {
+    if (!isScoutEnrichmentKey(merchantNormalized)) {
+      throw new Error("refusing to delete a corroboration enrichment");
+    }
+    await this.db
+      .prepare("DELETE FROM vendor_enrichments WHERE merchant_normalized = ?")
+      .bind(merchantNormalized)
       .run();
   }
 

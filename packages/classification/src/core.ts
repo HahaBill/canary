@@ -9,5 +9,6 @@ export * from "./business-type.ts";
 export * from "./http.ts";
 export * from "./providers/openai.ts";
 export * from "./providers/tavily.ts";
+export * from "./providers/tavily-scout.ts";
 export * from "./cache.ts";
 export * from "./classify.ts";

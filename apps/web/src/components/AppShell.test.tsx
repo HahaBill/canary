@@ -24,7 +24,7 @@ describe("AppShell", () => {
     renderApp("/ledger");
 
     const sidebar = await screen.findByRole("complementary", { name: "Main navigation" });
-    for (const label of ["Home", "Incidents", "Ledger", "Calendar", "Needs Review"]) {
+    for (const label of ["Home", "Incidents", "Ledger", "Calendar", "Needs Review", "Scout"]) {
       expect(within(sidebar).getByRole("link", { name: new RegExp(label) })).toBeInTheDocument();
     }
     expect(within(sidebar).getByRole("link", { name: /Ledger/ })).toHaveAttribute("aria-current", "page");
@@ -83,7 +83,7 @@ describe("AppShell", () => {
 
     const tabBar = await screen.findByRole("navigation", { name: "Main navigation" });
     expect(screen.queryByRole("complementary", { name: "Main navigation" })).not.toBeInTheDocument();
-    expect(within(tabBar).getAllByRole("link")).toHaveLength(5);
+    expect(within(tabBar).getAllByRole("link")).toHaveLength(6);
     expect(screen.queryByRole("button", { name: /sidebar/ })).not.toBeInTheDocument();
   });
 });

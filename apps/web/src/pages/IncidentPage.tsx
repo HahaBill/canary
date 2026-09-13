@@ -178,7 +178,11 @@ export function IncidentPage() {
             </p>
             <div className="mt-5">
               {/* Remount per incident so the entity picker resets to the new driver. */}
-              <WhatIfPanel key={incident.id} burn={burn} defaultEntity={incident.entity} />
+              <WhatIfPanel
+                key={`${incident.id}:${searchParams.get("entity") ?? ""}`}
+                burn={burn}
+                defaultEntity={searchParams.get("entity")?.trim() || incident.entity}
+              />
             </div>
           </div>
         </TabsContent>

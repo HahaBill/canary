@@ -1,0 +1,6 @@
+{
+  "kind": "scout",
+  "lookback_days": 90,
+  "retrieved_at": "2026-09-12T00:00:00.000Z",
+  "vendors": {}
+}

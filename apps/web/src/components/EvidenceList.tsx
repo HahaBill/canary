@@ -1,7 +1,7 @@
 import { ExternalLink } from "lucide-react";
 import { EVIDENCE_KINDS, type EvidenceItem, type EvidenceKind } from "@canary/shared";
 import { Badge, type BadgeProps } from "@/components/ui/badge.tsx";
-import { formatTimestampMedium } from "@/lib/format.ts";
+import { formatDateMedium, formatTimestampMedium } from "@/lib/format.ts";
 
 /** Blurbs are the taxonomy definitions from PRD §20, kept visible on purpose. */
 export const KIND_META: Record<EvidenceKind, { label: string; blurb: string; variant: BadgeProps["variant"] }> = {
@@ -58,6 +58,9 @@ export function EvidenceList({ items }: { items: EvidenceItem[] }) {
                         {item.source_title ?? item.source_url}
                         <ExternalLink className="h-3 w-3" aria-hidden="true" />
                       </a>
+                      {item.published_at ? (
+                        <span className="text-neutral-500">published {formatDateMedium(item.published_at)}</span>
+                      ) : null}
                       {item.retrieved_at ? (
                         <span className="text-neutral-500">
                           retrieved {formatTimestampMedium(item.retrieved_at)}

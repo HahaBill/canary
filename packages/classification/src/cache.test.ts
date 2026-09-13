@@ -34,6 +34,15 @@ describe("MemoryEnrichmentCache", () => {
     expect(cache.size).toBe(1);
   });
 
+  it("refuses a Scout-namespaced write so corroboration stays isolated", async () => {
+    const cache = new MemoryEnrichmentCache([enrichment]);
+    await expect(
+      cache.set({ ...enrichment, kind: "scout", merchant_normalized: "scout:ashby" }),
+    ).rejects.toThrow(/Scout/);
+    expect(await cache.get("ashby")).toEqual({ ...enrichment, cached: true });
+    expect(await cache.get("scout:ashby")).toBeNull();
+  });
+
   it("seeds from a record or an array and snapshots in key order", async () => {
     const fromArray = new MemoryEnrichmentCache([enrichment]);
     const fromRecord = new MemoryEnrichmentCache({ ashby: enrichment });
@@ -59,6 +68,12 @@ describe("enrichment record serialization", () => {
     expect(isVendorEnrichment({ ...enrichment, mapped_category: "NOT_A_CATEGORY" })).toBe(false);
     expect(isVendorEnrichment({ ...enrichment, source_url: 42 })).toBe(false);
     expect(parseEnrichmentRecord({ ashby: enrichment, bogus: { nope: true } })).toEqual({ ashby: enrichment });
+    expect(
+      parseEnrichmentRecord({
+        ashby: enrichment,
+        "scout:ashby": { ...enrichment, kind: "scout", merchant_normalized: "scout:ashby" },
+      }),
+    ).toEqual({ ashby: enrichment });
     expect(parseEnrichmentRecord(null)).toEqual({});
     expect(parseEnrichmentRecord([enrichment])).toEqual({});
   });
@@ -105,6 +120,16 @@ describe("FileEnrichmentCache", () => {
 
     expect(await cache.read()).toEqual({});
     expect(await cache.get("ashby")).toBeNull();
+  });
+
+  it("refuses a Scout write against the committed demo fixture and leaves the file byte-identical", async () => {
+    const before = await readFile(DEMO_CACHE_FILE);
+    const cache = new FileEnrichmentCache(DEMO_CACHE_FILE);
+    await expect(
+      cache.set({ ...enrichment, kind: "scout", merchant_normalized: "scout:ashby" }),
+    ).rejects.toThrow(/Scout/);
+    expect(await readFile(DEMO_CACHE_FILE)).toEqual(before);
+    expect(await cache.get("scout:ashby")).toBeNull();
   });
 });
 
