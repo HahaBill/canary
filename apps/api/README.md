@@ -124,6 +124,7 @@ from `createApp({ bankTransactions })` — currently an empty ledger.
 | `src/voice/` | ElevenLabs TTS (iMessage CAF / web MP3) and the Ask Canary signed URL |
 | `src/bank/` | `SandboxBankProvider` |
 | `src/tools.ts` | agent tools shared by REST, iMessage, and voice |
+| `src/routes/tools.ts` | `GET|POST /api/tools/<name>` — same `runTool` payloads as iMessage (ElevenLabs) |
 | `src/test/` | in-memory D1 + app harness (no miniflare) |
 
 No number in any response is hand-written: figures come from engine/detector output and are

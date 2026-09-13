@@ -1,48 +1,78 @@
-/** `/api/tools/*` — the deterministic tool surface for ElevenLabs and OpenAI. */
-import type {
-  CreateAppLinkResponse,
-  ToolGetHealthSummaryResponse,
-  ToolGetIncidentResponse,
-  ToolSimulateResponse,
-} from "@canary/shared";
-import { baseUrl, jsonError, readJson, type CanaryApp } from "../context.ts";
-import {
-  createLink,
-  getHealthSummary,
-  getIncidentTool,
-  parseCreateAppLinkRequest,
-  parseWhatIfRequest,
-  simulateCostChange,
-} from "../tools.ts";
+/**
+ * `/api/tools/*` — the same `runTool` surface iMessage uses, exposed over HTTP
+ * for Ask Canary / ElevenLabs. GET and POST both work (ElevenLabs defaults to
+ * GET). Tool data errors are JSON 200s so the host does not treat them as a
+ * failed call and then refuse to speak figures.
+ */
+import { AGENT_TOOL_NAMES, type AgentToolName } from "@canary/shared";
+import { isToolName, runTool } from "../conversation/tools.ts";
+import { baseUrl, jsonError, readJson, type CanaryApp, type CanaryContext } from "../context.ts";
+import type { DataProvider } from "../data/provider.ts";
+import { noChangeExplanation, whatIfSpeech } from "../speech.ts";
+import { getHealthSummary, getIncidentTool, simulateCostChange } from "../tools.ts";
+import { unwrapToolArgs } from "./tool-args.ts";
+
+/** Names a voice prompt may still use; they dispatch to the real tools. */
+const TOOL_ALIASES: Record<string, AgentToolName> = {
+  get_runway: "get_health_summary",
+  explain_incident: "get_incident",
+};
 
 export function registerToolRoutes(app: CanaryApp): void {
-  app.post("/api/tools/get_health_summary", async (c) => {
-    const body: ToolGetHealthSummaryResponse = await getHealthSummary(c.get("provider"));
-    return c.json(body);
-  });
+  const names = new Set<string>([...AGENT_TOOL_NAMES, ...Object.keys(TOOL_ALIASES)]);
+  for (const name of names) {
+    const path = `/api/tools/${name}`;
+    const handler = (c: CanaryContext) => handleTool(c, name);
+    app.get(path, handler);
+    app.post(path, handler);
+  }
+}
 
-  app.post("/api/tools/get_incident", async (c) => {
-    const body = await readJson(c);
-    if (!body) return jsonError(c, 400, "invalid_json", "Request body must be a JSON object.");
-    const id = typeof body.id === "string" && body.id.trim().length > 0 ? body.id.trim() : undefined;
+async function handleTool(c: CanaryContext, requested: string): Promise<Response> {
+  const raw = await readToolRequest(c);
+  if (raw === null) return jsonError(c, 400, "invalid_json", "Request body must be a JSON object.");
 
-    const detail = await getIncidentTool(c.get("provider"), id);
-    if (!detail) return jsonError(c, 404, "incident_not_found", id ? `No incident with id ${id}.` : "No incident is currently flagged.");
-    const response: ToolGetIncidentResponse = detail;
-    return c.json(response);
-  });
+  const name = TOOL_ALIASES[requested] ?? requested;
+  if (!isToolName(name)) {
+    return c.json({ error: "unknown_tool", detail: `${requested} is not a Canary tool.` });
+  }
 
-  app.post("/api/tools/simulate_cost_change", async (c) => {
-    const parsed = parseWhatIfRequest(await readJson(c));
-    if (!parsed.ok) return jsonError(c, 400, parsed.error, parsed.detail);
-    const body: ToolSimulateResponse = await simulateCostChange(c.get("provider"), parsed.value);
-    return c.json(body);
-  });
+  const args = unwrapToolArgs(raw);
+  const outcome = await runTool({ provider: c.get("provider"), baseUrl: baseUrl(c) }, name, args);
+  const result = await withSpeech(c.get("provider"), name, args, outcome.result);
+  return c.json(result);
+}
 
-  app.post("/api/tools/create_app_link", async (c) => {
-    const parsed = parseCreateAppLinkRequest(await readJson(c));
-    if (!parsed.ok) return jsonError(c, 400, parsed.error, parsed.detail);
-    const body: CreateAppLinkResponse = createLink(parsed.value, baseUrl(c));
-    return c.json(body);
-  });
+async function readToolRequest(c: CanaryContext): Promise<Record<string, unknown> | null> {
+  const query = c.req.query();
+  if (c.req.method === "GET") return { ...query };
+  const body = await readJson(c);
+  if (body === null) return null;
+  return { ...query, ...body };
+}
+
+/** Spoken strings for the voice path. iMessage still copies the formatted fields. */
+async function withSpeech(
+  provider: DataProvider,
+  name: AgentToolName,
+  args: Record<string, unknown>,
+  result: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  if (name === "get_health_summary") {
+    const summary = await getHealthSummary(provider);
+    return { ...result, speech: summary.speech };
+  }
+  if (name === "get_incident" && typeof result.id === "string") {
+    const detail = await getIncidentTool(provider, result.id);
+    if (detail) return { ...result, speech: detail.speech };
+  }
+  if (name === "simulate_cost_change" && result.known === true && typeof result.entity_key === "string") {
+    const percentage = typeof result.percentage === "number" ? result.percentage : Number(args.percentage);
+    if (Number.isFinite(percentage)) {
+      const derived = await provider.getDerived();
+      const simulated = await simulateCostChange(provider, { entity: result.entity_key, percentage });
+      return { ...result, speech: whatIfSpeech(simulated, noChangeExplanation(derived, result.entity_key, percentage)) };
+    }
+  }
+  return result;
 }

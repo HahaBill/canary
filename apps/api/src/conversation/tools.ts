@@ -8,11 +8,13 @@
  * rather than formats, and `guard.ts` then checks that it did.
  */
 import {
+  AGENT_TOOL_NAMES,
   formatMonths,
   formatSignedUsd,
   formatUsd,
   formatUsdWhole,
   weeklyToMonthly,
+  type AgentToolName,
   type DerivedDemoObject,
   type Incident,
 } from "@canary/shared";
@@ -24,18 +26,8 @@ import { createLink, getHealthSummary, simulateCostChange, PERCENTAGE_MAX, PERCE
 import { resolveEntity } from "./entities.ts";
 import type { ToolSchema } from "./openai.ts";
 
-export const TOOL_NAMES = [
-  "get_health_summary",
-  "get_incident",
-  "get_active_incidents",
-  "simulate_cost_change",
-  "get_evidence",
-  "create_app_link",
-  "get_vendor_spend",
-  "list_transactions",
-  "refuse",
-] as const;
-export type ToolName = (typeof TOOL_NAMES)[number];
+export const TOOL_NAMES = AGENT_TOOL_NAMES;
+export type ToolName = AgentToolName;
 
 export type ToolResult = Record<string, unknown>;
 
@@ -166,17 +158,17 @@ export async function runTool(ctx: ToolContext, name: string, args: Record<strin
     case "get_health_summary":
       return plain(await healthSummary(ctx));
     case "get_incident":
-      return plain(await incidentDetail(ctx, str(args.id)));
+      return plain(await incidentDetail(ctx, str(args.id) ?? str(args.incident_id)));
     case "get_active_incidents":
       return plain(await activeIncidents(ctx));
     case "simulate_cost_change":
-      return plain(await whatIf(ctx, str(args.entity) ?? "", num(args.percentage)));
+      return plain(await whatIf(ctx, str(args.entity) ?? str(args.vendor) ?? "", num(args.percentage ?? args.percent)));
     case "get_evidence":
-      return evidence(ctx, str(args.incident_id));
+      return evidence(ctx, str(args.incident_id) ?? str(args.id));
     case "create_app_link":
       return appLink(ctx, args);
     case "get_vendor_spend":
-      return plain(await vendorSpend(ctx, str(args.entity) ?? ""));
+      return plain(await vendorSpend(ctx, str(args.entity) ?? str(args.vendor) ?? ""));
     case "list_transactions":
       return plain(await listedTransactions(ctx, args));
     case "refuse": {
@@ -318,6 +310,7 @@ async function whatIf(ctx: ToolContext, rawEntity: string, percentage: number): 
   return {
     known: true,
     vendor: resolved.display_name,
+    entity_key: resolved.entity,
     percentage: result.percentage,
     current_weekly: formatUsdWhole(result.current_weekly_cents),
     current_monthly: formatUsdWhole(result.current_monthly_cents),
@@ -367,7 +360,7 @@ function appLink(ctx: ToolContext, args: Record<string, unknown>): ToolOutcome {
   const allowedTab = tab === "overview" || tab === "drivers" || tab === "evidence" || tab === "whatif" ? tab : undefined;
 
   const link = createLink({ destination, ...(id ? { id } : {}), ...(allowedTab ? { tab: allowedTab } : {}) }, ctx.baseUrl);
-  return { result: { url: link.url }, urls: [link.url] };
+  return { result: { url: link.url, path: link.path }, urls: [link.url] };
 }
 
 async function vendorSpend(ctx: ToolContext, rawEntity: string): Promise<ToolResult> {
@@ -415,7 +408,7 @@ function displayCategory(category: string): string {
 
 async function listedTransactions(ctx: ToolContext, args: Record<string, unknown>): Promise<ToolResult> {
   const derived = await ctx.provider.getDerived();
-  const rawEntity = str(args.entity);
+  const rawEntity = str(args.entity) ?? str(args.vendor);
   let entity: string | undefined;
   if (rawEntity) {
     const resolved = resolveEntity(derived, rawEntity);

@@ -55,8 +55,13 @@ export const API_ROUTES = {
   sendblueWebhook: "POST /webhooks/sendblue",
   toolHealthSummary: "POST /api/tools/get_health_summary",
   toolGetIncident: "POST /api/tools/get_incident",
+  toolGetActiveIncidents: "POST /api/tools/get_active_incidents",
   toolSimulate: "POST /api/tools/simulate_cost_change",
+  toolGetEvidence: "POST /api/tools/get_evidence",
   toolCreateAppLink: "POST /api/tools/create_app_link",
+  toolGetVendorSpend: "POST /api/tools/get_vendor_spend",
+  toolListTransactions: "POST /api/tools/list_transactions",
+  toolRefuse: "POST /api/tools/refuse",
   // Views (ledger sheet, calendar) and notification policy
   ledger: "GET /api/ledger",
   ledgerCell: "GET /api/ledger/cell",
@@ -269,6 +274,20 @@ export type IMessageCommand = (typeof IMESSAGE_COMMANDS)[number];
 // ---------------------------------------------------------------------------
 // Agent tools (PRD §21, §24) — used by ElevenLabs server tools and the iMessage router
 // ---------------------------------------------------------------------------
+
+/** Same names on iMessage (`runTool`) and Ask Canary (`/api/tools/<name>`). */
+export const AGENT_TOOL_NAMES = [
+  "get_health_summary",
+  "get_incident",
+  "get_active_incidents",
+  "simulate_cost_change",
+  "get_evidence",
+  "create_app_link",
+  "get_vendor_spend",
+  "list_transactions",
+  "refuse",
+] as const;
+export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
 
 export type ToolGetHealthSummaryRequest = Record<string, never>;
 export type ToolGetHealthSummaryResponse = HealthSummaryResponse;

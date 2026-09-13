@@ -331,7 +331,7 @@ React SPA, built by Vite into `apps/api/public` and served by the Worker as stat
 | **Ledger** (`/ledger`) | Hierarchical pivot — Revenue / Variable / Fixed / One-offs & renewals / Net burn / Financing & transfers / Cash at period end. Weekly·Monthly toggle, run-rate column, post-change tint, cell drill-down to the transactions behind any figure, CSV export |
 | **Calendar** (`/calendar`) | Posted transactions, projected recurring charges inferred from observed cadence, Canary markers for the change point / alarm / one-off, and founder busy blocks when a calendar feed is configured |
 | **Needs Review** (`/needs-review`) | Every uncorroborated transaction with the disagreeing signals that put it there, and an assign-category action (writes require the operator secret, held in the browser only) |
-| **Ask Canary** | Floating ElevenLabs talk orb on every page. The Worker mints a short-lived signed URL so the API key never reaches the browser. `/ask` explains the orb. Same deterministic tools as iMessage. Offline fixtures hide the orb. |
+| **Ask Canary** | Labeled **Ask a question** orb, bottom-right of every page. The Worker mints a short-lived signed URL so the API key never reaches the browser. `/ask` explains it. Same deterministic tools as iMessage. The button stays visible even when voice is not connected. |
 
 | Ledger | Cash calendar | Needs Review |
 | --- | --- | --- |

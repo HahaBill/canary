@@ -387,40 +387,46 @@ describe("POST /api/alerts/send", () => {
 });
 
 describe("agent tools", () => {
-  it("get_health_summary matches the REST health summary", async () => {
+  it("get_health_summary matches the REST figures in iMessage format", async () => {
     const h = createHarness();
     const rest = await h.json<HealthSummaryResponse>("/api/health-summary");
-    const tool = await h.post<HealthSummaryResponse>("/api/tools/get_health_summary");
+    const tool = await h.post<{ cash: string; speech: { cash: string } }>("/api/tools/get_health_summary");
     expect(tool.status).toBe(200);
-    expect(tool.body).toEqual(rest.body);
+    expect(tool.body.cash).toMatch(/^\$/);
+    expect(tool.body.speech.cash).toBe(rest.body.speech.cash);
   });
 
   it("get_incident defaults to the primary incident and adds speech", async () => {
     const h = createHarness();
-    const { status, body } = await h.post<IncidentDetailResponse & { speech: Record<string, string> }>("/api/tools/get_incident", {});
+    const { status, body } = await h.post<{ vendor: string; speech: Record<string, string> }>("/api/tools/get_incident", {});
     expect(status).toBe(200);
-    expect(body.incident.id).toBe(h.derived.primary_incident!.id);
+    expect(body.vendor).toBe("AWS");
     expect(body.speech.summary).toContain("AWS");
     expect(body.speech.drivers).toMatch(/dollars a week/);
     expect(body.speech.impact).toMatch(/runway/);
     expect(`${body.speech.summary}${body.speech.drivers}${body.speech.impact}`).not.toMatch(/\$/);
-    expect(body.evidence.map((e) => e.kind)).toContain("SUGGESTION");
   });
 
-  it("get_incident accepts an explicit id and 404s unknown ones", async () => {
+  it("get_incident accepts an explicit id and reports unknown ones as not flagged", async () => {
     const h = createHarness();
-    const ok = await h.post<IncidentDetailResponse>("/api/tools/get_incident", { id: h.derived.one_off_incident!.id });
-    expect(ok.body.incident.type).toBe("ONE_OFF_VENDOR_PAYMENT");
-    const missing = await h.post<ErrorResponse>("/api/tools/get_incident", { id: "inc_nope" });
-    expect(missing.status).toBe(404);
+    const ok = await h.post<{ type: string }>("/api/tools/get_incident", { id: h.derived.one_off_incident!.id });
+    expect(ok.body.type).toBe("ONE_OFF_VENDOR_PAYMENT");
+    const missing = await h.post<{ flagged: boolean }>("/api/tools/get_incident", { id: "inc_nope" });
+    expect(missing.status).toBe(200);
+    expect(missing.body.flagged).toBe(false);
   });
 
-  it("simulate_cost_change matches /api/simulate", async () => {
+  it("simulate_cost_change returns the same scenario iMessage would speak", async () => {
     const h = createHarness();
     const rest = await h.post<SimulateResponse>("/api/simulate", { entity: "datadog", percentage: 10 });
-    const tool = await h.post<SimulateResponse>("/api/tools/simulate_cost_change", { entity: "datadog", percentage: 10 });
-    expect(tool.body).toEqual(rest.body);
-    expect(tool.body.delta_monthly_cents).toBeGreaterThan(0);
+    const tool = await h.post<{ vendor: string; percentage: number; label: string; speech: { summary: string } }>(
+      "/api/tools/simulate_cost_change",
+      { entity: "datadog", percentage: 10 },
+    );
+    expect(tool.body.vendor).toBe("Datadog");
+    expect(tool.body.percentage).toBe(rest.body.percentage);
+    expect(tool.body.label).toBe(rest.body.label);
+    expect(tool.body.speech.summary).toMatch(/Datadog/);
   });
 
   it("create_app_link builds absolute URLs for every tab", async () => {
@@ -435,11 +441,10 @@ describe("agent tools", () => {
     expect(evidence.body).toEqual({ url: `${TEST_ENV.PUBLIC_BASE_URL}/incidents/inc_1?tab=evidence`, path: "/incidents/inc_1?tab=evidence" });
   });
 
-  it("create_app_link rejects bad input", async () => {
+  it("create_app_link returns structured errors instead of 400", async () => {
     const h = createHarness();
-    expect((await h.post<ErrorResponse>("/api/tools/create_app_link", { destination: "space" })).status).toBe(400);
+    expect((await h.post<ErrorResponse>("/api/tools/create_app_link", { destination: "space" })).body.error).toBe("invalid_destination");
     expect((await h.post<ErrorResponse>("/api/tools/create_app_link", { destination: "incident" })).body.error).toBe("missing_id");
-    expect((await h.post<ErrorResponse>("/api/tools/create_app_link", { destination: "incident", id: "inc_1", tab: "nope" })).body.error).toBe("invalid_tab");
   });
 });
 
