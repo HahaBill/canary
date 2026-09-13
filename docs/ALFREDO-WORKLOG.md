@@ -15,7 +15,7 @@ The deep dives live in three companion docs:
 ## Verify all of it in three commands
 
 ```text
-npm run typecheck && npm test     1,202 tests, offline
+npm run typecheck && npm test     1,245 tests, offline
 npm run verify                    22 checks, ALL CHECKS PASSED
 node scripts? no — the golden path: see "Production dry run" at the bottom
 ```
@@ -40,6 +40,9 @@ node scripts? no — the golden path: see "Production dry run" at the bottom
 | `b6f1bfb` | **The big one. CUSUM no longer alarms on growth itself.** It measured every week against the median of the first eight; a growing company sits above that forever, so over 300 randomised 52-week series it false-alarmed **99% of the time** around week 18. Now each week is measured against the trend the baseline established — fitted multiplicatively (growth compounds; a straight line leaves a rising tail residual), residuals relative (absolute noise grows with the level), slope believed only past `trend_significance_z` standard errors over a half-series window. Growth false alarms: 99% → 40%, which equals the flat-company rate, so growth is no longer a systematic cause. Flat companies byte-identical. WHY discloses the growth it allowed for. | `packages/detectors/src/cusum.ts`, `packages/shared/src/types.ts` + `config.ts` |
 | `d0a3d30` | The SPA now refreshes itself every 30s, stale-while-revalidate so nothing blinks: old numbers stay on screen until new ones land; a failed background refresh keeps the working page and retries. Key changes still reset (different incident = different data). | `apps/web/src/api/useDerived.ts`, `main.tsx` |
 | `8576b2a`, `d408f4d` | One-off incident id is `inc_40e99e9c` on the year ledger (hashes the txn id); HANDOFF + README re-quoted verbatim from `npm run verify`. | docs, README |
+| `f9b9435` | **The 2027 leak.** The iMessage agent answered a transactions question with rows dated 2027. The generator's 26-week horizon exists to feed the clock, but `getTransactions()` was handing the whole list to the bank endpoint and the agent's `list_transactions` tool. Clipped at the exact `asOf` — not `ledger.history_end`, which the engine widens to the week's Sunday and would still have leaked six days. The chat's system prompt was also told "today" from the wall clock while its data came from the demo clock; it now states the ledger's own date. | `apps/api/src/data/pipeline-provider.ts`, `conversation/prompt.ts` |
+| `953ce80`, `680c908`, `d68293a` | **Rho.** Measured the sandbox first: 72 transactions over three years, ending 2026-06-27, $258K across 14 accounts. It cannot carry the demo — no weekly series for CUSUM, no planted shift, no one-off, no unknown vendor. So the demo keeps its synthetic year and the integration is real anyway: a genuine client for docs.rho.co v1 (bearer auth, `next_page_token`, date filters) that needs **no credentials** against the sandbox. The mapping of Rho's 22 transaction types onto flow types is the reconciliation judgement, each line reasoned. `GET /api/bank/rho` runs our engine over live Rho data and reconciles to 0. Then Alfredo's schema question found a gap in my own mapper: Rho's `money_movement_id` IS our `transfer_pair_id` and I was not mapping it. Finally `assessCoverage()` reports what could be VERIFIED vs assumed, after I tested and rejected reconstructing settlement coverage (the amounts do not reconcile — a wrong cross-check is worse than none). | `apps/api/src/bank/rho.ts`, `rho.test.ts`, `rho-brain.test.ts`, `routes/data.ts` |
+| `e30aff0` | **One date on screen, not two.** Found by opening the deployed dashboard: the banner read "as of Sep 20" while the CASH card captioned the same balance "Sep 13". The card uses `company.as_of`, which was not moving with the clock. | `packages/pipeline/src/run.ts` |
 | `c251c1f` | `h_multiplier` 4σ → 6σ **after measuring it demo-identical**: alarm week, change point, lag and incident id byte-equal at 4 and 6 on every clock day, so the false-alarm cut (31% → 24%/yr, detection 98.7% → 96.7%, same zero lag) was free. Also: `DEMO_CLOCK_MINUTES_PER_DAY` Worker var — set `0` in the dashboard to freeze the ledger for the recorded clip, delete to go live; no deploy either way. | `packages/shared/src/config.ts`, `apps/api/src/{env,index}.ts` |
 
 ---
@@ -73,6 +76,26 @@ proposal) carry their Monte Carlo tables in §6c.
 3. `apps/web/src/api/useDerived.ts` — stale-while-revalidate inside your
    `useAsyncResource`; your cache/version architecture unchanged, the heartbeat
    just drives it.
+
+## Rho: what a reviewer should know
+
+- The demo does **not** run on Rho and should not. Measured: 72 transactions
+  across three years. `docs/ALFREDO-WORKLOG.md` above and the commit messages
+  carry the numbers.
+- `GET /api/bank/rho` is live in production with no credentials and reconciles
+  Rho's own data to 0 discrepancy. Set `RHO_API_KEY` and the same code reads
+  production.
+- Schema fit: `money_movement_id` → `transfer_pair_id` works natively. Rho sends
+  no purchase→repayment link and no pending→settled link. Neither breaks
+  correctness; both cost a cross-check, and `assessCoverage()` now says so
+  rather than letting "assumed" look like "checked".
+- **Open question for production:** when a Rho authorisation settles, does the
+  same `id` flip status or does a second row appear? In-place is safe. A second
+  row needs `pending_of` or burn is overstated by every pending charge. A static
+  sandbox cannot answer it.
+- Four docs still say "the live Rho API is not used, per hackathon guidance".
+  We use the public **sandbox**, which is a different thing, but somebody should
+  confirm that distinction with the organisers before leaning on it in the pitch.
 
 ## Open decisions, yours
 
