@@ -28,3 +28,5 @@ GOOGLE_CLIENT_SECRET=
 CALENDAR_TIMEZONE=
 # Demo clock: real minutes per simulated day. 0 freezes at the end of history; unset = 1.
 DEMO_CLOCK_MINUTES_PER_DAY=
+# Rho API token (rhobat_...). Empty = Rho's sandbox, which needs no credentials.
+RHO_API_KEY=

@@ -38,6 +38,12 @@ export interface Env {
    */
   DEMO_CLOCK_MINUTES_PER_DAY?: string;
   /**
+   * Rho API access token (`rhobat_…`). Unset → `/api/bank/rho` reads Rho's
+   * SANDBOX, which accepts any bearer token, so the integration is live with no
+   * credentials. Set it and the same code reads production.
+   */
+  RHO_API_KEY?: string;
+  /**
    * Google OAuth web client (one account: the founder's). With both set and a
    * connected `google_oauth` row, Google replaces the ICS feed and Canary can
    * also book the review. See `apps/api/README.md`.
