@@ -1,4 +1,5 @@
 import { useDerived } from "@/api/useDerived.ts";
+import { ActivityFeed } from "@/components/ActivityFeed.tsx";
 import { IncidentCard } from "@/components/IncidentCard.tsx";
 import { SignalCard } from "@/components/SignalCard.tsx";
 import { StatCard } from "@/components/StatCard.tsx";
@@ -70,7 +71,12 @@ export function Dashboard() {
         />
       </div>
 
-      <WeeklyCashPanel weeks={data.weeks} />
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <WeeklyCashPanel weeks={data.weeks} />
+        </div>
+        <ActivityFeed asOf={provenance.end_date} />
+      </div>
 
       {data.primary_incident || data.one_off_incident ? (
         <div className="grid gap-4 lg:grid-cols-3">

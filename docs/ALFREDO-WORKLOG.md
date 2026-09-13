@@ -15,7 +15,7 @@ The deep dives live in three companion docs:
 ## Verify all of it in three commands
 
 ```text
-npm run typecheck && npm test     1,335 passing, 4 skipped, offline
+npm run typecheck && npm test     1,333 passing, 4 skipped, offline
 npm run verify                    ALL CHECKS PASSED
 npm run build                     SPA into apps/api/public
 node scripts? no — the golden path: see "Production dry run" at the bottom

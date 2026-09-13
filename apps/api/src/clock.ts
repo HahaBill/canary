@@ -25,20 +25,30 @@ import { DEMO, addDays, historyStart } from "@canary/shared";
 import type { ISODate } from "@canary/shared";
 
 /**
- * Real minutes per simulated day. A day every thirty seconds: fast enough that
- * a judge watching for a minute sees the account move, slow enough to read a
- * figure before it changes.
+ * Real minutes per simulated day: a simulated day every TWO SECONDS.
+ *
+ * The unit stays "minutes per day" because the operator override
+ * (`DEMO_CLOCK_MINUTES_PER_DAY`) is already named and deployed in those terms.
+ *
+ * Two seconds is chosen from the data, not taste. The ledger posts about 1.7
+ * transactions per simulated day, so a day every two seconds is a transaction
+ * roughly every second — the account visibly transacting rather than a number
+ * that changes now and then. Slower than this and a judge glancing for fifteen
+ * seconds sees nothing happen, which is the whole complaint this answers.
  */
-export const DEFAULT_MINUTES_PER_DAY = 0.5;
+export const DEFAULT_MINUTES_PER_DAY = 1 / 30;
 
 /**
  * How many days of history the loop walks before returning to its start.
  *
- * Ten days at the default speed is a five-minute loop that always ends on
- * `DEMO.END_DATE`. Longer would spend most of the demo on dates nobody
- * documented; shorter would barely move.
+ * Thirty days at the default speed is a SIXTY-SECOND loop that always ends on
+ * `DEMO.END_DATE`. The length is what makes the demo legible: over one minute
+ * cash falls about $135,000, from roughly $2.15M to the documented $2.01M, so a
+ * viewer watches the runway actually burn down instead of inferring it from a
+ * chart. A shorter loop resets too often to read as time passing; a longer one
+ * walks back into weeks whose numbers nobody wrote down.
  */
-export const CYCLE_DAYS = 10;
+export const CYCLE_DAYS = 30;
 
 const MS_PER_MINUTE = 60_000;
 
@@ -81,13 +91,20 @@ export function demoAsOf(now: Date, options: DemoClockOptions = {}): ISODate {
   if (!Number.isFinite(minutesPerDay) || minutesPerDay <= 0) return DEMO.END_DATE;
 
   const cycleDays = Math.max(1, Math.floor(options.cycleDays ?? CYCLE_DAYS));
-  const loopMinutes = cycleMinutes(minutesPerDay, cycleDays);
 
-  // Fractional, because a day may be worth less than a minute.
-  const minutes = now.getTime() / MS_PER_MINUTE;
-  const intoCycle = ((minutes % loopMinutes) + loopMinutes) % loopMinutes;
+  // INTEGER MILLISECONDS, not fractional minutes. A simulated day is two real
+  // seconds by default, which is 1/30 of a minute and has no exact binary
+  // representation: dividing elapsed minutes by it lands a hair under a whole
+  // number about half the time, and `Math.floor` then hands back the PREVIOUS
+  // day. The clock would stutter — same date twice, then skip. Milliseconds are
+  // integers all the way down, so the arithmetic is exact at any speed.
+  const msPerDay = Math.max(1, Math.round(minutesPerDay * MS_PER_MINUTE));
+  const loopMs = msPerDay * cycleDays;
 
-  const dayIndex = Math.min(cycleDays - 1, Math.max(0, Math.floor(intoCycle / minutesPerDay)));
+  const elapsed = Math.floor(now.getTime());
+  const intoCycle = ((elapsed % loopMs) + loopMs) % loopMs;
+
+  const dayIndex = Math.min(cycleDays - 1, Math.floor(intoCycle / msPerDay));
   // Ends ON `END_DATE`, never after it.
   return addDays(DEMO.END_DATE, dayIndex - (cycleDays - 1));
 }

@@ -10,6 +10,7 @@
  * The active source is returned so the UI can say which one is in play.
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { addDays } from "@canary/shared";
 import type {
   AvailabilityResponse,
   CalendarConnectionResponse,
@@ -27,11 +28,13 @@ import type {
   PivotGranularity,
   ScoutPage,
   SimulateResponse,
+  Transaction,
   WhatIfRequest,
 } from "@canary/shared";
 import {
   ApiError,
   getAvailability,
+  getBankTransactions,
   getCalendar,
   getCalendarConnection,
   getDemo,
@@ -256,22 +259,21 @@ function useAsyncResource<T>(key: string, load: () => Promise<Loaded<T>>): Async
 
 /**
  * The heartbeat that makes the dashboard live. The backend's demo clock moves a
- * simulated day every thirty seconds; this clears the response cache on an
+ * simulated day every two seconds; this clears the response cache on an
  * interval so every mounted hook re-fetches and the new day appears in place —
  * cash ticks, the "as of" date in the provenance banner rolls forward, and a
  * transaction posts while a founder watches. Hidden tabs skip the work.
  *
- * SEVEN SECONDS, not thirty. The interval has to be a fraction of a simulated
- * day or the page lags the backend by most of a day, and someone watching for
- * twenty seconds sees nothing change and reasonably concludes the numbers are
- * hardcoded. A refresh is cheap — one cached pipeline run the Worker already
- * keeps warm per simulated day — and it is invisible, because the data on
- * screen is kept until the new data lands.
+ * TWO SECONDS, matching the clock. The interval has to track the simulated
+ * day or the page lags the backend and jumps several days at a time instead
+ * of moving. A refresh is cheap: `/api/demo` is 20 KB gzipped and the Worker
+ * keeps the pipeline run for a simulated day warm. It is also invisible,
+ * because the data on screen is kept until the new data lands.
  *
  * Started once from main.tsx. Never started by tests, which is the point of it
  * living behind an explicit call instead of a module side effect.
  */
-export function startLiveRefresh(intervalMs = 7_000): () => void {
+export function startLiveRefresh(intervalMs = 2_000): () => void {
   const tick = () => {
     if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
     clearApiCache();
@@ -380,6 +382,24 @@ export function useCalendar(from: ISODate, to: ISODate): AsyncResource<CashCalen
 
 export function useCalendarConnection(): AsyncResource<CalendarConnectionResponse> {
   return useView("calendar-connection", getCalendarConnection, mockCalendarConnection);
+}
+
+/**
+ * The last `days` of POSTED transactions, for the activity feed.
+ *
+ * Keyed by the window, so each tick of the demo clock is a new key and a new
+ * fetch — which is the point: a row appears in the feed at the moment the clock
+ * reaches its date. Bounded to a few days so polling it every couple of seconds
+ * stays small.
+ */
+export function useRecentTransactions(asOf: ISODate | null, days = 6): AsyncResource<Transaction[]> {
+  const to = asOf ?? "";
+  const from = asOf ? addDays(asOf, -days) : "";
+  return useView(
+    `bank-transactions:${from}:${to}`,
+    () => getBankTransactions(from, to),
+    () => [],
+  );
 }
 
 export function useAvailability(): AsyncResource<AvailabilityResponse> {

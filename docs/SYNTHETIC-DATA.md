@@ -150,7 +150,7 @@ just look better, it found something wrong.
 
 ```
 npm run typecheck   all workspaces, no errors
-npm test            1,335 tests, 4 skipped
+npm test            1,333 tests, 4 skipped
 npm run verify      22 checks, ALL CHECKS PASSED
 ```
 

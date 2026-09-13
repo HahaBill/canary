@@ -7,6 +7,7 @@ import {
   API_ROUTES,
   type AskCanaryResponse,
   type AvailabilityResponse,
+  type BankTransactionsResponse,
   type CalendarConnectionResponse,
   type CalendarResponse,
   type CashCalendar,
@@ -20,6 +21,7 @@ import {
   type IncidentStatusRequest,
   type IncidentsResponse,
   type ISODate,
+  type Transaction,
   type LedgerCellResponse,
   type LedgerFilterQueryResponse,
   type LedgerResponse,
@@ -212,6 +214,16 @@ export function queryLedgerFilter(
 export function getCalendar(from: ISODate, to: ISODate, signal?: AbortSignal): Promise<CashCalendar> {
   const path = withQuery(routePath(API_ROUTES.calendar), { from, to });
   return request<CalendarResponse>(path, signal ? { signal } : undefined).then((r) => r.calendar);
+}
+
+/**
+ * Posted transactions in a date window. The window is what keeps this cheap
+ * enough to poll: the full ledger is a year, and the activity feed wants the
+ * last few days.
+ */
+export function getBankTransactions(from: ISODate, to: ISODate, signal?: AbortSignal): Promise<Transaction[]> {
+  const path = `${routePath(API_ROUTES.bankTransactions)}?from=${from}&to=${to}`;
+  return request<BankTransactionsResponse>(path, signal ? { signal } : undefined).then((r) => r.transactions);
 }
 
 export function getAvailability(signal?: AbortSignal): Promise<AvailabilityResponse> {
