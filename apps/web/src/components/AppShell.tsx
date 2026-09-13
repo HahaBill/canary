@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useDerived } from "@/api/useDerived.ts";
+import { AskCanaryOrb } from "@/components/AskCanaryOrb.tsx";
 import { MockBanner } from "@/components/MockBanner.tsx";
 import { ProvenanceBanner } from "@/components/ProvenanceBanner.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
@@ -116,6 +117,7 @@ export function AppShell() {
       </div>
 
       {isDesktop ? null : <MobileTabBar reviewCount={reviewCount} />}
+      <AskCanaryOrb />
     </div>
   );
 }
@@ -183,7 +185,11 @@ function Sidebar({
       </nav>
 
       <div className="border-t border-neutral-100 p-2">
-        <AskCanaryItem collapsed={collapsed} />
+        <SidebarLink
+          entry={{ to: "/ask", label: "Ask Canary", icon: Sparkles }}
+          collapsed={collapsed}
+          count={null}
+        />
       </div>
     </aside>
   );
@@ -259,40 +265,6 @@ function SidebarLink({
   );
 }
 
-/** The voice agent has tool endpoints but no UI yet (see docs/HANDOFF.md §6). */
-function AskCanaryItem({ collapsed }: { collapsed: boolean }) {
-  const item = (
-    <span
-      aria-disabled="true"
-      className={cn(
-        "flex h-10 cursor-not-allowed items-center rounded-lg text-sm font-medium text-neutral-400",
-        collapsed ? "justify-center px-0" : "gap-2.5 px-2.5",
-      )}
-    >
-      <Sparkles className="h-4 w-4 shrink-0" aria-hidden="true" />
-      {collapsed ? (
-        <span className="sr-only">Ask Canary — coming soon</span>
-      ) : (
-        <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-          <span className="truncate">Ask Canary</span>
-          <Badge variant="quiet">soon</Badge>
-        </span>
-      )}
-    </span>
-  );
-
-  if (!collapsed) return item;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="block">{item}</span>
-      </TooltipTrigger>
-      <TooltipContent side="right">Ask Canary — coming soon</TooltipContent>
-    </Tooltip>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Mobile
 // ---------------------------------------------------------------------------
@@ -305,6 +277,18 @@ function MobileHeader() {
           <Bird className="h-4 w-4 text-neutral-900" aria-hidden="true" />
         </span>
         <span className="text-sm font-semibold tracking-tight text-neutral-900">Canary</span>
+        <NavLink
+          to="/ask"
+          aria-label="Ask Canary"
+          className={({ isActive }) =>
+            cn(
+              "ml-auto flex h-11 w-11 items-center justify-center rounded-lg",
+              isActive ? "bg-canary-50 text-canary-600" : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900",
+            )
+          }
+        >
+          <Sparkles className="h-5 w-5" aria-hidden="true" />
+        </NavLink>
       </div>
     </header>
   );

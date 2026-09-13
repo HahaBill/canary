@@ -14,6 +14,7 @@ import {
   formatSignedUsd,
   formatUsdWhole,
   type AlertHistoryItem,
+  type AskCanaryResponse,
   type AvailabilityResponse,
   type CashCalendar,
   type ClassificationOverride,
@@ -282,6 +283,11 @@ export function mockAlertHistory(limit = 8): AlertHistoryItem[] {
 
   // The route returns newest first; ids ascend with time, so sort by id desc.
   return items.sort((a, b) => b.id - a.id).slice(0, limit);
+}
+
+/** Offline fixtures have no ElevenLabs agent; Ask Canary stays silent. */
+export function mockAskCanary(): AskCanaryResponse {
+  return { configured: false };
 }
 
 /** Offsets an ISO timestamp by whole hours. Chrome only — no financial figure depends on it. */

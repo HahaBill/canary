@@ -21,6 +21,8 @@ export interface Env {
   /** ElevenLabs TTS for the iMessage voice note. Optional — alerts degrade to text only. */
   ELEVENLABS_API_KEY?: string;
   ELEVENLABS_VOICE_ID?: string;
+  /** Conversational agent for the Ask Canary web widget. Empty = the page stays silent. */
+  ELEVENLABS_AGENT_ID?: string;
   /**
    * Private iCal (`.ics`) URL for the founder's calendar. Optional — without it
    * Canary has no availability signal and never defers an alert.

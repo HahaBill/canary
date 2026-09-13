@@ -2,7 +2,7 @@
 
 What Canary is allowed to say, when it is allowed to interrupt, and what it must
 refuse. This binds **every** surface that speaks: the iMessage alert, the
-keyword replies, the incident page copy, and any voice agent. One set of rules,
+keyword replies, the incident page copy, Ask Canary, and any voice agent. One set of rules,
 so text and voice can never disagree.
 
 Owner: Alfredo. Companion to `docs/DATA_AND_DETECTOR_CONTRACT.md` (what Canary

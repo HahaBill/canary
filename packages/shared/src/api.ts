@@ -74,6 +74,11 @@ export const API_ROUTES = {
   scout: "GET /api/scout",
   /** Explicit Refresh. Live Tavily, capped, TTL-gated. Never writes incidents. */
   scoutRefresh: "POST /api/scout/refresh",
+  /**
+   * Signed ElevenLabs conversation URL for Ask Canary. The API key stays on the
+   * Worker; `{ configured: false }` when the agent is not set.
+   */
+  askCanary: "GET /api/ask-canary",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -108,6 +113,14 @@ export interface HealthSummaryResponse {
     headline: string;
   };
 }
+
+/**
+ * `GET /api/ask-canary`. `signed_url` is a short-lived WebSocket ticket;
+ * never cache it across page loads. The ElevenLabs API key is not in this body.
+ */
+export type AskCanaryResponse =
+  | { configured: false }
+  | { configured: true; signed_url: string };
 
 /** `GET /api/demo` returns DerivedDemoObject with `fixture` stripped. */
 export type DemoResponse = Omit<DerivedDemoObject, "fixture">;

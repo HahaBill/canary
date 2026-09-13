@@ -331,6 +331,7 @@ React SPA, built by Vite into `apps/api/public` and served by the Worker as stat
 | **Ledger** (`/ledger`) | Hierarchical pivot — Revenue / Variable / Fixed / One-offs & renewals / Net burn / Financing & transfers / Cash at period end. Weekly·Monthly toggle, run-rate column, post-change tint, cell drill-down to the transactions behind any figure, CSV export |
 | **Calendar** (`/calendar`) | Posted transactions, projected recurring charges inferred from observed cadence, Canary markers for the change point / alarm / one-off, and founder busy blocks when a calendar feed is configured |
 | **Needs Review** (`/needs-review`) | Every uncorroborated transaction with the disagreeing signals that put it there, and an assign-category action (writes require the operator secret, held in the browser only) |
+| **Ask Canary** | Floating ElevenLabs talk orb on every page. The Worker mints a short-lived signed URL so the API key never reaches the browser. `/ask` explains the orb. Same deterministic tools as iMessage. Offline fixtures hide the orb. |
 
 | Ledger | Cash calendar | Needs Review |
 | --- | --- | --- |
@@ -419,6 +420,7 @@ Names only. They live in `apps/api/.dev.vars` (gitignored) and as Cloudflare Wor
 | Category proposals (OpenAI) | `OPENAI_API_KEY` |
 | Vendor corroboration (Tavily) | `TAVILY_API_KEY` |
 | Voice notes (ElevenLabs) | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` |
+| Ask Canary (web voice) | `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID` |
 | Founder calendar (Google OAuth, one account) | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `CALENDAR_TIMEZONE`, `FOUNDER_EMAIL`; iCal fallback `CALENDAR_ICS_URL`, `CALENDAR_SHOW_TITLES` |
 | Conversational iMessage | `OPENAI_API_KEY` (shared with classification), optional `OPENAI_MODEL` |
 | Operator / routing | `WEBHOOK_SECRET`, `FOUNDER_PHONE`, `ALLOWED_PHONES`, `PUBLIC_BASE_URL` |
@@ -432,7 +434,6 @@ Names only. They live in `apps/api/.dev.vars` (gitignored) and as Cloudflare Wor
 
 ### Not built
 
-- **The embedded "Ask Canary" web voice agent is not built.** The four agent tool endpoints exist and are tested (`get_health_summary`, `get_incident`, `simulate_cost_change`, `create_app_link`), and the incident page can play its voice note — but there is no in-browser conversational agent.
 - **No auth.** Fictional company, synthetic data, hackathon environment. Production would need workspace authorization, verified phone ownership and signed links.
 
 ---

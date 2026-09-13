@@ -10,6 +10,8 @@ FOUNDER_PHONE=
 PUBLIC_BASE_URL=http://localhost:8787
 ELEVENLABS_API_KEY=
 ELEVENLABS_VOICE_ID=
+# Conversational web agent (Ask Canary). Same API key as TTS. Empty = /ask stays silent.
+ELEVENLABS_AGENT_ID=
 ALLOWED_PHONES=
 # Private iCal URL for the founder's calendar (Google Calendar → Settings →
 # "Secret address in iCal format"). Empty = no availability signal, alerts are

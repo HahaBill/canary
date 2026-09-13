@@ -7,6 +7,7 @@ import {
   API_ROUTES,
   type AlertHistoryItem,
   type AlertHistoryResponse,
+  type AskCanaryResponse,
   type AvailabilityResponse,
   type CalendarResponse,
   type CashCalendar,
@@ -235,6 +236,11 @@ export function refreshScout(signal?: AbortSignal): Promise<ScoutRefreshResponse
     method: "POST",
     ...(signal ? { signal } : {}),
   });
+}
+
+/** Fresh on every call — the signed URL expires in minutes and must not be cached. */
+export function getAskCanary(signal?: AbortSignal): Promise<AskCanaryResponse> {
+  return request<AskCanaryResponse>(routePath(API_ROUTES.askCanary), signal ? { signal } : undefined);
 }
 
 /**

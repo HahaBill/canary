@@ -121,6 +121,7 @@ from `createApp({ bankTransactions })` — currently an empty ledger.
 | `src/evidence.ts` | OBSERVED → DETECTED → EVIDENCE → ESTIMATE → SUGGESTION assembly |
 | `src/imessage/` | keyword router |
 | `src/sendblue/` | outbound client |
+| `src/voice/` | ElevenLabs TTS (iMessage CAF / web MP3) and the Ask Canary signed URL |
 | `src/bank/` | `SandboxBankProvider` |
 | `src/tools.ts` | agent tools shared by REST, iMessage, and voice |
 | `src/test/` | in-memory D1 + app harness (no miniflare) |

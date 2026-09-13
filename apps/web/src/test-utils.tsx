@@ -9,7 +9,13 @@
 import { render, type RenderResult } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
-import { describeLedgerFilter, parseLedgerQuery, type PivotGranularity, type ScoutPage } from "@canary/shared";
+import {
+  describeLedgerFilter,
+  parseLedgerQuery,
+  type AskCanaryResponse,
+  type PivotGranularity,
+  type ScoutPage,
+} from "@canary/shared";
 import App from "@/App.tsx";
 import {
   mockAvailability,
@@ -58,7 +64,9 @@ function headerRecord(init?: RequestInit): Record<string, string> {
  * Installs a `fetch` that serves the view routes from `api/mock.ts` (which owns
  * the session snapshot, so overrides stick). Returns the recorded requests.
  */
-export function installApiStub(options: { scout?: ScoutPage } = {}): { requests: RecordedRequest[] } {
+export function installApiStub(
+  options: { scout?: ScoutPage; askCanary?: AskCanaryResponse; askCanaryStatus?: number } = {},
+): { requests: RecordedRequest[] } {
   const requests: RecordedRequest[] = [];
 
   vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -112,6 +120,12 @@ export function installApiStub(options: { scout?: ScoutPage } = {}): { requests:
     }
     if (url.pathname === "/api/scout/refresh") {
       return Promise.resolve(jsonResponse(options.scout ?? mockScout()));
+    }
+    if (url.pathname === "/api/ask-canary") {
+      if (options.askCanaryStatus && options.askCanaryStatus >= 400) {
+        return Promise.resolve(jsonResponse({ error: "elevenlabs_unavailable", detail: "down" }, options.askCanaryStatus));
+      }
+      return Promise.resolve(jsonResponse(options.askCanary ?? { configured: false }));
     }
     if (url.pathname === "/api/classifications/override") {
       // Same guard the Worker applies, so a missing header fails the test loudly.

@@ -24,19 +24,18 @@ describe("AppShell", () => {
     renderApp("/ledger");
 
     const sidebar = await screen.findByRole("complementary", { name: "Main navigation" });
-    for (const label of ["Home", "Incidents", "Ledger", "Calendar", "Needs Review", "Scout"]) {
+    for (const label of ["Home", "Incidents", "Ledger", "Calendar", "Needs Review", "Scout", "Ask Canary"]) {
       expect(within(sidebar).getByRole("link", { name: new RegExp(label) })).toBeInTheDocument();
     }
     expect(within(sidebar).getByRole("link", { name: /Ledger/ })).toHaveAttribute("aria-current", "page");
   });
 
-  it("offers Ask Canary as a disabled, clearly unfinished item", async () => {
+  it("links Ask Canary to the voice page", async () => {
     renderApp("/");
 
     const sidebar = await screen.findByRole("complementary", { name: "Main navigation" });
-    expect(within(sidebar).getByText("Ask Canary")).toBeInTheDocument();
-    expect(within(sidebar).getByText("soon")).toBeInTheDocument();
-    expect(within(sidebar).queryByRole("link", { name: /Ask Canary/ })).not.toBeInTheDocument();
+    expect(within(sidebar).getByRole("link", { name: /Ask Canary/ })).toHaveAttribute("href", "/ask");
+    expect(within(sidebar).queryByText("soon")).not.toBeInTheDocument();
   });
 
   it("collapses the sidebar and remembers it across mounts", async () => {
@@ -84,6 +83,7 @@ describe("AppShell", () => {
     const tabBar = await screen.findByRole("navigation", { name: "Main navigation" });
     expect(screen.queryByRole("complementary", { name: "Main navigation" })).not.toBeInTheDocument();
     expect(within(tabBar).getAllByRole("link")).toHaveLength(6);
+    expect(screen.getByRole("link", { name: "Ask Canary" })).toHaveAttribute("href", "/ask");
     expect(screen.queryByRole("button", { name: /sidebar/ })).not.toBeInTheDocument();
   });
 });

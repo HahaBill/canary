@@ -21,6 +21,7 @@ import { MockDataProvider, withD1Overlay, type DataProvider } from "./data/provi
 import type { Env } from "./env.ts";
 import { sandboxBankFor } from "./bank/sandbox.ts";
 import { registerAlertRoutes } from "./routes/alerts.ts";
+import { registerAskCanaryRoutes } from "./routes/ask-canary.ts";
 import { registerCoreRoutes } from "./routes/core.ts";
 import { registerDataRoutes } from "./routes/data.ts";
 import { registerIncidentRoutes } from "./routes/incidents.ts";
@@ -140,6 +141,7 @@ export function createApp(deps: AppDeps = {}): CanaryApp {
   registerAlertRoutes(app);
   registerWebhookRoutes(app);
   registerToolRoutes(app);
+  registerAskCanaryRoutes(app);
   registerOauthRoutes(app);
   registerScheduleRoutes(app);
 

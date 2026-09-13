@@ -272,11 +272,11 @@ Natural-language routing is P1.
 
 Only after P0 works.
 
-- [ ] Embed Ask Canary in React
-- [ ] Connect `get_health_summary`
-- [ ] Connect `get_incident`
-- [ ] Connect `simulate_cost_change`
-- [ ] Give agent evidence taxonomy
+- [x] Embed Ask Canary in React
+- [x] Connect `get_health_summary`
+- [x] Connect `get_incident`
+- [x] Connect `simulate_cost_change`
+- [x] Give agent evidence taxonomy
 - [ ] Test speech-friendly financial numbers
 
 Stretch:
