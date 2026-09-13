@@ -1,36 +1,62 @@
 /**
  * The demo clock. It decides what "today" means to a founder watching the
  * dashboard, so its only job is to be boring: pure, bounded, and never able to
- * point at a day the generator did not produce.
+ * point at a day that has not happened.
  */
 import { DEMO, addDays, historyStart } from "@canary/shared";
 import { describe, expect, it } from "vitest";
-import { CYCLE_MINUTES, DEFAULT_MINUTES_PER_DAY, demoAsOf, horizonEnd, parseAsOfOverride, parseMinutesPerDay } from "./clock.ts";
+import {
+  CYCLE_DAYS,
+  DEFAULT_MINUTES_PER_DAY,
+  cycleMinutes,
+  cycleStart,
+  demoAsOf,
+  horizonEnd,
+  parseAsOfOverride,
+  parseMinutesPerDay,
+} from "./clock.ts";
 
 const at = (minutes: number) => new Date(minutes * 60_000);
+const LOOP = cycleMinutes();
 
 describe("demoAsOf", () => {
-  it("starts at the end of history and moves a day at a time", () => {
-    const cycleStart = at(0);
-    expect(demoAsOf(cycleStart)).toBe(DEMO.END_DATE);
-    expect(demoAsOf(at(DEFAULT_MINUTES_PER_DAY))).toBe(addDays(DEMO.END_DATE, 1));
-    expect(demoAsOf(at(DEFAULT_MINUTES_PER_DAY * 5))).toBe(addDays(DEMO.END_DATE, 5));
-  });
-
-  it("never points past the generated horizon", () => {
-    // Every minute of a full cycle, plus well beyond one.
-    for (let minute = 0; minute <= CYCLE_MINUTES * 3; minute += 7) {
-      const asOf = demoAsOf(at(minute));
-      expect(asOf >= DEMO.END_DATE).toBe(true);
-      expect(asOf <= horizonEnd()).toBe(true);
+  it("NEVER names a day after the end of history", () => {
+    // The whole reason the clock walks backward. A dashboard that says "balance
+    // as of Sep 20" on Sep 13 is not a demo device, it is a wrong answer —
+    // nobody's bank knows next week's balance.
+    for (let minute = 0; minute <= LOOP * 4; minute += 0.25) {
+      expect(demoAsOf(at(minute)) <= DEMO.END_DATE, `minute ${minute}`).toBe(true);
     }
   });
 
-  it("returns to the end of history at the top of each cycle", () => {
-    expect(demoAsOf(at(CYCLE_MINUTES))).toBe(DEMO.END_DATE);
-    expect(demoAsOf(at(CYCLE_MINUTES * 2))).toBe(DEMO.END_DATE);
-    // The last minute of a cycle is still inside the horizon, never clamped short.
-    expect(demoAsOf(at(CYCLE_MINUTES - 1))).toBe(addDays(DEMO.END_DATE, CYCLE_MINUTES - 1));
+  it("stays inside generated history at every instant", () => {
+    const start = historyStart(DEMO.END_DATE, DEMO.WEEKS);
+    for (let minute = 0; minute <= LOOP * 4; minute += 0.25) {
+      const asOf = demoAsOf(at(minute));
+      expect(asOf >= start, `minute ${minute}`).toBe(true);
+      expect(asOf >= cycleStart(), `minute ${minute}`).toBe(true);
+    }
+  });
+
+  it("walks a day at a time and ends ON the last day of history", () => {
+    for (let day = 0; day < CYCLE_DAYS; day++) {
+      expect(demoAsOf(at(day * DEFAULT_MINUTES_PER_DAY))).toBe(addDays(cycleStart(), day));
+    }
+    // The final step of the loop is the documented demo day, so the figures a
+    // judge reads on screen are the ones in the README and the demo script.
+    expect(demoAsOf(at((CYCLE_DAYS - 1) * DEFAULT_MINUTES_PER_DAY))).toBe(DEMO.END_DATE);
+  });
+
+  it("actually moves: consecutive days are different dates", () => {
+    const seen = new Set<string>();
+    for (let day = 0; day < CYCLE_DAYS; day++) seen.add(demoAsOf(at(day * DEFAULT_MINUTES_PER_DAY)));
+    expect(seen.size).toBe(CYCLE_DAYS);
+  });
+
+  it("returns to the start of the loop at the top of each cycle", () => {
+    expect(demoAsOf(at(0))).toBe(cycleStart());
+    expect(demoAsOf(at(LOOP))).toBe(cycleStart());
+    expect(demoAsOf(at(LOOP * 2))).toBe(cycleStart());
   });
 
   it("is a pure function of the instant", () => {
@@ -38,15 +64,32 @@ describe("demoAsOf", () => {
     expect(demoAsOf(instant)).toBe(demoAsOf(new Date(instant.getTime())));
   });
 
-  it("freezes at the end of history when the speed is zero", () => {
+  it("freezes on the documented day when the speed is zero", () => {
+    // The setting for a recorded clip: every figure on screen is the one in the
+    // docs, and it cannot move mid-take.
     for (const minute of [0, 37, 999]) {
       expect(demoAsOf(at(minute), { minutesPerDay: 0 })).toBe(DEMO.END_DATE);
     }
   });
 
-  it("handles instants before the epoch without going backwards in time", () => {
-    // Negative epoch-relative values must not produce a date before history.
-    expect(demoAsOf(new Date(-5 * 60_000)) >= DEMO.END_DATE).toBe(true);
+  it("handles instants before the epoch without escaping its bounds", () => {
+    for (const minute of [-0.5, -5, -1234]) {
+      const asOf = demoAsOf(at(minute));
+      expect(asOf >= cycleStart()).toBe(true);
+      expect(asOf <= DEMO.END_DATE).toBe(true);
+    }
+  });
+
+  it("honours a custom speed and loop length without leaving the bounds", () => {
+    for (const minutesPerDay of [0.25, 1, 5]) {
+      for (const cycleDays of [1, 3, 30]) {
+        for (const minute of [0, 1, 7.5, 61, 1440]) {
+          const asOf = demoAsOf(at(minute), { minutesPerDay, cycleDays });
+          expect(asOf <= DEMO.END_DATE).toBe(true);
+          expect(asOf >= cycleStart(cycleDays)).toBe(true);
+        }
+      }
+    }
   });
 });
 

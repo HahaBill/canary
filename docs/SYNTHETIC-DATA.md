@@ -108,7 +108,7 @@ much faster than real time or a demo shows nothing moving. Running monotonically
 from a fixed epoch would sprint through the horizon within hours and then sit
 clamped months in the future, showing a cash position nobody recognises.
 
-The cycle is ten minutes, so the account is never more than ten days past
+The cycle walks the last ten days of history and ends on the last day the company has, so the account is never even one day past
 "today". That bound is the point, and I found it by deploying a three-hour cycle
 first: the live dashboard drifted to 2026-12-26, three months past the documented
 "today". Everything still reconciled, but the demo script, the figures in these
@@ -150,7 +150,7 @@ just look better, it found something wrong.
 
 ```
 npm run typecheck   all workspaces, no errors
-npm test            1,275 tests, 4 skipped
+npm test            1,281 tests, 4 skipped
 npm run verify      22 checks, ALL CHECKS PASSED
 ```
 

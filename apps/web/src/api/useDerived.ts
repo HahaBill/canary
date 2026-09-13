@@ -258,16 +258,23 @@ function useAsyncResource<T>(key: string, load: () => Promise<Loaded<T>>): Async
 }
 
 /**
- * The heartbeat that makes the dashboard live. The backend's demo clock moves
- * one simulated day per real minute; this clears the response cache on an
+ * The heartbeat that makes the dashboard live. The backend's demo clock moves a
+ * simulated day every thirty seconds; this clears the response cache on an
  * interval so every mounted hook re-fetches and the new day appears in place —
  * cash ticks, the "as of" date in the provenance banner rolls forward, and a
  * transaction posts while a founder watches. Hidden tabs skip the work.
  *
+ * SEVEN SECONDS, not thirty. The interval has to be a fraction of a simulated
+ * day or the page lags the backend by most of a day, and someone watching for
+ * twenty seconds sees nothing change and reasonably concludes the numbers are
+ * hardcoded. A refresh is cheap — one cached pipeline run the Worker already
+ * keeps warm per simulated day — and it is invisible, because the data on
+ * screen is kept until the new data lands.
+ *
  * Started once from main.tsx. Never started by tests, which is the point of it
  * living behind an explicit call instead of a module side effect.
  */
-export function startLiveRefresh(intervalMs = 30_000): () => void {
+export function startLiveRefresh(intervalMs = 7_000): () => void {
   const tick = () => {
     if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
     clearApiCache();

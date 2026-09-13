@@ -1,44 +1,61 @@
 /**
- * The demo clock: what "now" means to a founder watching the dashboard.
+ * The demo clock: what "today" means to a founder watching the dashboard.
  *
- * Canary's ledger is a year of history plus a horizon of transactions that have
- * been generated but have not posted yet (`DEMO.HORIZON_WEEKS`). Advancing the
- * clock reveals that horizon one day at a time, so cash falls, weeks accumulate
- * and the detectors re-run — the product working rather than a frozen snapshot.
+ * Canary's ledger is a year of history. Advancing the clock re-runs the whole
+ * pipeline at a different day, so cash moves, weeks close and the detectors
+ * re-decide — the product working rather than a frozen snapshot.
  *
  * This is a PURE function of the wall clock. Given the same instant it always
  * returns the same date, so two Worker isolates serving the same second agree,
  * and the pipeline stays deterministic in its own `asOf` parameter.
  *
- * WHY A CYCLE. Simulated time runs far faster than real time, or a demo would
- * show nothing moving. Running monotonically from a fixed epoch would therefore
- * sprint through the horizon within hours and then sit clamped months in the
- * future, showing a cash position nobody recognises. Anchoring instead to the
- * top of each cycle keeps the picture recent: the clock always starts at the end
- * of history and never runs past the horizon, whenever anyone opens the page.
+ * WHY IT WALKS BACKWARD INTO HISTORY AND NOT FORWARD INTO THE HORIZON.
+ * `DEMO.END_DATE` is the last day of generated history and is also a real date.
+ * A clock that ran PAST it made the dashboard state a balance "as of Sep 20"
+ * while Sep 20 had not happened yet, which reads as a bug to anyone who checks
+ * a calendar — and it is one: nobody's bank knows next week's balance. So the
+ * loop runs through the final `CYCLE_DAYS` of history and ENDS on the last day
+ * the company actually has, which never claims to know the future and lands on
+ * the figures the README, the handoff and the demo script all quote.
+ *
+ * The generator's horizon still exists; it is simply not what the clock reveals.
+ * Nothing dated after `asOf` reaches any surface (`data/pipeline-provider.ts`).
  */
 import { DEMO, addDays, historyStart } from "@canary/shared";
 import type { ISODate } from "@canary/shared";
 
-/** One simulated day per real minute: slow enough to read, fast enough to see. */
-export const DEFAULT_MINUTES_PER_DAY = 1;
+/**
+ * Real minutes per simulated day. A day every thirty seconds: fast enough that
+ * a judge watching for a minute sees the account move, slow enough to read a
+ * figure before it changes.
+ */
+export const DEFAULT_MINUTES_PER_DAY = 0.5;
 
 /**
- * How long the clock runs before returning to the end of history.
+ * How many days of history the loop walks before returning to its start.
  *
- * Ten minutes at the default speed means the account is never more than ten days
- * past "today". That bound is the point. A longer cycle drifts months ahead, and
- * then the dashboard, the demo script and the calendar all disagree about what
- * day it is — the calendar opens on a month nobody expected and the documented
- * figures match nothing on screen. Ten days keeps every surface in the same week
- * while still posting a transaction every minute or two, which is what makes the
- * page look alive.
+ * Ten days at the default speed is a five-minute loop that always ends on
+ * `DEMO.END_DATE`. Longer would spend most of the demo on dates nobody
+ * documented; shorter would barely move.
  */
-export const CYCLE_MINUTES = 10;
+export const CYCLE_DAYS = 10;
 
 const MS_PER_MINUTE = 60_000;
 
-/** Last day the generator produced. The clock never advances past it. */
+/** Real minutes one full loop takes. */
+export function cycleMinutes(
+  minutesPerDay: number = DEFAULT_MINUTES_PER_DAY,
+  cycleDays: number = CYCLE_DAYS,
+): number {
+  return minutesPerDay * cycleDays;
+}
+
+/** First day of the loop. The clock never points before this. */
+export function cycleStart(cycleDays: number = CYCLE_DAYS): ISODate {
+  return addDays(DEMO.END_DATE, -(cycleDays - 1));
+}
+
+/** Last day the generator produced. Kept for the operator override's bound. */
 export function horizonEnd(): ISODate {
   return addDays(DEMO.END_DATE, DEMO.HORIZON_WEEKS * 7);
 }
@@ -46,27 +63,33 @@ export function horizonEnd(): ISODate {
 export interface DemoClockOptions {
   /** Real minutes per simulated day. `0` freezes the clock at the end of history. */
   minutesPerDay?: number;
-  cycleMinutes?: number;
+  /** Days of history the loop walks. */
+  cycleDays?: number;
 }
 
 /**
- * The date the founder's account is current to, at real instant `now`.
+ * The day the founder's account is current to, at real instant `now`.
  *
- * `minutesPerDay: 0` pins it to the end of history, which is exactly how Canary
- * behaved before the clock existed. That is the safe setting for a screenshot,
- * a recorded demo, or any run that must be reproducible.
+ * Always within `[END_DATE - (cycleDays - 1), END_DATE]`. The upper bound is the
+ * contract: this function can never name a day that has not happened.
+ *
+ * `minutesPerDay: 0` pins it to the end of history, which is the right setting
+ * for a screenshot, a recorded clip, or any run that must be reproducible.
  */
 export function demoAsOf(now: Date, options: DemoClockOptions = {}): ISODate {
   const minutesPerDay = options.minutesPerDay ?? DEFAULT_MINUTES_PER_DAY;
   if (!Number.isFinite(minutesPerDay) || minutesPerDay <= 0) return DEMO.END_DATE;
 
-  const cycleMinutes = options.cycleMinutes ?? CYCLE_MINUTES;
-  const minutes = Math.floor(now.getTime() / MS_PER_MINUTE);
-  const intoCycle = ((minutes % cycleMinutes) + cycleMinutes) % cycleMinutes;
+  const cycleDays = Math.max(1, Math.floor(options.cycleDays ?? CYCLE_DAYS));
+  const loopMinutes = cycleMinutes(minutesPerDay, cycleDays);
 
-  const days = Math.floor(intoCycle / minutesPerDay);
-  const maxDays = DEMO.HORIZON_WEEKS * 7;
-  return addDays(DEMO.END_DATE, Math.min(days, maxDays));
+  // Fractional, because a day may be worth less than a minute.
+  const minutes = now.getTime() / MS_PER_MINUTE;
+  const intoCycle = ((minutes % loopMinutes) + loopMinutes) % loopMinutes;
+
+  const dayIndex = Math.min(cycleDays - 1, Math.max(0, Math.floor(intoCycle / minutesPerDay)));
+  // Ends ON `END_DATE`, never after it.
+  return addDays(DEMO.END_DATE, dayIndex - (cycleDays - 1));
 }
 
 /**

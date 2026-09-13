@@ -15,7 +15,7 @@ The deep dives live in three companion docs:
 ## Verify all of it in three commands
 
 ```text
-npm run typecheck && npm test     1,275 passing, 4 skipped, offline
+npm run typecheck && npm test     1,281 passing, 4 skipped, offline
 npm run verify                    ALL CHECKS PASSED
 npm run build                     SPA into apps/api/public
 node scripts? no — the golden path: see "Production dry run" at the bottom
@@ -193,11 +193,51 @@ Two problems made a working stream look like a broken page. Both fixed in
    the viewer arrived. It does no money math beyond subtracting two integer-cent
    readings the API returned, formatted by the shared helpers.
 
-   Its one real rule is the wrap case. The clock runs a ten-minute cycle and
+   Its one real rule is the wrap case. The clock runs a loop and
    then returns to the end of history, so cash jumps back up. Measured naively
-   the badge would announce the company earning a week's burn every ten minutes.
+   the badge would announce the company earning a week's burn every loop.
    A backwards date re-baselines instead and says "clock restarted".
    `advanceLive` is a pure function with its own tests.
+
+## The clock no longer claims to know the future
+
+Bill caught this by looking at a calendar: the dashboard said "Canary Sandbox
+Bank balance as of Sep 20" while Sep 20 had not happened yet. He was right, and
+it is not a cosmetic problem. `DEMO.END_DATE` is 2026-09-13, which is both the
+last day of generated history AND a real date, so a clock that advanced PAST it
+was stating a balance that does not exist. Nobody's bank knows next week's
+balance.
+
+**The clock now walks the last ten days of history and ENDS on 2026-09-13.** It
+is the same amount of motion, in the same direction, revealing a day at a time —
+it just runs up to today instead of past it. Measured across the whole loop:
+
+| Simulated day | Cash | Burn / mo | Runway | Reconciles |
+|---|---|---|---|---|
+| 2026-09-04 | $2,071,252.51 | $165,465.04 | 12.5 | exact |
+| 2026-09-06 | $2,069,694.39 | $156,141.48 | 13.3 | exact |
+| 2026-09-08 | $2,081,065.54 | $156,141.48 | 13.3 | exact |
+| 2026-09-11 | $2,015,585.04 | $156,141.48 | 12.9 | exact |
+| **2026-09-13** | **$2,012,880.19** | **$163,481.89** | **12.3** | exact |
+
+Three things that matter for the demo fall out of this:
+
+- **Nothing on any surface can name a day that has not happened.** Asserted at
+  the clock level every quarter-minute across four loops, and again end to end
+  on the provenance date, the company profile, every account and the latest
+  transaction the bank endpoint will list.
+- **The loop ENDS on the documented day.** The last thing on screen before it
+  restarts is exactly the state the README, this worklog and the demo script
+  quote, so the numbers a judge reads match the numbers we wrote down.
+- **Cash still moves every tick, and sometimes upward.** Revenue lands weekly.
+  Sep 8 ends richer than Sep 7 and that is correct, not a glitch.
+
+**Speed.** A simulated day now takes 30 seconds instead of 60, and the SPA
+refreshes every 7 seconds instead of 30. The old 30s heartbeat was half the
+reason the app "looked like a placeholder": watch it for twenty seconds and
+nothing happened, because the page was lagging the backend by most of a
+simulated day. Refreshes are invisible either way, since the data on screen is
+kept until the new data lands.
 
 ## Two things only someone with Cloudflare access can do
 

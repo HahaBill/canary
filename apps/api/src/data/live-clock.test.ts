@@ -7,7 +7,10 @@
  * stay correct while they do.
  */
 import { describe, expect, it } from "vitest";
-import { CYCLE_MINUTES, demoAsOf, DEFAULT_MINUTES_PER_DAY } from "../clock.ts";
+import { DEMO } from "@canary/shared";
+import { CYCLE_DAYS, cycleMinutes, demoAsOf, DEFAULT_MINUTES_PER_DAY } from "../clock.ts";
+
+const CYCLE_MINUTES = cycleMinutes();
 import { PipelineDataProvider } from "./pipeline-provider.ts";
 
 const at = (minutes: number) => new Date(minutes * 60_000);
@@ -132,5 +135,43 @@ describe("one date on screen, not two", () => {
     for (const account of derived.accounts) {
       expect(account.as_of).toBe(derived.provenance.end_date);
     }
+  });
+});
+
+describe("the clock never shows a day that has not happened", () => {
+  it("keeps every surface on or before the last day of history, all cycle long", async () => {
+    // The bug a teammate caught by looking at a calendar: the dashboard said
+    // "Canary Sandbox Bank balance as of Sep 20" while Sep 20 was still a week
+    // away. A demo device may compress time; it may not claim to know a balance
+    // that does not exist yet. This asserts it end to end, not just in the
+    // clock's own unit test, because the leak was in what the SURFACES said.
+    const { provider, set } = movingClock();
+
+    for (let day = 0; day < CYCLE_DAYS; day++) {
+      set(day * DEFAULT_MINUTES_PER_DAY);
+      const derived = await provider.getDerived();
+      const where = `day ${day}`;
+
+      expect(derived.provenance.end_date <= DEMO.END_DATE, where).toBe(true);
+      expect(derived.company.as_of <= DEMO.END_DATE, where).toBe(true);
+      for (const account of derived.accounts) {
+        expect(account.as_of <= DEMO.END_DATE, where).toBe(true);
+      }
+
+      const transactions = await provider.getTransactions();
+      const latest = transactions.reduce((max, t) => (t.date > max ? t.date : max), "");
+      expect(latest <= DEMO.END_DATE, `${where}: latest transaction ${latest}`).toBe(true);
+    }
+  });
+
+  it("ends the cycle on the documented demo day", async () => {
+    // So the last thing on screen before the loop restarts is the state the
+    // README, the handoff and the demo script all quote.
+    const { provider, set } = movingClock();
+    set((CYCLE_DAYS - 1) * DEFAULT_MINUTES_PER_DAY);
+    const derived = await provider.getDerived();
+
+    expect(derived.provenance.end_date).toBe(DEMO.END_DATE);
+    expect(derived.reconciliation.discrepancy_cents).toBe(0);
   });
 });

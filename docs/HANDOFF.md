@@ -26,7 +26,7 @@ For local dev copy `apps/api/.dev.vars.example` → `apps/api/.dev.vars` and fil
 packages/shared/company.ts     Perch Analytics, Inc. (fictional) · Canary Sandbox Bank · closing balances (the ANCHOR)
         │
 generator  → 626 transactions over 52 Mon–Sun weeks, generated BACKWARD so opening + Σ cash = closing exactly
-           │    plus a 26-week horizon of un-posted rows that the demo clock reveals one day per real minute
+           │    plus a 26-week horizon of un-posted rows; the demo clock walks the final ten days OF HISTORY, a day every 30s, and never past DEMO.END_DATE
         │    planted: AWS-led variable-spend ramp from week 42, Figma one-off (12× median), Ashby (real unknown vendor),
         │    transfer pair, card purchases + settlements, pending/settled pair, refund
 classification → per-merchant: flow-type rules → merchant regex rules → OpenAI proposal → Tavily corroboration
@@ -71,7 +71,7 @@ Views: `GET /api/ledger?granularity=week|month`, `GET /api/ledger/cell?row_id&pe
 
 ## 5. Testing & verification
 
-- `npm test` — 1,275 unit tests (4 skipped), offline. Live OpenAI/Tavily/Rho tests auto-skip without keys.
+- `npm test` — 1,281 unit tests (4 skipped), offline. Live OpenAI/Tavily/Rho tests auto-skip without keys.
 - `npm run verify` — runs the full pipeline and asserts contract §15 (closing balance exact, transfer $0, settlements not double counted, one-off ≥3 priors and fires, winsorized out of CUSUM, CUSUM fires before last week, change point within ±2 weeks, post-change burn window, contributor sums, dedup incl. driver drift and stale incidents, Tavily cited, Ashby corroborated). Must print `ALL CHECKS PASSED`.
 - Local e2e: `npm run dev:api` then curl the routes above against `localhost:8787` (use `x-canary-secret` from `.dev.vars` for the webhook/alerts).
 - `npm run verify` had never actually run on Windows (the `import.meta.url` entry-point guard never matched, so it printed nothing and exited 0). Fixed in `c8915b6`. CI still does not run it — see `docs/ALFREDO-LOGIC-AUDIT.md` proposal 3.
